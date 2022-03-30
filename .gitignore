@@ -1,0 +1,9 @@
+*.pyc
+boninbehavior.egg-info/*
+*.DS_Store
+*.ipynb_checkpoints
+/behavior_python/notebooks
+*.ipynb
+/.vscode
+config.json
+behavior_python/.vscode
