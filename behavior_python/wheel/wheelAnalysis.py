@@ -34,7 +34,7 @@ class WheelCurve:
         
     def get_contrast(self):
         """ Gets the signed contrast list and the counts for each contrast value on each side"""
-        self.contrast = self.data['contrast'].unique()
+        self.contrast = np.sort(self.data['contrast'].unique())
         self.data.loc[:,'signed_contrast'] = self.data.loc[:,['contrast','stim_side']].apply(lambda row: row[0]*np.sign(row[1]) if row[0]!=0 else row[0],axis=1)
         self.signed_contrast,self.counts = np.unique(self.data['signed_contrast'],return_counts=True)
         

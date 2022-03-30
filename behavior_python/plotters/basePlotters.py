@@ -171,7 +171,7 @@ class PerformancePlotter(BasePlotter):
         ax.tick_params(labelsize=fontsize)
         ax.grid(alpha=0.5,axis='both')
         if len(seperate_by)>1:
-            ax.legend(loc='lower right',frameon=False,fontsize=fontsize)
+            ax.legend(loc='upper right',frameon=False,fontsize=fontsize)
         
         return ax
     
