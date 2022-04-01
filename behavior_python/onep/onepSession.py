@@ -94,7 +94,7 @@ class OnePSession(Session):
         run_analysis_dir = pjoin(self.data_paths.analysisPath,self.name)
         mov_dir = pjoin(run_analysis_dir,"movies")
         if not os.path.exists(mov_dir):
-            os.mkdir(mov_dir)
+            os.makedirs(mov_dir)
         save_name = pjoin(mov_dir,f'avg_{self.run_no}')
         for k,v in kwargs.items():
             save_name += f'_{k}{v}'
