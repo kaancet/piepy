@@ -219,19 +219,23 @@ class Color:
         return colorsys.hsv_to_rgb(h,s,v)
     
     @staticmethod
-    def make_color_range(start_color:str,rng:int) -> list:
-        """ Returns a list of hex colors ranging from start color in make_it direction"""
+    def make_color_range(start_color:str,rng:int,s_limit:list=[20,100],v_limit:list=[20,100]) -> list:
+        """ Returns a list of hex colors ranging from start color to specific limit values"""
         rgb = Color.hex2rgb(start_color)
         hsv = Color.rgb2hsv(rgb)
         h,s,v = hsv
         
-        s_range = np.linspace(s,1,rng)
-        # v_range = np.linspace(0.5,1,rng)
+        # limit the saturation and value
+        # s= 20%-100% v=100%
+        
+        s_steps = np.linspace(s,1,rng)
+        v_steps = np.linspace(v,1,rng)
+        v_steps = v_steps[::-1] # reverse values to go from light to darker color
         
         color_range = []
-        for i,s in enumerate(s_range):
+        for i,s in enumerate(s_steps):
             
-            new_hsv = (h,s_range[i],v)
+            new_hsv = (h,s_steps[i],v_steps[i])
             new_rgb = Color.hsv2rgb(new_hsv)
             color_range.append(Color.rgb2hex(new_rgb))
         

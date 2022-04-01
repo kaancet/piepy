@@ -1,7 +1,7 @@
 from .basePlotters import *
 from ..wheel.wheelBehavior import WheelBehavior,WheelBehaviorData
 from ..detection.wheelDetectionBehavior import WheelDetectionBehavior
-
+from natsort import natsorted
 
 #TODO: USE A SIMPLE LOADER TO READ DATA TO PREVENT THE SESSION DIFFERENCEBUG
 
@@ -343,7 +343,7 @@ class LifeLinePlotter(LifeBasePlotter):
         #TODO: This can cause issues in the future, now it assumes that 
         # there is only one training paradigm with different levels per task
         start_color = self.stage_colors[training_slice['paradigm'].iloc[0]]
-        uniq_levels = np.unique(training_slice['leveled_paradigm'])
+        uniq_levels = natsorted(np.unique(training_slice['leveled_paradigm']))
         full_color_range = Color.make_color_range(start_color, rng=max_levels)
         current_color_range = full_color_range[:len(uniq_levels)]
         
