@@ -51,6 +51,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                                **kwargs)
 
         # prettify
+        ax.set_xscale('symlog')
         fontsize = kwargs.get('fontsize',14)
         ax.set_ylim([0,1])
         ax.set_yticklabels([str(int(100*i)) for i in ax.get_yticks()])

@@ -83,7 +83,7 @@ class WheelBehavior(Behavior):
                     # cumulative data
                     session_data['session_no'] = session_counter + 1
                     session_data['date'] = wheel_session.meta.baredate
-                    session_data['paradigm'] = gsheet_dict['paradigm']
+                    session_data['paradigm'] = gsheet_dict.get('paradigm','training_wheel')
                     
                     cumul_data = cumul_data.append(session_data,ignore_index=True)
                     cumul_data['cumul_trial_no'] = np.arange(len(cumul_data)) + 1

@@ -83,89 +83,19 @@ class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
             display(f'Saved {savename} plot')
             
 
-class DetectionContrastProgressionPlotter(BehaviorBasePlotter):
-    __slots__ = ['animalid','session_contrast_image','contrast_column_map','cbar']
+class DetectionContrastProgressionPlotter(ContrastProgressionPlotter):
     def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
         super().__init__(cumul_data, summary_data, **kwargs)
         self.animalid = animalid
         self.cumul_data = self.add_difference_columns(self.cumul_data)
-    
-    @staticmethod
-    def add_difference_columns(data) -> None:
-        """ Adds difference columns to the plot data like the day difference, session difference """
-        try:
-            start_day = data[data['paradigm'].str.contains('training')]['dt_date'].iloc[0]
-            sesh_idx = data.index[data['dt_date']==start_day].to_list()[0]
-            start_sesh = data['session_no'].iloc[int(sesh_idx)]
-        except:
-            start_day = data['dt_date'].iloc[0]
-            sesh_idx = len(data) - 1
-            start_sesh = data['session_no'].iloc[int(sesh_idx)]
-        
-        # day diff
-        data['day_difference'] = dates_to_deltadays(data['dt_date'].to_numpy(),start_day)
-        
-        #session_diff
-        data['session_difference'] = data.apply(lambda x: x['session_no'] - start_sesh if not np.isnan(x['session_no']) else x.name - sesh_idx,axis=1)
-        return data
-        
-    def seperate_contrasts(self,do_opto:bool=False):
-        """Seperates the contrast performances for each session throughout the training and experiments """
-        # create a predefined contrast vector which includes every contrast and opto
-
-        column_names = ['1.0','0.5','0.25','0.125','0.0625','0']
-    
-        # column_names_minus = [f'-{n}' for n in column_names[::-1] if n!='0']
-        # column_names = column_names + column_names_minus
-        
-        contrast_column_map = {name:idx for idx,name in enumerate(column_names)}
-        contrast_column = np.zeros((len(contrast_column_map),1))
-        
-        data = self.cumul_data[self.cumul_data['session_difference']>=0] # start from first actual training
-        
-        
-        if do_opto:
-            data = data[data['opto']==1]
-        else:
-            data = data[data['opto']==0]
-        
-        session_nos = np.unique(data['session_no'])
-        all_sessions = np.zeros((len(column_names),len(session_nos)))
-        all_sessions[:] = np.nan
-        for k,s_no in enumerate(session_nos):
-            sesh_data = data[data['session_no']==s_no]
-            
-            sesh_contrasts = nonan_unique(sesh_data['contrast']) # this also removes the early trials which have np.nan values for contrasts
-            
-            contrast_column[:] = np.nan
-            for i,c in enumerate(sesh_contrasts):
-                c_data = sesh_data[sesh_data['contrast']==c] 
-                key = str(c)
-                
-                if len(c_data):
-                    correct_percent = len(c_data[c_data['answer']==1])/len(c_data)
-                    contrast_column[contrast_column_map[key]] = 100*correct_percent
-                else:
-                    pass
-            # concat the column to overall sessions image      
-            all_sessions[:,k] = np.ravel(contrast_column)
-            
-        self.contrast_column_map = contrast_column_map        
-        self.session_contrast_image = all_sessions
-    
-    @staticmethod
-    def __plot__(ax,matrix,**kwargs):
-        im = ax.imshow(matrix,vmin=0,vmax=100,
-                       cmap=kwargs.get('cmap','coolwarm'),
-                       **kwargs)
-        return ax,im
     
     def plot(self,ax:plt.Axes=None,do_opto:bool=False,**kwargs) -> plt.Axes:
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
             
-        self.seperate_contrasts(do_opto)
+        contrast_names = ['1.0','0.5','0.25','0.125','0.0625','0.03125','0']
+        self.seperate_contrasts(contrast_names=contrast_names,do_opto=do_opto)
         
         ax,im = self.__plot__(ax,self.session_contrast_image,**kwargs)
         
@@ -199,14 +129,3 @@ class DetectionContrastProgressionPlotter(BehaviorBasePlotter):
         cbar.ax.yaxis.set_ticks_position('left')
         
         return ax, cax
-    
-    def save(self,saveloc) -> None:
-        if self.fig is not None:
-            saveloc = pjoin(saveloc,'contrastProgression',self.animalid)
-            if not os.path.exists(saveloc):
-                os.makedirs(saveloc)
-            last_date = self.cumul_data['date'].iloc[-1]
-            savename = f'{last_date}_contrastProgress.pdf'
-            saveloc = pjoin(saveloc,savename)
-            self.fig.savefig(saveloc,bbox_inches='tight')
-            display(f'Saved {savename} plot') 
