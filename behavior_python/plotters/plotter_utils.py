@@ -123,6 +123,7 @@ contrast_styles = {1:{'color':'teal'},
                    0.25:{'color':'turquoise'},
                    0.125:{'color':'limegreen'},
                    0.0625:{'color':'indigo'},
+                   0.03125:{'color':'hotpink'},
                    0:{'color':'black'}}
 
 

@@ -19,6 +19,7 @@ class LifeBasePlotter:
                              'experiment_img':'indigo',
                              'experiment_opto':'#2424f2',
                              'water restriction start': 'cyan',
+                             'water restriction stop' : 'darkblue',
                              'handling': 'orange',
                              'habituation': 'firebrick',
                              'training_wheel':'#a5c79d',
@@ -187,7 +188,7 @@ class TrainingPlotter(LifeBasePlotter):
         self.add_normalized_weights()
         
     def plot(self,plot_range:int=None,diff_type:str='sessions',**kwargs) -> plt.Axes:
-        self.fig,axs = plt.subplots(nrows=2,ncols=1,figsize=(12,8),sharex=True,
+        self.fig,axs = plt.subplots(nrows=2,ncols=1,figsize=kwargs.get('figsize',(12,8)),sharex=True,
                                     gridspec_kw={'wspace':kwargs.get('wspace',0.1),
                                                  'hspace':kwargs.get('hspace',0.1)})
         ax1 = axs[0]
@@ -334,9 +335,9 @@ class LifeLinePlotter(LifeBasePlotter):
     def add_level_colors(self,task_name:str) -> None:
         """ Adds level colors to training_stages """
         if task_name == 'wheel':
-            max_levels = 4
+            max_levels = 5
         elif task_name == 'detection':
-            max_levels = 13 #12+1
+            max_levels = 14 #12+1
         
         training_slice = self.plot_data[self.plot_data['leveled_paradigm'].str.contains('training')]
         
