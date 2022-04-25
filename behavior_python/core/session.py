@@ -33,12 +33,12 @@ class SessionMeta:
                     if 'opto' in v:
                         self.opto = True
 
-        self.session_dir = self.prot_file.split('/')[-2]
+        self.session_dir = self.prot_file.split(os.sep)[-2]
         self.experiment_name = self.prot_file.split('/')[-1].split('.')[0]
         
         self.animalid = self.session_dir.split('_')[1]
         self.user = self.session_dir.split('_')[-1]
-        self.set_date(self.session_dir.split('/')[-1].split('_')[0])
+        self.set_date(self.session_dir.split(os.sep)[-1].split('_')[0])
         
         self.set_weight()
         self.generate_session_id()
