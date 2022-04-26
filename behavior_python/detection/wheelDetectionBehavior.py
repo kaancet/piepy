@@ -56,7 +56,7 @@ class WheelDetectionBehavior(Behavior):
                 session_data = detect_session.data.data
                 
                 gsheet_dict = self.get_googlesheet_data(detect_session.meta.baredate,
-                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]'])
+                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]','rig water [µl]'])
                 
                 if len(session_data):
                     # add behavior related fields as a dictiionary

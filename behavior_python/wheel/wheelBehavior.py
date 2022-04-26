@@ -56,7 +56,7 @@ class WheelBehavior(Behavior):
                 session_data = wheel_session.data.data
 
                 gsheet_dict = self.get_googlesheet_data(wheel_session.meta.baredate,
-                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]'])
+                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]','rig water [µl]'])
                 
                 if len(session_data):
                     

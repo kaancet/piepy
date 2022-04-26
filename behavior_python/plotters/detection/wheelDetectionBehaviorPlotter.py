@@ -1,5 +1,5 @@
 from behavior_python.detection.wheelDetectionSession import WheelDetectionSession
-from ..basePlotters import *
+from ..behaviorBasePlotters import *
 from .wheelDetectionSessionPlotter import *
 
 
@@ -85,19 +85,62 @@ class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
 
 class DetectionContrastProgressionPlotter(ContrastProgressionPlotter):
     def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
-        super().__init__(cumul_data, summary_data, **kwargs)
+        super().__init__(animalid, cumul_data, summary_data, **kwargs)
         self.animalid = animalid
         self.cumul_data = self.add_difference_columns(self.cumul_data)
+        
+    def seperate_contrasts(self,do_opto:bool=False):
+        """Seperates the contrast performances for each session throughout the training and experiments """
+        
+        data = self.cumul_data[self.cumul_data['session_difference']>=0] # start from first actual training
+        contrast_names = [str(c) for c in nonan_unique(data['contrast'])[::-1]]
+        
+        contrast_column_map = {name:idx for idx,name in enumerate(contrast_names)}
+        contrast_column = np.zeros((len(contrast_column_map),1))
+                
+        if do_opto:
+            data = data[data['opto']==1]
+        else:
+            try:
+                data = data[data['opto']==0]
+            except:
+                pass
+        
+        session_nos = np.unique(data['session_no'])
+        all_sessions = np.zeros((len(contrast_names),len(session_nos)))
+        all_sessions[:] = np.nan
+        for k,s_no in enumerate(session_nos):
+            sesh_data = data[data['session_no']==s_no]
+            
+            sesh_contrasts = nonan_unique(sesh_data['contrast']) # this also removes the early trials which have np.nan values for contrasts
+            
+            contrast_column[:] = np.nan
+            for i,c in enumerate(sesh_contrasts):
+                c_data = sesh_data[sesh_data['contrast']==c] 
+                key = str(c)
+                
+                if len(c_data):
+                    correct_percent = len(c_data[c_data['answer']==1])/len(c_data)
+                    contrast_column[contrast_column_map[key]] = 100*correct_percent
+                else:
+                    pass
+            # concat the column to overall sessions image      
+            all_sessions[:,k] = np.ravel(contrast_column)
+            
+        self.contrast_column_map = contrast_column_map        
+        self.session_contrast_image = all_sessions
     
-    def plot(self,ax:plt.Axes=None,do_opto:bool=False,**kwargs) -> plt.Axes:
+    def plot(self,ax:plt.Axes=None,cmap:str='Reds',do_opto:bool=False,**kwargs) -> plt.Axes:
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
             
-        contrast_names = ['1.0','0.5','0.25','0.125','0.0625','0.03125','0']
-        self.seperate_contrasts(contrast_names=contrast_names,do_opto=do_opto)
+        self.seperate_contrasts(do_opto=do_opto)
         
-        ax,im = self.__plot__(ax,self.session_contrast_image,**kwargs)
+        ax,im = self.__plot__(ax=ax,
+                              matrix=self.session_contrast_image,
+                              cmap=cmap,
+                              **kwargs)
         
         fontsize = 15
         ax.set_xlabel('Session from 1st Level1',fontsize=fontsize)

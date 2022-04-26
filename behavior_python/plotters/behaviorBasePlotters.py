@@ -59,52 +59,10 @@ class ContrastProgressionPlotter(BehaviorBasePlotter):
         data['session_difference'] = data.apply(lambda x: x['session_no'] - start_sesh if not np.isnan(x['session_no']) else x.name - sesh_idx,axis=1)
         return data
     
-    def seperate_contrasts(self,contrast_names:list=None,do_opto:bool=False):
-        """Seperates the contrast performances for each session throughout the training and experiments """
-        # create a predefined contrast vector which includes every contrast and opto
-        contrast_column_map = {name:idx for idx,name in enumerate(contrast_names)}
-        contrast_column = np.zeros((len(contrast_column_map),1))
-        
-        data = self.cumul_data[self.cumul_data['session_difference']>=0] # start from first actual training
-        
-        
-        if do_opto:
-            data = data[data['opto']==1]
-        else:
-            try:
-                data = data[data['opto']==0]
-            except:
-                pass
-        
-        session_nos = np.unique(data['session_no'])
-        all_sessions = np.zeros((len(contrast_names),len(session_nos)))
-        all_sessions[:] = np.nan
-        for k,s_no in enumerate(session_nos):
-            sesh_data = data[data['session_no']==s_no]
-            
-            sesh_contrasts = nonan_unique(sesh_data['contrast']) # this also removes the early trials which have np.nan values for contrasts
-            
-            contrast_column[:] = np.nan
-            for i,c in enumerate(sesh_contrasts):
-                c_data = sesh_data[sesh_data['contrast']==c] 
-                key = str(c)
-                
-                if len(c_data):
-                    correct_percent = len(c_data[c_data['answer']==1])/len(c_data)
-                    contrast_column[contrast_column_map[key]] = 100*correct_percent
-                else:
-                    pass
-            # concat the column to overall sessions image      
-            all_sessions[:,k] = np.ravel(contrast_column)
-            
-        self.contrast_column_map = contrast_column_map        
-        self.session_contrast_image = all_sessions
-    
     @staticmethod
     def __plot__(ax:plt.Axes,matrix,cmap,**kwargs):
         im = ax.imshow(matrix,vmin=0,vmax=100,
-                       cmap=cmap,
-                       **kwargs)
+                       cmap=cmap)
         return ax,im
     
     def save(self,saveloc:str) -> None:

@@ -146,8 +146,8 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         shuf_mean = np.mean(shuffled_hists,axis=0)
         shuf_std = np.std(shuffled_hists,axis=0)
         
-        ax.fill_between(bins[1:],shuf_mean-shuf_std,shuf_mean+shuf_std,color='dimgrey',alpha=0.6,zorder=2)
-        ax.plot(bins[1:],shuf_mean,color='dimgrey',linewidth=2,zorder=3)
+        ax.fill_between(bins[1:],shuf_mean-shuf_std,shuf_mean+shuf_std,color='dimgrey',alpha=0.4,zorder=2)
+        ax.plot(bins[1:],shuf_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
             
         fontsize = kwargs.get('fontsize',14)
         ax.set_xlabel('Time from Stimulus onset (ms)', fontsize=fontsize)
