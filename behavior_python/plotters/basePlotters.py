@@ -164,7 +164,7 @@ class PerformancePlotter(BasePlotter):
                             **kwargs)
             
         # prettify
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_ylim([0, 100])
         ax.set_xlabel(x_label_, fontsize=fontsize)
         ax.set_ylabel('Accuracy(%)', fontsize=fontsize)
@@ -181,7 +181,7 @@ class ResponseTimePlotter(BasePlotter):
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data,self.stimkey = self.select_stim_data(self.data,stimkey)
-
+        
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
         ax.plot(x, y,linewidth=kwargs.get('linewidth',5),**kwargs)
@@ -205,7 +205,7 @@ class ResponseTimePlotter(BasePlotter):
                            **kwargs)
 
         # prettify
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_yscale('log')
         ax.set_xlabel(x_label_, fontsize=fontsize)
         ax.set_ylabel('Response Time(sec)', fontsize=fontsize)
@@ -258,6 +258,8 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
     @staticmethod
     def __plot__(ax,contrast,time,median,mean,pos,cloud_width,**kwargs):
         
+        if 'fontsize' in kwargs.keys():
+            kwargs.pop('fontsize')
         ax.scatter(contrast,time,alpha=0.6,**kwargs)
         
         ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,c='b')
@@ -275,7 +277,7 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         plot_pos = []
         for i,c in enumerate(np.unique(self.plot_data['contrast']),start=1):
             contrast_data = self.plot_data[self.plot_data['contrast']==c]
-            for side in np.unique(contrast_data['stim_side']):
+            for j,side in enumerate(np.unique(contrast_data['stim_side'])):
                 # location of dot cloud centers by contrast
                 if c == 0:
                     side_data = contrast_data
@@ -292,14 +294,14 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
                 
                 ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
                                    s=30,color=stim_styles[self.stimkey]['color'] if self.stimkey is not None else 'royalblue',
-                                   label=self.stimkey if self.stimkey is not None else 'all',
+                                   label=self.stimkey if self.stimkey is not None and j==0 and c==0.5 else '_',
                                    **kwargs)
 
         # mid line
         ax.set_ylim([90,30000])
         ax.plot([0,0],ax.get_ylim(),color='gray',linewidth=2,alpha=0.5)
         
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_xlabel('Stimulus Contrast', fontsize=fontsize)
         ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
@@ -320,6 +322,7 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         ax.xaxis.set_major_formatter(ticker.FixedFormatter([str(int(100*c)) for c in np.sort(signed_contrasts)]))
             
         ax.grid(alpha=0.5,axis='y')
+        ax.legend(loc='upper right',fontsize=fontsize,frameon=False)
         
         return ax   
         
@@ -416,7 +419,7 @@ class LickPlotter(BasePlotter):
             display('No Lick data found for session :(')
             ax = self.__plot__(ax,[],[])
             
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_xlabel(x_label_, fontsize=fontsize)
         ax.set_ylabel('Lick Counts', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)

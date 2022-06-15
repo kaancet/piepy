@@ -19,6 +19,7 @@ class WheelDetectionTrial(Trial):
         for col in vstim.columns:
             if col in ignore:
                 continue
+
             temp_col = vstim[col]
             # if a column has all the same values, take the first entry of the column as the value
             # sf, tf, contrast, stim_side, correct, opto, opto_pattern should run through here
@@ -39,12 +40,15 @@ class WheelDetectionTrial(Trial):
             vstim_dict['spatial_freq'] = np.nan
             vstim_dict['temporal_freq'] = np.nan
             vstim_dict['stim_side'] = np.nan
+            vstim_dict['opto_pattern'] = np.nan
         else:
             vstim_dict['contrast'] = vstim_dict['contrast_r'] if vstim_dict['correct'] else vstim_dict['contrast_l']
             vstim_dict['spatial_freq'] = vstim_dict['sf_r'] if vstim_dict['correct'] else vstim_dict['sf_l']
             vstim_dict['temporal_freq'] = vstim_dict['tf_r'] if vstim_dict['correct'] else vstim_dict['tf_l']
             # vstim_dict['stim_side'] = vstim_dict['stim_pos'][0]
             vstim_dict['stim_side'] =  1 if vstim_dict['correct'] else -1
+            if vstim_dict['contrast'] == 0:
+                vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
     
     def get_wheel_pos(self,time_anchor:float) -> np.ndarray:
@@ -66,6 +70,7 @@ class WheelDetectionTrial(Trial):
             Returns a list of dictionaries that have data parsed from stimlog and riglog
         """
         trial_log_data = {'trial_no': int(self.trial_no)}
+        trial_log_data['isCatch'] = 0
         # iterrows is faster for small DataFrames
         for _,row in self.data['state'].iterrows():
             curr_trans = row['transition']
@@ -108,6 +113,12 @@ class WheelDetectionTrial(Trial):
                 trial_log_data['response_latency'] = row[self.column_keys['stateElapsed']]
                 trial_log_data['answer'] = -1
                 
+            # catch
+            elif curr_trans == 'catch':
+                trial_log_data['isCatch'] = 1
+                # technically there is no answer
+                trial_log_data['answer'] = 0
+                
             # stim dissappear
             elif curr_trans == 'stimendcorrect' or curr_trans == 'stimendincorrect':
                 trial_log_data['stim_end'] = row[self.column_keys['elapsed']]
@@ -125,11 +136,11 @@ class WheelDetectionTrial(Trial):
                 
                 if self.meta.opto:
                     rig_logs['opto_pulse'] = self.get_opto()
-                    vstim_log['opto'] = vstim_log.get('opto',0) or len(rig_logs['opto_pulse'])
+                    
+                    vstim_log['opto'] = int(bool(vstim_log.get('opto',0)) or bool(len(rig_logs['opto_pulse'])))
                 else:
                     vstim_log['opto'] = 0
-                
-                
+                    
                 trial_log_data = {**trial_log_data, **vstim_log, **rig_logs}
                 self.trial_data = trial_log_data
                 

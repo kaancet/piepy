@@ -5,11 +5,11 @@ from .wheelDetectionTrial import *
 
 class WheelDetectionData(SessionData):
     __slots__ = ['stim_data']
-    def __init__(self,data:pd.DataFrame) -> None:
+    def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
         self._convert = ['wheel','lick','reward']
         self.data = data
         self.make_loadable()
-        self.stim_data:dict = self.seperate_stim_data()
+        self.stim_data:dict = self.seperate_stim_data(isgrating)
     
     def get_answered_trials(self) -> pd.DataFrame:
         """ Correct answers and early answers """
@@ -20,17 +20,17 @@ class WheelDetectionData(SessionData):
         wait_df = self.data[self.data['answer']!=-1]
         return wait_df
     
-    def seperate_stim_data(self) -> None:
+    def seperate_stim_data(self,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
         stim_data = {}
-        sfreq = nonan_unique(self.data['spatial_freq'].to_numpy())
-        tfreq = nonan_unique(self.data['temporal_freq'].to_numpy())
-        optogenetic = np.unique(self.data['opto'])
+        nonearly_data = self.data[self.data['answer']!=-1]
+        sfreq = nonan_unique(nonearly_data['spatial_freq'].to_numpy())
+        tfreq = nonan_unique(nonearly_data['temporal_freq'].to_numpy())
+        optogenetic = np.unique(nonearly_data['opto'])
         
-        if 'opto_pattern' in self.data.columns:
-            pattern_ids = np.unique(self.data['opto_pattern'])
-            # remove nans
-            pattern_ids = pattern_ids[~np.isnan(pattern_ids)]
+        if 'opto_pattern' in nonearly_data.columns:
+            pattern_ids = nonan_unique(nonearly_data['opto_pattern'])
+
             # remove -1(no opto no pattern, thi is extra failsafe)
             pattern_ids = pattern_ids[pattern_ids >= 0]
         else:
@@ -39,44 +39,43 @@ class WheelDetectionData(SessionData):
         # analysing each stim type and opto and opto_pattern seperately
         for opto in optogenetic:
             for i,_ in enumerate(sfreq):
-                if sfreq[i] == 0.4 and tfreq[i] == 0.5:
-                    key = 'highSF_lowTF'  # PM stim
-                elif sfreq[i] == 0.4 and tfreq[i] == 16:
-                    key = 'highSF_highTF' #
-                elif sfreq[i] == 0.05 and tfreq[i] == 0.5:
-                    key = 'lowSF_lowTF'   #
-                elif sfreq[i] == 0.05 and tfreq[i] == 16:
-                    key = 'lowSF_highTF'  # AL stim
-                else:
-                    key = 'grating'
+                skey = sfreq[i] if sfreq[i]%1 else int(sfreq[i])
+                tkey = tfreq[i] if tfreq[i]%1 else int(tfreq[i])
+                key = f'{skey}cpd_{tkey}Hz'
+                if isgrating:
+                    key += '_grating'
                 
-                for opto_pattern in pattern_ids:
-                    if opto == 0:
-                        opto_pattern = -1
-                        key_new = key
-                    else:
+                if opto:
+                    for opto_pattern in pattern_ids:
                         key_new = '{0}_opto_{1}'.format(key,int(opto_pattern))
                     
-                    print(key_new)
-                    # stimuli data
-                    try:
-                        # if opto_pattern exists, ususally it should exist
-                        stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
-                                                        'temporal_freq':tfreq[i],
-                                                        'opto':opto,
-                                                        'opto_pattern':opto_pattern})
-                        
-                    except:
-                        stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
-                                                        'temporal_freq':tfreq[i],
-                                                        'opto':opto})
+                        print(key_new)
+                        # stimuli data
+                        try:
+                            # if opto_pattern exists, ususally it should exist
+                            stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                                                            'temporal_freq':tfreq[i],
+                                                            'opto':opto,
+                                                            'opto_pattern':opto_pattern})
+                            
+                        except:
+                            stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                                                            'temporal_freq':tfreq[i],
+                                                            'opto':opto})
+                            
+                    
+                else:
+                    key_new = key
+                    stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                                                    'temporal_freq':tfreq[i],
+                                                    'opto':opto})
                     # early trials don't have any of vstim values => spatial_freq, temporal_freq and opto_pattern
                     # a very crude fix is to get all the early data, concat and order by trial_no
                     early_data = self.get_subset({'answer':-1})
                     stimuli_data = stimuli_data.append(early_data)
                     stimuli_data.sort_values('trial_no',inplace=True)
                     
-                    stim_data[key_new] = stimuli_data
+                stim_data[key_new] = stimuli_data
         return stim_data
         
 
@@ -155,7 +154,8 @@ class WheelDetectionSession(Session):
             session_data = self.get_session_data()
             session_data = get_running_stats(session_data)
             
-            self.data = WheelDetectionData(session_data)
+            g = 'grating' in self.data_paths.stimlog
+            self.data = WheelDetectionData(session_data,isgrating=g)
             self.stats = WheelDetectionStats(data_in=self.data)
             self.meta.water_on_rig = round(float(np.sum([a[0][1] for a in self.data.data['reward'] if len(a)])),3)
             
@@ -181,8 +181,7 @@ class WheelDetectionSession(Session):
             self.meta.stimRegion = [float(i) for i in self.meta.stimRegion.strip('] [').strip(' ').split(',')]
 
         tmp = self.data_paths.prot
-        # get level 
-        # TODO: (Make this better)
+
         lvl = ''
         if tmp.find('level') != -1:
             tmp = tmp[tmp.find('level')+len('level'):]
@@ -194,15 +193,6 @@ class WheelDetectionSession(Session):
         else:
             lvl = 'exp'
         self.meta.level = lvl
-
-        # get opto power and ratio
-        if self.meta.opto:
-            loc = tmp.find('opto') + len('level')
-            pow_str = tmp[loc:loc+3]
-            try:
-                self.meta.opto_pow = float(pow_str) / 100
-            except:
-                raise ValueError(f'Opto Power value is weird.. {pow_str}')
     
     @timeit('Saving...')
     def save_session(self) -> None:
@@ -224,7 +214,8 @@ class WheelDetectionSession(Session):
         self.meta = SessionMeta(init_dict=meta)
         display('Loaded session metadata')
 
-        self.data = WheelDetectionData(rawdata)
+        g = 'grating' in self.data_paths.stimlog
+        self.data = WheelDetectionData(rawdata,isgrating=g)
         display('Loaded session data')
 
         stats = load_json_dict(self.data_paths.statPath)
@@ -240,6 +231,7 @@ class WheelDetectionSession(Session):
                       '2->5' : 'earlyanswer',
                       '3->4' : 'correct',
                       '3->5' : 'incorrect',
+                      '3->6' : 'catch',
                       '6->0' : 'trialend',
                       '4->6' : 'stimendcorrect',
                       '5->6' : 'stimendincorrect'}

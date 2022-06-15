@@ -30,7 +30,7 @@ class SessionMeta:
                     pass
                 setattr(self, k, v)
                 if k == 'controller':
-                    if 'opto' in v:
+                    if 'Opto' in v:
                         self.opto = True
 
         self.session_dir = self.prot_file.split(os.sep)[-2]
@@ -258,6 +258,7 @@ class Session:
         datafile = pjoin(self.data_paths.savePath,'sessionData.mat').replace("\\","/")
         save_dict = {name: col.values for name, col in self.session_data.items()}
         sio.savemat(datafile, save_dict)
+        display(f'Saved .mat file at {datafile}')
         
     def load_session_data(self) -> pd.DataFrame:
         """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""

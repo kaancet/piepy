@@ -57,6 +57,9 @@ class LifeBasePlotter:
         
         stages = self.plot_data[get_from].unique()
         for s in stages:
+            print('jkl;SZw  bcfew   vkdfmnvfn[awfnvafnv;fnvakw;pq')
+            print(s)
+            print('ajkbfgvaeijpqefjnvpqefnbvpqjfnwvpaqfnvpfnpqj')
             dates = []
             paradigm_slice = self.plot_data[self.plot_data[get_from]==s]
             paradigm_slice.reset_index(inplace=True)
@@ -180,8 +183,8 @@ class TrainingPlotter(LifeBasePlotter):
             start_weight = self.plot_data['weight'].iloc[0]
         else:
             # if multiple water restriction starts, get the latest one
-            start_weight = restriction_start_weight[-1]
-        self.plot_data['normalized_weight'] = self.plot_data['weight'].apply(lambda x: x/start_weight)
+            start_weight = float(restriction_start_weight[-1])
+        self.plot_data['normalized_weight'] = self.plot_data['weight'].apply(lambda x: float(x)/start_weight)
         
     def get_data(self,task_name:str) -> None:
         super().get_data(task_name)

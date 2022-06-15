@@ -15,7 +15,6 @@ class DetectionPsychometricPlotter(BasePlotter):
         ax.plot([0, 100], [0.5, 0.5], 'gray', linestyle=':', linewidth=2,alpha=0.7)
 
         ax.errorbar(100*x, y, err,
-                    marker=kwargs.get('marker','o'),
                     linewidth=2,
                     markersize=kwargs.get('markersize',15),
                     markeredgecolor=kwargs.get('markeredgecolor','w'),
@@ -31,28 +30,49 @@ class DetectionPsychometricPlotter(BasePlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             
-        for k,v in self.data.items():
+        for i,k in enumerate(self.data.keys()):
             # get contrast data
-            contrast_list = nonan_unique(v['contrast'])
-            correct_ratios = []
-            confs = []
-            for c in contrast_list:
-                c_data = v[v['contrast']==c]
-                ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
-                confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
-                correct_ratios.append(ratio)
+            v = self.data[k]
+            sides = nonan_unique(v['stim_side'])
+            for j,side in enumerate(sides):
+                side_data = v[v['stim_side']==side]
+                contrast_list = nonan_unique(side_data['contrast'])
+                correct_ratios = []
+                confs = []
+                for c in contrast_list:
+                    c_data = side_data[side_data['contrast']==c]
+                    ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
+                    confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
+                    correct_ratios.append(ratio)
+   
+                if side < 0:
+                    label = f'{k}_left(N={len(v)})'
+                    color = 'purple'
+                    if 'opto' in k:
+                        color = 'pink'
+                    marker = '<'
+                elif side > 0:
+                    label = f'{k}_right(N={len(v)})'
+                    color = stim_styles[k]['color']
+                    marker = '>'
+                else:
+                    if 'opto' in k:
+                        color = stim_styles[k]['color']
+                    else:
+                        color = 'k'
+                    label = f'{k}_zero(N={len(v)})'
+                    marker = 'o'
                 
-            if color is None:
-                color = stim_styles[k]['color']
-                
-            ax = self.__plot__(ax,contrast_list,correct_ratios,confs,
-                               color=color,
-                               label=k,
-                               **kwargs)
+                jitter = np.zeros((len(contrast_list))) + (i * 0.01) + (j * 0.02)
+                ax = self.__plot__(ax,contrast_list+jitter,correct_ratios,confs,
+                                color=color,
+                                label=label,
+                                marker = marker,
+                                **kwargs)
 
         # prettify
-        ax.set_xscale('symlog')
-        fontsize = kwargs.get('fontsize',14)
+        # ax.set_xscale('symlog')
+        fontsize = kwargs.get('fontsize',15)
         ax.set_ylim([0,1])
         ax.set_yticklabels([str(int(100*i)) for i in ax.get_yticks()])
         ax.set_xticks([int(100*c) for c in contrast_list])
@@ -64,7 +84,10 @@ class DetectionPsychometricPlotter(BasePlotter):
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         
+        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
+        
         return ax
+        
 
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
@@ -174,14 +197,22 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
+        
         for answer in [0,1]:
+            colors = ['#630726','#32a852','#333333']
             answer_data = self.plot_data[self.plot_data['answer']==answer]
             counts = [len(answer_data[answer_data['stim_side']<0]),
-                      len(answer_data[answer_data['stim_side']>0])]
+                      len(answer_data[answer_data['stim_side']>0]),
+                      len(answer_data[answer_data['stim_side']==0])]
+            
+            if counts[-1] == 0:
+                counts = counts[:-1]
+                colors = colors[:-1]
+            
             locs = self.position_bars(answer,len(counts),0.25,padding=padding)
             
             ax = self.__plot__(ax,locs,counts,width=0.25,
-                                 color=['#630726','#32a852'],
+                                 color=colors,
                                  linewidth=2,
                                  edgecolor='k',
                                  **kwargs)

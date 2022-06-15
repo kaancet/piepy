@@ -96,10 +96,12 @@ class WheelBehaviorSummaryPlotter:
         
         past_days = np.arange(1,day_count+1)
         
-        for day in past_days[::-1]:
-            sesh = session_list[-day]
+        for day in past_days:
+            sesh = session_list[day_count-day]
             date_str = sesh[1].strftime('%y%m%d')
             w = WheelSession(sesh[0],load_flag=True)
+            if date_str in data.keys():
+                date_str += '_2'
             data[date_str] = w.data.stim_data
             stats[date_str] = w.stats
             
@@ -169,11 +171,11 @@ class WheelPastDaysGridSummary(WheelBehaviorSummaryPlotter):
             plotters = self.init_plotters(data)
             
             ax_psych = self.fig.add_subplot(sub_gs[0,0])
-            ax_psych = plotters['psychometric'].plot(ax=ax_psych)
+            ax_psych = plotters['psychometric'].plot(ax=ax_psych,**kwargs)
             ax_psych.set_title(date,fontsize=20)
             
             ax_resp = self.fig.add_subplot(sub_gs[0,1])
-            ax_resp = plotters['responsepertype'].plot(ax=ax_resp)
+            ax_resp = plotters['responsepertype'].plot(ax=ax_resp,**kwargs)
             ax_resp.set_title(f'#trials={self.plot_stats[date].novel_trials} \t PC%={self.plot_stats[date].answered_correct_percent}')         
         self.fig.tight_layout()
             

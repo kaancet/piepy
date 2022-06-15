@@ -61,8 +61,8 @@ class WheelCurve:
                     perc_on_right = len(right_contrast_data[right_contrast_data['answer']==answer_check])/cnt_on_right
                     conf_on_right = 1.96 * np.sqrt((perc_on_right * (1 - perc_on_right)) / cnt_on_right)  # 95% binomial
                 else:
-                    perc_on_right = 0
-                    conf_on_right = 0
+                    perc_on_right = None
+                    conf_on_right = None
                 # left side
                 left_contrast_data = contrast_data[contrast_data['stim_side'] < 0]
                 cnt_on_left = len(left_contrast_data)
@@ -70,8 +70,8 @@ class WheelCurve:
                     perc_on_left = len(left_contrast_data[left_contrast_data['answer']==-1*answer_check])/cnt_on_left
                     conf_on_left = 1.96 * np.sqrt((perc_on_left * (1 - perc_on_left)) / cnt_on_left)  # 95% binomial
                 else:
-                    perc_on_left = 0
-                    conf_on_left = 0
+                    perc_on_left = None
+                    conf_on_left = None
 
                 if contrast == 0:
                     cnt_on_zero = cnt_on_left + cnt_on_right
@@ -84,11 +84,13 @@ class WheelCurve:
                         self.percentage = []
                         self.confidence = []
 
-                    self.percentage.insert(0,perc_on_left)
-                    self.percentage.append(perc_on_right)
-
-                    self.confidence.insert(0,conf_on_left)
-                    self.confidence.append(conf_on_right)
+                    if perc_on_left is not None:
+                        self.percentage.insert(0,perc_on_left)
+                        self.confidence.insert(0,conf_on_left)
+                        
+                    if perc_on_right is not None:
+                        self.percentage.append(perc_on_right)
+                        self.confidence.append(conf_on_right)
             
             self.percentage = np.asarray(self.percentage)
             self.confidence = np.asarray(self.confidence)

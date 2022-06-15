@@ -22,11 +22,14 @@ class WheelPsychometricPlotter(BasePlotter):
             self.fitters[k] = temp_curve
             
     @staticmethod
-    def __plot__(ax,x,y,fitted_curve,err,**kwargs):
+    def __plot__(ax,x,y,fitted_curve,err,color,**kwargs):
         """ Private function that plots a psychometric curve with the given 
         x,y and err values are used to plot the points and 
         x_fit and y_fit values are used to plot the fitted curve
         """
+        if 'fontsize' in kwargs:
+            kwargs.pop('fontsize')
+        
         ax.plot([0, 0], [0, 1], 'gray', linestyle=':', linewidth=2,alpha=0.7)
         ax.plot([-100, 100], [0.5, 0.5], 'gray', linestyle=':', linewidth=2,alpha=0.7)
 
@@ -38,10 +41,11 @@ class WheelPsychometricPlotter(BasePlotter):
                     markeredgewidth=kwargs.get('markeredgewidth',2),
                     elinewidth=kwargs.get('elinewidth',3),
                     capsize=kwargs.get('capsize',0),
+                    color=color,
                     **kwargs)
 
         ax.plot(100 * fitted_curve[:,0], fitted_curve[:,1],
-                linewidth=kwargs.get('linewidth',9),**kwargs)
+                linewidth=kwargs.get('linewidth',9),color=color)
         return ax
         
     def plot(self,ax:plt.Axes=None,color=None,**kwargs):
@@ -49,17 +53,19 @@ class WheelPsychometricPlotter(BasePlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             
-        for k,v in self.fitters.items():
-            if color is None:
-                color = stim_styles[k]['color']
-            ax = self.__plot__(ax,v.signed_contrast,v.percentage,
+        for i,k in enumerate(self.fitters.keys()):
+            v = self.fitters[k]
+            color = stim_styles[k]['color']
+            
+            jitter = i * 0.02
+            ax = self.__plot__(ax,v.signed_contrast + jitter,v.percentage,
                                v.fitted_curve,v.confidence,
                                color=color,
-                               label=k,
+                               label=f'{k}(N={np.sum(v.counts)})',
                                **kwargs)
 
         # prettify
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_xlabel('Contrast Value', fontsize=fontsize)
         ax.set_ylabel('Proability Choosing Right',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
@@ -67,6 +73,8 @@ class WheelPsychometricPlotter(BasePlotter):
         ax.spines['bottom'].set_bounds(-100, 100)
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
+        
+        ax.legend(loc='lower center',bbox_to_anchor=(0.5,1),fontsize=fontsize-5,frameon=False,ncol=2)
         
         return ax
 
@@ -131,7 +139,7 @@ class WheelResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins)
             
-        fontsize = kwargs.get('fontsize',22)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_xlabel('Time from Stimulus onset (ms)', fontsize=fontsize)
         ax.set_ylabel('Counts', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
@@ -168,7 +176,7 @@ class WheelResponseTypeBarPlotter(ResponseTypeBarPlotter):
                                  edgecolor='k',
                                  **kwargs)
             
-        fontsize = kwargs.get('fontsize',14)
+        fontsize = kwargs.get('fontsize',20)
         ax.set_ylabel('Counts', fontsize=fontsize)
         ax.set_xticks([-1,0,1])
         ax.set_xticklabels(['Incorrect','NoGo','Correct'])

@@ -40,8 +40,8 @@ class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
             
     def init_plotters(self,data:dict) -> dict:
         if self.plot_type == 'summary':
-            return {'psychometric' : DetectionResponseHistogramPlotter(data,self.stimkey),
-                    'responsescatter' : DetectionResponseScatterPlotter(data,self.stimkey)}
+            return {'responsescatter' : DetectionResponseHistogramPlotter(data,self.stimkey),
+                    'psychometric' : DetectionPsychometricPlotter(data)}
         else:
             # do stuff here for choosing plot type like wheel, performance,licks etc..
             pass 

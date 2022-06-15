@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 from cycler import cycler
@@ -139,16 +140,31 @@ def create_color_palette(flex_size=10):
     iter_styles = iter(stim_cycler)
     return defaultdict(lambda : next(iter_styles))
 
+#TODO: MAKE THIS ROBUST AND FLEXIBLE BY HAVING AN EXTERNAL JSON FILE OF KNOWN 
+# COLORS AN DADD TO THAT WHENEVER THERE IS A NEW KEY (VERY OPTIONAL)
 # fixed part
-stim_styles = {'grating':{'color':'tab:gray'},
-               '0.05SF_2TF':{'color':'tab:purple'},
-               'lowSF_highTF':{'color':'tab:orange'},
-               'highSF_lowTF':{'color':'tab:purple'},
-               'lowSF_highTF_opto_0':{'color':'tab:green'},
-               'lowSF_highTF_opto_1':{'color':'tab:red'},
-               'highSF_lowTF_opto_0':{'color':'tab:cyan'},
-               'highSF_lowTF_opto_1':{'color':'tab:pink'},
-               'lowSF_highTF_opto_-1':{'color':'tab:green'}}
+stim_styles = {'0.04cpd_8Hz': {'color':'tab:orange','linestyle':'-'},
+               '0.08cpd_2Hz': {'color':'tab:green','linestyle':'-'},
+               '0.1cpd_4Hz' : {'color':'slateblue','linestyle':'-'},
+               '0.16cpd_0.5Hz': {'color':'tab:purple','linestyle':'-'},
+               '0.04cpd_8Hz_opto_0': {'color':'navajowhite','linestyle':'-'},
+               '0.08cpd_2Hz_opto_0': {'color':'palegreen','linestyle':'-'},
+               '0.08cpd_2Hz_opto_0_080': {'color':'#00ffff','linestyle':'--'},
+               '0.08cpd_2Hz_opto_0_120': {'color':'#1997e6','linestyle':'--'},
+               '0.08cpd_2Hz_opto_0_160': {'color':'#3b19e6','linestyle':'--'},
+               '0.16cpd_0.5Hz_opto_0': {'color':'plum','linestyle':'-'},
+               '0.1cpd_4Hz_grating':{'color':'tab:gray','linestyle':'-'}}
+
+
+# stim_styles = {'grating':{'color':'tab:gray'},
+#                '0.05SF_2TF':{'color':'tab:purple'},
+#                'lowSF_highTF':{'color':'tab:orange'},
+#                'highSF_lowTF':{'color':'tab:purple'},
+#                'lowSF_highTF_opto_0':{'color':'tab:green'},
+#                'lowSF_highTF_opto_1':{'color':'tab:red'},
+#                'highSF_lowTF_opto_0':{'color':'tab:cyan'},
+#                'highSF_lowTF_opto_1':{'color':'tab:pink'},
+#                'lowSF_highTF_opto_-1':{'color':'tab:green'}}
 
 # flexible part
 stim_styles_flex = create_color_palette()
@@ -188,8 +204,16 @@ def dates_to_deltadays(date_arr:list,start_date=dt.date):
 
 
 class Color:
+    __slots__ = ['colorkey_path','color_keys']
     def __init__(self):
-        pass
+         # this is hardcoded for now, fix this
+        self.colorkey_path = 'C:\\Users\\kaan\code\\visual-perception\\behavior_python\\colorkey.json'
+        self.read_colorkey()
+    
+    def read_colorkey(self,path:str) -> None:
+        """ Reads the colorkey.json and returns a dict of color keys for different sftf and contrast values"""
+        with open(self.colorkey_path,'r') as f:
+            self.color_keys = json.load(f)
     
     @staticmethod
     def hex2rgb(hex_code):
@@ -241,3 +265,19 @@ class Color:
             color_range.append(Color.rgb2hex(new_rgb))
         
         return color_range
+    
+    def add_colorkey(self) -> None:
+        """ Add a colorkey to the json file """
+        pass
+    
+    @staticmethod
+    def make_new_key(colorkey_dict) -> str:
+        """ Returns a hex color code, putting it equidistant from other keys"""
+        # Get the colors and make them hsv
+        h_values = []
+        
+        for k,v in colorkey_dict.items():
+            for key,color in v.items:
+                rgb = Color.hex2rgb(mcolors.cnames[color['color']])
+                h,_,_ = Color.rgb2hsv(rgb)
+                h_values.append(h)

@@ -12,14 +12,13 @@ LOWTF = 0.5
 HIGHTF = 16
 
 
-
 class WheelData(SessionData):
     __slots__ = ['stim_data']
-    def __init__(self,data:pd.DataFrame) -> None:
+    def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
         self._convert = ['stim_pos','wheel','lick','reward']
         self.data = data
         self.make_loadable()
-        self.stim_data:dict = self.seperate_stim_data()
+        self.stim_data:dict = self.seperate_stim_data(isgrating)
 
     def __repr__(self):
         rep = f'''WheelData Object 
@@ -42,7 +41,7 @@ class WheelData(SessionData):
         answered_df = self.data[(self.data['correction']==0) & (self.data['answer']!=0)]
         return answered_df
     
-    def seperate_stim_data(self) -> None:
+    def seperate_stim_data(self,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
         stim_data = {}
         sfreq,s_idx = np.unique(self.data['spatial_freq'],return_index=True)
@@ -65,18 +64,11 @@ class WheelData(SessionData):
         # analysing each stim type and opto and opto_pattern seperately
         for opto in optogenetic:
             for i,_ in enumerate(sfreq):
-                if sfreq[i] == HIGHSF and tfreq[i] == LOWTF:
-                    key = 'highSF_lowTF'  # PM stim
-                elif sfreq[i] == HIGHSF and tfreq[i] == HIGHTF:
-                    key = 'highSF_highTF' #
-                elif sfreq[i] == LOWSF and tfreq[i] == LOWTF:
-                    key = 'lowSF_lowTF'   #
-                elif sfreq[i] == LOWSF and tfreq[i] == HIGHTF:
-                    key = 'lowSF_highTF'  # AL stim
-                elif sfreq[i] == 0.05 and tfreq[i] == 2:
-                    key = '0.05SF_2TF'
-                else:
-                    key = 'grating'
+                skey = sfreq[i] if sfreq[i]%1 else int(sfreq[i])
+                tkey = tfreq[i] if tfreq[i]%1 else int(tfreq[i])
+                key = f'{skey}cpd_{tkey}Hz'
+                if isgrating:
+                    key += '_grating'
 
                 for opto_pattern in pattern_ids:
                     if opto == 0:
@@ -197,7 +189,8 @@ class WheelSession(Session):
             session_data = self.get_session_data()
             session_data = get_running_stats(session_data)
             
-            self.data = WheelData(session_data)
+            g = 'grating' in self.data_paths.stimlog
+            self.data = WheelData(session_data,isgrating=g)
             self.stats = WheelStats(data_in=self.data)
             self.meta.water_on_rig = round(float(np.sum([a[0][1] for a in self.data.data['reward'] if len(a)])),3)
             
@@ -244,15 +237,6 @@ class WheelSession(Session):
             lvl = 'exp'
         self.meta.level = lvl
 
-        # get opto power and ratio
-        if self.meta.opto:
-            loc = tmp.find('opto') + len('level')
-            pow_str = tmp[loc:loc+3]
-            try:
-                self.meta.opto_pow = float(pow_str) / 100
-            except:
-                raise ValueError(f'Opto Power value is weird.. {pow_str}')
-
     @timeit('Saving...')
     def save_session(self) -> None:
         """ Saves the session data, meta and stats"""
@@ -275,7 +259,8 @@ class WheelSession(Session):
         self.meta = SessionMeta(init_dict=meta)
         display('Loaded session metadata')
 
-        self.data = WheelData(rawdata)
+        g = 'grating' in self.data_paths.stimlog
+        self.data = WheelData(rawdata,isgrating=g)
         display('Loaded session data')
 
         stats = load_json_dict(self.data_paths.statPath)

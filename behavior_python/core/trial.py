@@ -82,6 +82,9 @@ class Trial:
         if 'opto' in self.data.keys():
             opto_data = self.data['opto']
             opto_arr = np.array(opto_data[['duinotime','value']])
+            if len(opto_arr) > 1:
+                display(f'>> WARNING << Something funky happened with opto stim, there are {len(opto_arr)} pulses')
+                opto_arr = np.array([opto_arr[0]])
         else:
             opto_arr = np.array([])
         return opto_arr
