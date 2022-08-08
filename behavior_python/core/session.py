@@ -130,6 +130,7 @@ class Session:
                  sessiondir, 
                  load_flag=False, 
                  save_mat=False, 
+                 runno = None,
                  *args, 
                  **kwargs):
         self.sessiondir = sessiondir
@@ -140,7 +141,7 @@ class Session:
         self.logversion = 'stimpy'
         
         # initialize relevant data paths, the log version and the database interface
-        self.init_data_paths()
+        self.init_data_paths(runno)
         
         self.db_interface = DataBaseInterface(self.data_paths.config['databasePath'])
         
@@ -156,9 +157,9 @@ class Session:
         current_session_no = last_session_no + 1
         return current_session_no
                 
-    def init_data_paths(self) -> None:
+    def init_data_paths(self,runno=None) -> None:
         """ Initializes the relevant data paths (log,pref,prot) and creates the savepath"""
-        self.data_paths = DataPaths(self.sessiondir)
+        self.data_paths = DataPaths(self.sessiondir,runno)
 
         if not os.path.exists(self.data_paths.savePath):
             # make dirs

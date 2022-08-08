@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm,trange
 import tifffile as tf
 from glob import glob
 from natsort import natsorted

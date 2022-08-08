@@ -3,20 +3,24 @@ from .myio import *
 from .retinoutils import *
 from ..core.session import Session
 from ..utils import *
-
+from pystackreg import StackReg
 
 class OnePSession(Session):
     def __init__(self,sessiondir,run_name):
-        super().__init__(sessiondir)
         self.name = run_name
         self.get_runno()
+        super().__init__(sessiondir,runno=self.run_no_str)
+        
+        self.isRegistered = False
         self.run_path = pjoin(self.data_paths.camPath,self.name)
+        self.get_stack()
         
         self.get_camlog()
         self.get_stimpy_logs()
         
         self._compare_logs()
         self.get_reference_image()
+        self.get_frame_t()
         
     def __repr__(self):
         r = f'''OneP Session Run {self.run_no} for {self.sessiondir}:\n'''
@@ -25,71 +29,157 @@ class OnePSession(Session):
                 r += f'''- {s} : {getattr(self,s,None)}\n'''
         return r
     
-    def get_trial_average(self,fixed_frame_count:int=0):
+    def get_frame_t(self):
+        """ Gets the avg frame time from experiment duration and frame count """
+        tmp = [i for i in self.camlog_comments if '# [' in i]
+        exp_start = dt.strptime(tmp[0].split(']')[0][-8:],'%H:%M:%S')
+        exp_end = dt.strptime(tmp[-1].split(']')[0][-8:],'%H:%M:%S')
+        
+        exp_dur = exp_end - exp_start
+        exp_dur = exp_dur.seconds
+        
+        total_frame_count = len(self.camlog)
+        
+        self.frame_t = (exp_dur/total_frame_count) # in seconds
+        display(f'Avg. frame time: {self.frame_t*1000} ms, does this make sense?')
+    
+    def get_stack(self):
+        """ Gets the stack as a class attr """
+        self.tif_stack = load_stack(self.run_path, nchannels=1)
+    
+    def _get_avg(self):
+        pass
+    
+    def get_trial_average(self,batch_count:int=None,downsample:int=1,frame_count:int=0,trial_count:int=None,pre_stim_t:float=0,post_stim_t:float=0):
         """ This is the main method that stim_mat, binary file and tiff stack is created 
         and the average is calculated for the run """
         
         # make the stim matrix
         screen_times = self.get_screen_epochs()
         self.correct_stimlog_times(screen_times)
-        self.make_stim_matrix()
-        min_frame_count = self.get_min_frame_per_repeat(fixed_count=fixed_frame_count)
-        frame_starts = self.stim_mat[:,4]
+        
+        extra_start_frames = int(np.round(pre_stim_t / self.frame_t))
+        extra_end_frames = int(np.round(post_stim_t / self.frame_t))
+        self.make_stim_matrix(extra_start_frames,extra_end_frames)
+        min_frame_count = self.get_min_frame_per_repeat(fixed_count=frame_count)
+        # TODO: There might be issues here if both pre,post_stim_t and fixed frame are used together
+        
+        # fix min frames
+        for i in range(self.stim_mat.shape[0]):
+            if self.stim_mat[i,-1] > min_frame_count:
+                self.stim_mat[i,-1] = min_frame_count
+                self.stim_mat[i,5] -= 1
+        frame_starts = self.stim_mat[:,4] 
         
         # get tiff stack
-        tf_stack = load_stack(self.run_path, nchannels=1)
+        self.get_stack() # running this here again because if registering is done this will automatically get the registered stacks
+
+        frame_offsets = self.tif_stack.frames_offset
 
         # pool all the required frames
         all_frames = []
+        if trial_count is not None:
+            frame_starts = frame_starts[:trial_count]
+            frame_offsets = frame_offsets[:trial_count]
+        else:
+            trial_count = self.stim_mat.shape[0]
+
         for i in frame_starts:
             all_frames.extend(np.arange(i,i+min_frame_count))
-        all_frames
+        end_frames = self.stim_mat[:,5]
 
-        # group frames to respective tiff files indices
-        tif_dict = {}
-        for f_idx in range(len(tf_stack.frames_offset)-1):
-            low = tf_stack.frames_offset[f_idx]
-            high = tf_stack.frames_offset[f_idx+1]
-
-            tif_dict[f_idx] = [i for i in all_frames if low <= i < high]
-
-        temp_mat = np.zeros((len(all_frames),1,tf_stack.shape[2],tf_stack.shape[3]))
-        # temp matrix
-        repeat_mat = np.zeros((len(tif_dict),       # repeats/trial count 
-                            min_frame_count,     # min frame count per repeat/trial
-                            1,                   # channel(gray)
-                            tf_stack.shape[2],   # height
-                            tf_stack.shape[3]),  # width
-                            dtype='uint32'
-                            )
-        pbar = tqdm(range(len(tif_dict)))
-
-        bookmark = 0
-        for i in pbar:
-            pbar.set_description(f'Reading frames from tiff files {bookmark} / {temp_mat.shape[0]}')
+        if batch_count > 1:
             
-            # read all the required frames from a single tiff, 
-            read_frames = tf_stack[tif_dict[i]]
-            temp_mat[bookmark:bookmark+read_frames.shape[0],:,:] = read_frames
-            bookmark += read_frames.shape[0]
+            # make batches of frames
+            batch_size = int(len(all_frames) / batch_count)
+            print(f'Analyzing in {batch_count} batches [{batch_size}]')
+            batches = []
+            for i in range(0, len(all_frames), batch_size):
+                batches.append(all_frames[i:i + batch_size])
+            
+            # add the last "remaining" frames to the previous batch
+            if len(all_frames) % batch_count:
+                batches[-2].extend(batches[-1])
+                batches = batches[:-1]
 
-        npbar = tqdm(range(len(tif_dict)))
-        for mult,j in enumerate(npbar):
-            
-            idx1 = mult*min_frame_count
-            idx2 = mult*min_frame_count +min_frame_count
-            npbar.set_description(f'Putting frames to correct order {idx1} - {idx2}')
-            repeat_mat[j,:,0,:,:] = temp_mat[idx1:idx2,0,:,:]
-            
-        mean_repeat = np.mean(repeat_mat,axis=0)
-        mean_repeat = mean_repeat - np.min(mean_repeat,axis=0)
+            # adjust batches to align batch length with end of trials
+            missing_frames = []
+            for b in batches:
+                last_frame = b[-1]
+                larger_end_frame = end_frames[np.where(end_frames >= last_frame)][0]
+                missing_frames.append(larger_end_frame - last_frame)
+                
+            for i,mf in enumerate(missing_frames,start=1):
+                try:
+                    batches[i-1].extend(batches[i][:mf])
+                    batches[i] = batches[i][mf:]
+                except IndexError:
+                    pass
+        else:
+            batches = [all_frames]
+            print(f'Analyzing in a single batch [{len(all_frames)}]')
         
-        self.trial_average = mean_repeat.astype('uint32')
+        
+        mean_mat = np.zeros((min_frame_count,            # min frame count per repeat/trial
+                                 1,                          # channel(gray)
+                                 int(self.tif_stack.shape[2]/downsample),    # height
+                                 int(self.tif_stack.shape[3]/downsample))   # width
+                                 )
+        prev_last_frame = 0
+        for curr_batch in batches:
+            # group frames to respective tiff files indices
+            tif_dict = {}
+            for f_idx in range(len(frame_offsets)-1):
+                low = self.tif_stack.frames_offset[f_idx]
+                high = self.tif_stack.frames_offset[f_idx+1]
+
+                temp = [i for i in curr_batch if low <= i < high]
+                if temp:
+                    tif_dict[f_idx] = temp
+
+            # temp matrix
+            temp_mat = np.zeros((len(curr_batch),1,int(self.tif_stack.shape[2]/downsample),int(self.tif_stack.shape[3]/downsample)))
+        
+            pbar = tqdm(list(tif_dict.keys()))
+            bookmark = 0 
+            for i in pbar:
+                pbar.set_description(f'Reading frames from tiff files {curr_batch[bookmark]} / {curr_batch[-1]}')
+                
+                # read all the required frames from a single tiff, 
+                read_frames = self.tif_stack[tif_dict[i]]
+                # downsample
+                if downsample>1:
+                    downed_frames = downsample_movie(read_frames[:,0,:,:])
+                else:
+                    downed_frames = read_frames[:,0,:,:]
+                temp_mat[bookmark:bookmark+read_frames.shape[0],0,:,:] = downed_frames
+                bookmark += read_frames.shape[0]
+
+            
+            batch_last_frame_div = np.where(end_frames==curr_batch[-1])[0][0]
+            npbar = tqdm(range(batch_last_frame_div - prev_last_frame))
+            for mult,j in enumerate(npbar):
+                
+                idx1 = mult*min_frame_count
+                idx2 = mult*min_frame_count + min_frame_count 
+                npbar.set_description(f'Getting the mean {idx1} - {idx2}')
+                if temp_mat[idx1:idx2,:,:,:].shape[0] != mean_mat.shape[0]:
+                    print('akjsbdfkajsbkajdf')
+                mean_mat[:,0,:,:] += temp_mat[idx1:idx2,0,:,:] / trial_count
+                
+            prev_last_frame = batch_last_frame_div
+            
+            del temp_mat
+        
+        if extra_start_frames:
+            mean_mat = mean_mat - np.mean(mean_mat[:extra_start_frames+1,:,:,:],axis=0)
+        else:
+            mean_mat = mean_mat - np.mean(mean_mat,axis=0)
+        self.trial_average = mean_mat.astype(np.float16)
         
         #save average
-        self.save_avg(frame_count=fixed_frame_count)
-
-    
+        self.save_avg(frame_count=frame_count,trial_count=trial_count,start_frames=extra_start_frames,extra_end_frames=extra_end_frames,downsample=downsample,batch_count=batch_count)
+   
     def save_avg(self,**kwargs):
         run_analysis_dir = pjoin(self.data_paths.analysisPath,self.name)
         mov_dir = pjoin(run_analysis_dir,"movies")
@@ -123,6 +213,7 @@ class OnePSession(Session):
         
     def get_runno(self):
         r_list = self.name.split('_')
+        self.run_no_str = r_list[0]
         self.run_no = int(r_list[0].strip('run'))
         
     def get_camlog(self):
@@ -133,7 +224,7 @@ class OnePSession(Session):
         
         if len(cam_log)==1:
             self.path_camlog = pjoin(self.run_path,cam_log[0])
-            self.camlog,_ = parseCamLog(self.path_camlog)
+            self.camlog,self.camlog_comments,_ = parseCamLog(self.path_camlog)
         elif len(cam_log) > 1:
             raise IOError(f'Multiple camlogs present in run directory')
         elif len(cam_log) == 0:
@@ -208,7 +299,7 @@ class OnePSession(Session):
         
         state_times = self.rawdata['stateMachine']['elapsed'].to_numpy()
         
-        first_stim_onset = np.round(stim_times[np.where(photodiodes==0)][0])
+        first_stim_onset = np.round(stim_times[np.where(photodiodes==1)][0])
         photodiode_onset = screen_times[0]
         offset = first_stim_onset - photodiode_onset
         corrected_times = stim_times - offset
@@ -216,13 +307,14 @@ class OnePSession(Session):
         state_corrected = state_times - offset
         self.rawdata['stateMachine']['corrected_times'] = state_corrected
         
-    def make_stim_matrix(self):
+    def make_stim_matrix(self,extra_start_frames:int=0,extra_end_frames:float=0):
         """Iterates the stimlog """
         vstim = self.rawdata['vstim']
         stimlog_cam = self.rawdata['cam3']
         state_machine = self.rawdata['stateMachine']
         self.stim_mat = np.zeros((self.screen_epochs.shape[0],7),dtype='int')
         self.stim_mat[:,2] = -1
+        prev_epoch_end = 0
         for i,row in enumerate(self.screen_epochs):
             
             epoch_times = row[1:3] - [0, 60]
@@ -251,7 +343,14 @@ class OnePSession(Session):
             
             stimlog_cam_times = stimlog_cam[(stimlog_cam['duinotime'] >= epoch_times[0]) & (stimlog_cam['duinotime'] <= epoch_times[1])]
             stimlog_cam_times = stimlog_cam_times['value'].to_numpy()
-            frame_times = [stimlog_cam_times[0],stimlog_cam_times[-1]]
+            
+            
+            # TODO add a failsafe here to not overflow to next stim epoch
+            frame_times = [stimlog_cam_times[0] - extra_start_frames, stimlog_cam_times[-1] + extra_end_frames]
+            
+            if (stimlog_cam_times[0] - extra_start_frames) < prev_epoch_end:
+                raise OverflowError(f'The amount of  pre stim frames overflows into the previous stimulus epoch!!! {stimlog_cam_times[0]} - {extra_start_frames}')
+            prev_epoch_end = stimlog_cam_times[-1]
 
             # weird way but ok
             self.stim_mat[i,:] = [i+1] + epoch_props + frame_times + [np.diff(frame_times)[0]+1]
@@ -269,28 +368,68 @@ class OnePSession(Session):
         
         if fixed_count == 0:
             # return the minimum frame count
-            return np.min(self.stim_mat[:,6])
+            min_count = np.min(self.stim_mat[:,6])
         else:
-            if fixed_count > np.min(self.stim_mat[:,6]):
+            if fixed_count < np.min(self.stim_mat[:,6]):
                 print(f'>>> WARNING <<< Fixed frame count is too low; there are trials with less then {fixed_count} frames, using {np.min(self.stim_mat[:,6])} frames instead.')
+                min_count = np.min(self.stim_mat[:,6])
             else:
-                return fixed_count
+                min_count = fixed_count
+                
+        mask = np.ones((len(self.stim_mat)),dtype='bool')
+        mask[np.where(self.stim_mat[:,-1]<min_count)] = False
+        self.stim_mat = self.stim_mat[mask,:]
+        
+        return min_count
+    
+    def register_run(self,overwrite:bool=False):
+        """ Registers all the tif stacks """
+        # check if a registered run already exists
+        reg_path = pjoin("J:\\data\\1photon\\reg",self.sessiondir,self.name)
+        if os.path.exists(reg_path):
+            if len(os.listdir(reg_path))+1 == len(os.listdir(self.run_path)): #+1 is to account for the camlog
+                print(f'A registered 1P directory already exists: {reg_path}')
+                if overwrite:
+                    print('Overwriting...')
+                else:
+                    self.isRegistered = True
+                    self.run_path = reg_path
+                    return None
+        else:
+            os.makedirs(reg_path)
+
+        pbar = trange(len(self.tif_stack.frames_offset)-1)
+        
+        sr = StackReg(StackReg.RIGID_BODY)
+        for i in pbar: 
+            # loop through tif stacks
+            stack_idx = [self.tif_stack.frames_offset[i],self.tif_stack.frames_offset[i+1]]
+            stack_name = self.tif_stack.filenames[i].split(os.sep)[-1]
+            stack = self.tif_stack[stack_idx[0]:stack_idx[1]]
             
-    def get_memmap_from_binary(self):
-        return mmap_dat(self.binary_fname)
-    
-    def delete_binary(self):
-        os.remove(pjoin(self.run_path,self.binary_fname))
-        print('Deleting the temporary binary file')
-    
-    def make_binary(self):
-        # This should normally return a TiffStack because of deleting of binary files after analysis
-        tf_stack = load_stack(self.run_path,nchannels=1)
-        try:
-            self.binary_fname = tf_stack.export_binary(self.run_path)
-            print('Creating the the temporary binary file')
-            return 1
-        except AttributeError:
-            self.binary_fname = natsorted(glob(pjoin(self.run_path,'*.bin')))[0]
-            print('Found binary')
-            return 0
+            if i==0:
+                # get the first frame for registering
+                frame0 = stack[0][0,:,:]
+            
+            # allocate empty matrix size of tif_stacks
+            transformed = np.zeros_like(stack,dtype='uint16')
+            
+            for j in range(stack.shape[0]): 
+                # loop through stack frames
+                frame = stack[j][0,:,:]
+                transformed[j,0,:,:] = sr.register_transform(frame0,frame)
+                pbar.set_description(f'Registering {stack_name}, frames {j}/{stack.shape[0]}')
+            
+            
+            # save the registered stack in reg directory
+            save_name = pjoin(reg_path,stack_name)
+            tf.imwrite(save_name,transformed)
+            
+        # change the run path to registered directory
+        self.isRegistered = True
+        self.reg_run_path = reg_path
+        
+        # move the camlog and update related paths
+        self.data_paths.camRegPath = pjoin("J:\\data\\1photon\\reg",self.sessiondir)
+        
+        

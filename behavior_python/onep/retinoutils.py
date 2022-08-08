@@ -1,3 +1,5 @@
+
+import os
 import numpy as np
 from tqdm import tqdm
 import tifffile as tf
@@ -5,30 +7,41 @@ import matplotlib.pyplot as plt
 from os.path import join as pjoin
 from skimage.measure import block_reduce
 
-def get_vasculature(vasc_path):
-    vasc_image = tf.imread(vasc_path)
-    try:
-        vasc_image = vasc_image[:,:,0]
-    except:
-        pass
-    plt.imshow(vasc_image,cmap='gray')
-    return vasc_image
 
-def downsample_movie(movie,block_size=2,func=np.mean):
+def downsample_image(image,block_size=2,func=np.mean):
+    """ Downsamples a given image by the block_size"""
     if not isinstance(block_size,list):
         block_size = (block_size,block_size)
+    else:
+        assert block_size[0]==block_size[1], f'Only square kernels allowed for downsapling'
         
-    temp_down = block_reduce(movie[0,:,:],block_size=block_size,func=func)
+    if len(image.shape)>2:
+        if image.shape[0] == 1:
+            # a 2d image in a 3d matrix shape
+            image = image[0,:,:]
+        else:
+            raise ValueError(f"Input image can't have a 3rd dimension bigger than 1!")
+    elif len(image.shape)==2:
+        pass
+    else:
+        raise ValueError(f"Input image is not 2D!!")
     
-    downsampled_movie = np.zeros((movie.shape[0],temp_down.shape[0],temp_down.shape[1]))
-    
-    for f in range(movie.shape[0]):
-        frame = movie[f,:,:]
-        downsampled_movie[f,:,:] = block_reduce(frame,block_size=block_size,func=func)
-        
-    return downsampled_movie
+    return block_reduce(image,block_size=block_size,func=func)
+
+def downsample_movie(movie,block_size=2,func=np.mean):
+    """Wrapper for downsampling whole movies """
+    if len(movie.shape) < 3:
+        raise ValueError(f'Shape of movie input is wrong: {len(movie.shape)}<3')
+
+    new_shape = tuple([int(i/block_size) for i in movie.shape])
+    new_movie = np.zeros((movie.shape[0],new_shape[1],new_shape[2]))
+    for i in range(movie.shape[0]):
+        new_movie[i,:,:] = downsample_image(movie[i,:,:],block_size=block_size,func=func)
+
+    return new_movie
 
 def fft_movie(movie, component=1, output_raw=False):
+    """ Applies FFT to movies """
     movief = np.fft.fft(movie,axis=0)
     if output_raw:
         return movief[component]

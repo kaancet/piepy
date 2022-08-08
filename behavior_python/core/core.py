@@ -8,9 +8,10 @@ from ..gsheet_functions import GSheet
 
 
 class DataPaths:
-    def __init__(self,sessiondir:str):
+    def __init__(self,sessiondir:str,runno=None):
         self.sessiondir = sessiondir
         self.sessionPath: str = None
+        self.runno = runno
 
         self.init_from_config()
         if self.sessionPath is None:
@@ -42,3 +43,10 @@ class DataPaths:
             temp_key = extension.split('.')[-1]
             log_path = pjoin(self.sessionPath,s_file).replace("\\",os.sep)
             setattr(self, temp_key, log_path)
+            if self.runno is not None:
+                if self.runno in s_file:
+                    log_path = pjoin(self.sessionPath,s_file).replace("\\","/")
+                    setattr(self, temp_key, log_path)
+            else:
+                log_path = pjoin(self.sessionPath,s_file).replace("\\","/")
+                setattr(self, temp_key, log_path)

@@ -246,7 +246,8 @@ def parseCamLog(fname):
                       header=None,comment='#',
                       engine='c')
     
-    return camdata,commit
+    
+    return camdata,comments,commit
 
 # TODO: Data from stimlog and riglog now has to be combined downstrem
 def parseStimpyLog(fname):
