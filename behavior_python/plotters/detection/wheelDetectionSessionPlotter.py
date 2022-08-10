@@ -91,7 +91,7 @@ class DetectionPsychometricPlotter(BasePlotter):
 
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
-    def __init__(self,data,stimkey:str,**kwargs):
+    def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, stimkey, **kwargs)
         self.modify_data()
 
@@ -112,8 +112,14 @@ class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
         self.modify_data()
         
     def modify_data(self,*args,**kwargs):
-        self.plot_data = self.plot_data[self.plot_data['answer']==1]
+        pass
     
+    def plot(self,ax:plt.Axes=None,cloud_width=0.33,**kwargs):
+        d = copy.deepcopy(self.plot_data)
+        for k,v in d.items():
+            v = v[v['answer']==1]
+        self.plot_data = d
+        super().plot(ax,cloud_width,**kwargs)
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     """ Plots an histogram of response times, showing earlies and hits"""
@@ -123,7 +129,11 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         self.modify_data()
         
     def modify_data(self,*args,**kwargs):
-        self.plot_data['blanked_response_latency'] = self.plot_data[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
+        if isinstance(self.plot_data,dict):
+            for k,v in self.plot_data.items():
+                v['blanked_response_latency'] = v[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
+        else:
+            self.plot_data['blanked_response_latency'] = self.plot_data[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
         
     
     @staticmethod
@@ -146,7 +156,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
-        answered_data = self.plot_data[self.plot_data['answer']!=0]
+        answered_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']!=0]
         resp_times_blanked = answered_data['blanked_response_latency'].to_numpy()[:]
         blank_times = answered_data['blank_time'].to_numpy()[:]
         resp_times = resp_times_blanked - blank_times
@@ -200,7 +210,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
         
         for answer in [0,1]:
             colors = ['#630726','#32a852','#333333']
-            answer_data = self.plot_data[self.plot_data['answer']==answer]
+            answer_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==answer]
             counts = [len(answer_data[answer_data['stim_side']<0]),
                       len(answer_data[answer_data['stim_side']>0]),
                       len(answer_data[answer_data['stim_side']==0])]
@@ -218,7 +228,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
                                  **kwargs)
         
         # early answers alone
-        ax = self.__plot__(ax,[-1],[len(self.plot_data[self.plot_data['answer']==-1])],
+        ax = self.__plot__(ax,[-1],[len(self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==-1])],
                            width=0.5,
                            color='orangered',
                            linewidth=2,
@@ -266,15 +276,16 @@ class DetectionResponseScatterPlotter(BasePlotter):
     
     def set_wrt_response_plot_data(self,wrt='sorted') -> np.ndarray:
         """ sets the plot data wrt to given argument and excludes nogo trials"""
+        d = self.plot_data[self.stimkey]
         if wrt=='sorted':
             #add blank_time to correct answers 
-            self.plot_data['wrt_response_latency'] = self.plot_data[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']==1 else x['response_latency'],axis=1)
+            d['wrt_response_latency'] = d[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']==1 else x['response_latency'],axis=1)
             
         elif wrt=='onset':
-            self.plot_data['wrt_response_latency'] = self.plot_data[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']-x['blank_time'],axis=1)
+            d['wrt_response_latency'] = d[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']-x['blank_time'],axis=1)
         else:
             raise ValueError(f'{wrt} is not a valid wrt value for response times')
-        self.plot_data = self.plot_data[self.plot_data['answer']!=0]
+        self.plot_data[self.stimkey] = d[d['answer']!=0]
             
        
     def plot(self,ax:plt.Axes=None,bin_width:int=20,blanks:str='sorted',plt_range:list=None,**kwargs):
@@ -289,10 +300,10 @@ class DetectionResponseScatterPlotter(BasePlotter):
             ax = self.fig.add_subplot(1,1,1)
             
         self.set_wrt_response_plot_data(wrt=blanks)
-        times = self.plot_data['wrt_response_latency'].to_numpy()
+        times = self.plot_data[self.stimkey]['wrt_response_latency'].to_numpy()
         times_arr = []
         if blanks == 'sorted':
-            sorted_data = self.plot_data.sort_values('blank_time',ascending=False)
+            sorted_data = self.plot_data[self.stimkey].sort_values('blank_time',ascending=False)
             for i,row in enumerate(sorted_data.itertuples()):
                 times_arr = [row.blank_time, row.wrt_response_latency]
                 ax = self.__plot_scatter__(ax,i,times_arr,**kwargs)
@@ -312,7 +323,7 @@ class DetectionResponseScatterPlotter(BasePlotter):
         fontsize = kwargs.get('fontsize',14)
         
         ax.set_ylim([-30,None])
-        ax.set_yticks([i for i in range(len(self.plot_data)) if i>=0 and i%50==0])
+        ax.set_yticks([i for i in range(len(self.plot_data[self.stimkey])) if i>=0 and i%50==0])
         ax.set_xlabel(x_label, fontsize=fontsize)
         ax.set_ylabel('Trial No.', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
@@ -335,7 +346,13 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
         
     def modify_data(self,*args,**kwargs):
         # change the self.plot_data here if need to plot something else
-        self.plot_data['response_latency_absolute'] = self.plot_data['response_latency'] + self.plot_data['openstart_absolute'] + self.plot_data['blank_time']
+        if isinstance(self.plot_data,dict):
+            for k,v in self.plot_data.items():
+                v['blanked_response_latency'] = v[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
+                v['response_latency_absolute'] = v['response_latency'] + v['openstart_absolute'] 
+        else:
+            self.plot_data['blanked_response_latency'] = self.plot_data[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
+            self.plot_data['response_latency_absolute'] = self.plot_data['response_latency'] + self.plot_data['openstart_absolute']
     
     def plot(self,ax:plt.Axes=None,bin_width:int=20,wrt:str='reward',plt_range:list=None,**kwargs):
         if plt_range is None:
@@ -347,12 +364,12 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             
-        for row in self.plot_data.itertuples():
+        for row in self.plot_data[self.stimkey].itertuples():
             if len(row.reward):
                 if len(row.lick):
                     if wrt == 'reward':
-                        wrt_time = row.reward[0][0]
-                        response_time = row.response_latency_absolute - row.reward[0][0]
+                        wrt_time = row.reward[0]
+                        response_time = row.response_latency_absolute - row.reward[0]
                         x_label = 'Time from Reward (ms)'
                         wrt_color = 'r'
                         ax.scatter(response_time,row.trial_no,c='k',marker='|',s=20,zorder=2)
@@ -360,7 +377,7 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
                         wrt_time = row.response_latency_absolute
                         x_label = 'Time from Response (ms)'
                         wrt_color = 'k'
-                        reward = row.reward[0][0] - row.response_latency_absolute
+                        reward = row.reward[0] - row.response_latency_absolute
                         ax.scatter(reward,row.trial_no,c='r',marker='|',s=20,zorder=2)
                     
                     licks = row.lick[:,0] - wrt_time

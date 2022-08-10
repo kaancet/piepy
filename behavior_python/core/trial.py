@@ -1,3 +1,4 @@
+from numpy import ndarray
 import pandas as pd
 from ..utils import *
 from .dbinterface import DataBaseInterface
@@ -12,13 +13,15 @@ def reset_wheel_pos(traj,reset_idx=0):
 
 class Trial:
     __slots__ = ['trial_no','data','trial_data','column_keys',
-                 'trial_start','trial_end','meta','db_interface','total_trial_count']
+                 'trial_start','trial_end','meta','db_interface','total_trial_count',
+                 'reward_ms_per_ul']
     def __init__(self,trial_no:int,column_keys:dict,meta) -> None:
         
         self.trial_no = trial_no
         self.column_keys = column_keys
         self.trial_data = {}
         self.meta = meta
+        self.reward_ms_per_ul = 0
         
         config = getConfig()
         self.db_interface = DataBaseInterface(config['databasePath'])
@@ -69,10 +72,14 @@ class Trial:
     
     def get_reward(self) -> np.ndarray:
         """ Extracts the reward clicks from slice"""
-        if 'reward' in self.data.keys():
-            reward_data = self.data['reward']
-            reward_arr = np.array(reward_data[['duinotime', 'value']])
-            reward_arr[:,1] *= self.meta.rewardSize
+        
+        reward_data = self.data['reward']
+        reward_arr = np.array(reward_data[['duinotime', 'value']])
+        if len(reward_arr):
+            reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
+            reward_arr = np.append(reward_arr,reward_arr[:,1])
+            reward_arr[1] = reward_amount_uL
+            # reward is a 3 element array: [time,value_il, value_ms]
         else:
             reward_arr = np.array([])
         return reward_arr    

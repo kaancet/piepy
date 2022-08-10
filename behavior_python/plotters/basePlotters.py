@@ -1,6 +1,7 @@
 from .plotter_utils import *
 from os.path import join as pjoin
 from ..wheel.wheelUtils import get_trajectory_avg
+import copy
 
 class BehaviorBasePlotter:
     __slots__ = ['cumul_data','summary_data','fig']
@@ -28,29 +29,30 @@ class BasePlotter:
             TypeError(f'The input session data should be a pandas DataFrame with keys corresponding to different stimulus types. Got {type(data)} instead')
 
     @staticmethod
-    def select_stim_data(data: dict, stimkey: str=None) -> pd.DataFrame:
+    def select_stim_data(data: dict, stimkey:str=None) -> dict:
         """ Returns the selected stimulus type from session data
-        data : Main session dictionary
+        data : Main session data dictionary
         stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
-        # error handling
-        if stimkey is None and len(data.keys()) == 1:
+        if stimkey is not None and stimkey not in data.keys():
+            # error handling
+            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
+        elif stimkey is None and len(data.keys()) == 1:
             # if there is only one key just take that data in the dictionary
             key = list(data.keys())[0]
-            return data[key],key
+            return data,key
         elif stimkey is None and len(data.keys()) > 1:
             # if there are multiple keys and no stimkey selection, concat all the data and sort by trial_no
-            data_append = []
-            d = pd.DataFrame()
+            stimkey = 'all'
+            all_data = {stimkey:pd.DataFrame()}
             for k,v in data.items():
-                data_append.append(v)
-            d = d.append(data_append,ignore_index=True)
-            d = d.sort_values('trial_no')
-            return d,stimkey
-        elif stimkey not in data.keys():
-            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
+                all_data = pd.concat([all_data,v])
+            all_data.sort_values('trial_no',inplace=True)
+            return all_data,stimkey
         else:
-            return data[stimkey],stimkey
+            # select specific data
+            d = {stimkey:data[stimkey]}
+            return d,stimkey
     
     @staticmethod
     def threshold_responsetime(stim_data: pd.DataFrame, time_cutoff, cutoff_mode: str = 'low') -> pd.DataFrame:
@@ -134,34 +136,35 @@ class PerformancePlotter(BasePlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
         
-        if seperate_by is not None:
-            if seperate_by not in self.plot_data.columns:
-                raise ValueError(f'Cannot seperate the data by {sepearte_by}')
-            seperate_vals = nonan_unique(self.plot_data[seperate_by])
-        else:
-            seperate_vals = [-1] # dummy value
-
-        for sep in seperate_vals:
-            if seperate_by is not  None:
-                data = self.plot_data[self.plot_data[seperate_by]==sep]
-                y_axis = get_fraction(data['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
-                color = contrast_styles[sep]['color']
+        for k,v in self.plot_data.items():
+            if seperate_by is not None:
+                if seperate_by not in v.columns:
+                    raise ValueError(f'Cannot seperate the data by {seperate_by}')
+                seperate_vals = nonan_unique(v[seperate_by])
             else:
-                data = self.plot_data
-                y_axis = data['fraction_correct']
-                color = stim_styles[self.stimkey]['color']
-            
-            if plot_in_time:
-                x_axis_ = data['openstart_absolute'] / 60000
-                x_label_ = 'Time (mins)'
-            else:
-                x_axis_ = data['trial_no']
-                x_label_ = 'Trial No'
+                seperate_vals = [-1] # dummy value
 
-            ax = self.__plot__(ax,x_axis_,y_axis,
-                            color=color if self.stimkey is not None else 'forestgreen',
-                            label=f'{self.stimkey}_{sep}' if self.stimkey is not None else 'all',
-                            **kwargs)
+            for sep in seperate_vals:
+                if seperate_by is not None:
+                    data = v[v[seperate_by]==sep]
+                    y_axis = get_fraction(data['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
+                    color = contrast_styles[sep]['color']
+                else:
+                    data = v
+                    y_axis = data['fraction_correct']
+                    color = contrast_styles[sep]['color']
+                
+                if plot_in_time:
+                    x_axis_ = data['openstart_absolute'] / 60000
+                    x_label_ = 'Time (mins)'
+                else:
+                    x_axis_ = data['trial_no']
+                    x_label_ = 'Trial No'
+
+                ax = self.__plot__(ax,x_axis_,y_axis,
+                                color=color,
+                                label = f'{k}_{sep}' ,
+                                **kwargs)
             
         # prettify
         fontsize = kwargs.get('fontsize',20)
@@ -170,8 +173,9 @@ class PerformancePlotter(BasePlotter):
         ax.set_ylabel('Accuracy(%)', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         ax.grid(alpha=0.5,axis='both')
-        if len(seperate_by)>1:
-            ax.legend(loc='upper right',frameon=False,fontsize=fontsize)
+        if seperate_by is not None:
+            if len(seperate_by) > 1:
+                ax.legend(loc='upper right',frameon=False,fontsize=fontsize)
         
         return ax
     
@@ -193,13 +197,15 @@ class ResponseTimePlotter(BasePlotter):
             ax = self.fig.add_subplot(1,1,1)
             
         if plot_in_time:
-            x_axis_ = self.plot_data['openstart_absolute'] / 60000
+            if self.stimkey is not None:
+                x_axis_ = self.plot_data[self.stimkey]['openstart_absolute'] / 60000
             x_label_ = 'Time (mins)'
         else:
-            x_axis_ = self.plot_data['trial_no']
+            if self.stimkey is not None:
+                x_axis_ = self.plot_data[self.stimkey]['trial_no']
             x_label_ = 'Trial No'
         
-        ax = self.__plot__(ax,x_axis_,self.plot_data['running_response_latency']/1000,
+        ax = self.__plot__(ax,x_axis_,self.plot_data[self.stimkey]['running_response_latency']/1000,
                            color=stim_styles[self.stimkey]['color'] if self.stimkey is not None else 'royalblue',
                            label=self.stimkey if self.stimkey is not None else 'all',
                            **kwargs)
@@ -273,29 +279,34 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
+        
         signed_contrasts = [] 
         plot_pos = []
-        for i,c in enumerate(np.unique(self.plot_data['contrast']),start=1):
-            contrast_data = self.plot_data[self.plot_data['contrast']==c]
-            for j,side in enumerate(np.unique(contrast_data['stim_side'])):
-                # location of dot cloud centers by contrast
-                if c == 0:
-                    side_data = contrast_data
-                    cpos = 0
-                else:
-                    side_data = contrast_data[contrast_data['stim_side']==side]
-                    cpos = np.sign(side) * i
-                plot_pos.append(cpos)
-                signed_contrasts.append(np.sign(side)*c)   
-                response_times = self.time_to_log(side_data['response_latency'].to_numpy())
-                x_dots,y_dots = self.make_dot_cloud(response_times,cpos,cloud_width)
-                median = np.median(response_times)
-                mean = np.mean(response_times)
-                
-                ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
-                                   s=30,color=stim_styles[self.stimkey]['color'] if self.stimkey is not None else 'royalblue',
-                                   label=self.stimkey if self.stimkey is not None and j==0 and c==0.5 else '_',
-                                   **kwargs)
+        
+        for si,skey in enumerate(self.plot_data.keys()):
+            stim_data = self.plot_data[skey]
+            for i,c in enumerate(np.unique(stim_data['contrast']),start=1):
+                contrast_data = stim_data[stim_data['contrast']==c]
+                for j,side in enumerate(np.unique(contrast_data['stim_side'])):
+                    # location of dot cloud centers by contrast
+                    if c == 0:
+                        side_data = contrast_data
+                        cpos = 0
+                    else:
+                        side_data = contrast_data[contrast_data['stim_side']==side]
+                        cpos = np.sign(side) * i
+                    
+                    plot_pos.append(cpos)
+                    signed_contrasts.append(np.sign(side)*c)   
+                    response_times = self.time_to_log(side_data['response_latency'].to_numpy())
+                    x_dots,y_dots = self.make_dot_cloud(response_times,cpos,cloud_width)
+                    median = np.median(response_times)
+                    mean = np.mean(response_times)
+                    
+                    ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
+                                    s=30,color=stim_styles[skey]['color'] if skey is not None else 'royalblue',
+                                    label=skey if skey is not None and j==0 and c==0.5 else '_',
+                                    **kwargs)
 
         # mid line
         ax.set_ylim([90,30000])
@@ -374,7 +385,7 @@ class ResponseTypeBarPlotter(BasePlotter):
     def __plot__(ax,x_locs,bar_heights,**kwargs):
         ax.bar(x_locs,bar_heights,**kwargs)
         return ax
-
+ 
 
 class LickPlotter(BasePlotter):
     __slots__ =['stimkey','plot_data']
@@ -383,8 +394,19 @@ class LickPlotter(BasePlotter):
         self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
         
     def pool_licks(self):
+        
+        if len(self.plot_data) > 1:
+            # multiple stim types, get the individual dataframes and sort according to trial_no
+            lick_dataframe = pd.DataFrame()
+            for k,v in self.plot_data.items():
+                lick_dataframe = pd.concat([lick_dataframe,v])
+            lick_dataframe.sort_values('trial_no',inplace=True)
+        elif len(self.plot_data) == 1:
+            # single stim type, use that
+            lick_dataframe = self.plot_data[self.stimkey]
+        
         all_lick = np.array([]).reshape(-1,2)
-        for row in self.plot_data.itertuples():
+        for row in lick_dataframe.itertuples():
             if len(row.lick):
                 temp_lick = row.lick.copy()
                 temp_lick[:,0] =+ row.openstart_absolute
@@ -408,9 +430,9 @@ class LickPlotter(BasePlotter):
                 y_axis_ = all_licks[:,1]
                 x_label_ = 'Time (mins)'
             else:
-                x_axis_ = self.plot_data['trial_no']
-                all_licks[:,0] = (all_licks[:,0]/np.max(all_licks[:,0])) * self.plot_data['trial_no'].iloc[-1]
-                y_axis_ = np.interp(self.plot_data['trial_no'],all_licks[:,0],all_licks[:,1])
+                x_axis_ = self.plot_data[self.stimkey]['trial_no']
+                all_licks[:,0] = (all_licks[:,0]/np.max(all_licks[:,0])) * self.plot_data[self.stimkey]['trial_no'].iloc[-1]
+                y_axis_ = np.interp(self.plot_data[self.stimkey]['trial_no'],all_licks[:,0],all_licks[:,1])
                 x_label_ = 'Trial No'
             
             ax = self.__plot__(ax, x_axis_,y_axis_,**kwargs)
@@ -448,11 +470,11 @@ class LickScatterPlotter(BasePlotter):
     def pool_licks(self,wrt:str='reward'):
         pooled_lick = np.array([])
         error_ctr = []
-        for row in self.plot_data[self.plot_data['answer']==1].itertuples():
+        for row in self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==1].itertuples():
             if len(row.lick):
                 if wrt=='reward':
                     try:
-                        wrt_time = row.reward[0][0]
+                        wrt_time = row.reward[0]
                     except:
                         error_ctr.append(row.trial_no)
                         display(f'\n!!!!!! NO REWARD IN CORRECT TRIAL, THIS IS A VERY SERIOUS ERROR! SOLVE THIS ASAP !!!!!!\n')

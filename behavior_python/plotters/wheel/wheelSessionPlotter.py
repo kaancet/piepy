@@ -163,8 +163,8 @@ class WheelResponseTypeBarPlotter(ResponseTypeBarPlotter):
             self.fig = plt.figure(figsize=kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(111)
             
-        for answer in np.unique(self.plot_data['answer']):
-            answer_data = self.plot_data[self.plot_data['answer']==answer]
+        for answer in np.unique(self.plot_data[self.stimkey]['answer']):
+            answer_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==answer]
             counts = [len(answer_data[answer_data['stim_side']<0]),
                       len(answer_data[answer_data['stim_side']>0])]
             
@@ -194,8 +194,11 @@ class WheelLickScatterPlotter(LickScatterPlotter):
         
     def modify_data(self,*args,**kwargs):
         # change the self.plot_data here if need to plot something else
-        self.plot_data['response_latency_absolute'] = self.plot_data['response_latency'] + self.plot_data['openstart_absolute']
-    
+        if isinstance(self.plot_data,dict):
+            for k,v in self.plot_data.items():
+               v['response_latency_absolute'] = v['response_latency'] + v['openstart_absolute'] 
+        else:
+            self.plot_data['response_latency_absolute'] = self.plot_data['response_latency'] + self.plot_data['openstart_absolute']
     
     def plot(self,ax:plt.Axes=None,bin_width:int=20,wrt:str='reward',plt_range:list=None,**kwargs):
         if plt_range is None:
@@ -207,12 +210,13 @@ class WheelLickScatterPlotter(LickScatterPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             
-        for row in self.plot_data[self.plot_data['answer']==1].itertuples():
+        
+        for row in self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==1].itertuples():
             if len(row.reward):
                 if len(row.lick):
                     if wrt == 'reward':
-                        wrt_time = row.reward[0][0]
-                        response_time = row.response_latency_absolute - row.reward[0][0]
+                        wrt_time = row.reward[0]
+                        response_time = row.response_latency_absolute - row.reward[0]
                         x_label = 'Time from Reward (ms)'
                         wrt_color = 'r'
                         ax.scatter(response_time,row.trial_no,c='k',marker='|',s=20,zorder=2)
@@ -220,7 +224,7 @@ class WheelLickScatterPlotter(LickScatterPlotter):
                         wrt_time = row.response_latency_absolute
                         x_label = 'Time from Response (ms)'
                         wrt_color = 'k'
-                        reward = row.reward[0][0] - row.response_latency_absolute
+                        reward = row.reward[0] - row.response_latency_absolute
                         ax.scatter(reward,row.trial_no,c='r',marker='|',s=20,zorder=2)
                     
                     licks = row.lick[:,0] - wrt_time

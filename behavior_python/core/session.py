@@ -14,8 +14,8 @@ class SessionMeta:
             self.init_from_prot()
 
     def __repr__(self):
-        kws = [f'{key}={value!r}' for key, value in self.__dict__.items()]
-        return '{}({})'.format(type(self).__name__, ', '.join(kws))
+        kws = [f'{key}={value!r}' for key, value in self.__dict__.items() if key != 'init_dict']
+        return '{}\n{}'.format(type(self).__name__, ',\n'.join(kws))
 
     def init_from_prot(self):
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
@@ -33,7 +33,8 @@ class SessionMeta:
                     if 'Opto' in v:
                         self.opto = True
 
-        self.session_dir = self.prot_file.split(os.sep)[-2]
+
+        self.session_dir = self.prot_file.split('/')[-2]
         self.experiment_name = self.prot_file.split('/')[-1].split('.')[0]
         
         self.animalid = self.session_dir.split('_')[1]
