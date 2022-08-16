@@ -98,7 +98,7 @@ class WheelBehaviorPlotter(WheelBasePlotter):
     def pool_data(self):
         """ Pools the trial data from the sessions for continuos plots for each key in data""" 
         data = self.behavior_data
-        running_stats = ['response_latency','water_on_rig','fraction_correct']
+        running_stats = ['response_latency','water_consumed','fraction_correct']
 
         # first concat all the trials into one giant dataframe
         self.big_df = {}
@@ -114,7 +114,8 @@ class WheelBehaviorPlotter(WheelBasePlotter):
                 sesh_data_df['session_date'] = row['session_date']
                 sesh_data_df['weight'] = row['weight']
                 sesh_data_df['level'] = row['level']
-                sesh_data_df['water_on_rig'] = row['session'].meta.water_on_rig
+                sesh_data_df['water_consumed'] = row['session'].meta.water_consumed
+                sesh_data_df['water_given'] = row['session'].meta.water_given
                 sesh_data_df['total_trial_no'] = sesh_data_df['trial_no'] + prev_day_last_trial
                 prev_day_last_trial = sesh_data_df['total_trial_no'].iloc[-1]
 
@@ -201,7 +202,7 @@ class WheelBehaviorPlotter(WheelBasePlotter):
             marker='o',markersize=12,linewidth=kwargs.get('linewidth',8), label='Weight')
 
         # water consumption
-        water_on_rig = [sesh.meta.water_on_rig for sesh in bd['session']]
+        water_consumed = [sesh.meta.water_consumed for sesh in bd['session']]
 
         # #threshold weight line
         threshold = self.start_weight * 0.8
@@ -258,13 +259,13 @@ class WheelBehaviorPlotter(WheelBasePlotter):
                 bd = self.behavior_data[self.behavior_data['level'] == level]
 
         # water consumption
-        water_on_rig = [sesh.meta.water_on_rig for sesh in bd['session']]
+        water_consumed = [sesh.meta.water_consumed for sesh in bd['session']]
 
         # plotting
-        ax.bar(bd['str_dates'],water_on_rig,width=0.75,
+        ax.bar(bd['str_dates'],water_consumed,width=0.75,
             color='deepskyblue',label='Water on rig',zorder=1,alpha=0.5)
 
-        ax.bar(bd['str_dates'],bd['extra_water'],width=0.75,bottom=water_on_rig,
+        ax.bar(bd['str_dates'],bd['extra_water'],width=0.75,bottom=water_consumed,
             color='steelblue',label='Extra Water',alpha=0.5)
 
         # make it pretty

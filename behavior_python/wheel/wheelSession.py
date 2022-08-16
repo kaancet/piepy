@@ -192,8 +192,12 @@ class WheelSession(Session):
             g = 'grating' in self.data_paths.stimlog
             self.data = WheelData(session_data,isgrating=g)
             self.stats = WheelStats(data_in=self.data)
-            self.meta.water_on_rig = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
-            self.meta.water_per_reward = self.meta.water_on_rig / len(self.data.data[self.data.data['answer']==1])
+            self.meta.water_given = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
+            if self.meta.water_consumed is not None:
+                self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
+            else:
+                display('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
+                self.meta.water_per_reward = -1
             
             self.save_session()
 
@@ -243,7 +247,7 @@ class WheelSession(Session):
 
         save_dict_json(self.data_paths.statPath, self.stats.get_dict())
         
-        self.save_session_db()
+        # self.save_session_db()
         display(f' Saving to {self.data_paths.savePath}')
     
 
@@ -358,7 +362,8 @@ class WheelSession(Session):
                     'wheelGain': self.meta.wheelGain,
                     'rewardSize': self.meta.rewardSize,
                     'weight':self.meta.weight,
-                    'water' : self.meta.water_on_rig,
+                    'water_given' : self.meta.water_given,
+                    'water_consumed' : self.meta.water_consumed,
                     'screenPosition':'bino',
                     'nExperiments':1,
                     'nCells':0}

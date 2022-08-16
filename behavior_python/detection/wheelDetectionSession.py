@@ -157,8 +157,9 @@ class WheelDetectionSession(Session):
             g = 'grating' in self.data_paths.stimlog
             self.data = WheelDetectionData(session_data,isgrating=g)
             self.stats = WheelDetectionStats(data_in=self.data)
-            self.meta.water_on_rig = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
-            self.meta.water_per_reward = self.meta.water_on_rig / len(self.data.data[self.data.data['answer']==1])
+            
+            self.meta.water_given = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
+            self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
             
             self.save_session()
             display('Saving data to {0}'.format(self.data_paths.savePath))

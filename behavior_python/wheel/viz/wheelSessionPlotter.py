@@ -18,7 +18,7 @@ class WheelSessionPlotter(WheelBasePlotter):
     def prep_text(self):
         """ Prepares summary text from session dictionaries"""
         text_meta = """META \n"""
-        for k in ['animalid','date','rig','wheelgain','water_on_rig','rewardsize','level']:
+        for k in ['animalid','date','rig','wheelgain','water_consumed','rewardsize','level']:
             if k in self.session['meta'].__dict__.keys():
                 text_meta =+ f'{k}  :  {getattr(self.session["meta"],k,None)}\n'
 

@@ -87,7 +87,7 @@ class WheelBehaviorPlotter(WheelBasePlotter):
     def pool_data(self):
         """ Pools the trial data from the sessions for continuos plots""" 
         data = self.behavior_data
-        running_stats = ['response_latency','water_on_rig']
+        running_stats = ['response_latency','water_consumed']
 
         # first concat all the trials into one giant dataframe
         self.big_df = pd.DataFrame()

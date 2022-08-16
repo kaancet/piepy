@@ -41,7 +41,7 @@ class SessionMeta:
         self.user = self.session_dir.split('_')[-1]
         self.set_date(self.session_dir.split(os.sep)[-1].split('_')[0])
         
-        self.set_weight()
+        self.set_weight_and_water()
         self.generate_session_id()
 
     def init_from_dict(self):
@@ -67,7 +67,7 @@ class SessionMeta:
             create_epoch = os_stat.st_ctime
         self.time = dt.fromtimestamp(create_epoch).strftime('%H%M')
         
-    def set_weight(self):
+    def set_weight_and_water(self):
         """ Gets the session weight from google sheet"""
         logsheet = GSheet('Mouse Database_new')
         gsheet_df = logsheet.read_sheet(2)
@@ -75,8 +75,13 @@ class SessionMeta:
         if not gsheet_df.empty:
             gsheet_df.reset_index(inplace=True)
             self.weight = gsheet_df['weight [g]'].iloc[0]
+            try:
+                self.water_consumed = int(gsheet_df['rig water [µl]'].iloc[0])
+            except:
+                self.water_consumed = None
         else:
             self.weight = None
+            self.water_consumed = None
         
     def generate_session_id(self) -> None:
         """ Generates a unique session id for the session """
