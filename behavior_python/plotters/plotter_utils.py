@@ -140,7 +140,8 @@ class Color:
     __slots__ = ['colorkey_path','stim_keys','contrast_keys']
     def __init__(self):
          # this is hardcoded for now, fix this
-        self.colorkey_path = r"C:\Users\kaan\code\visual-perception\behavior_python\plotters\colorkey.json"
+        cfg = getConfig()
+        self.colorkey_path = cfg['colorsPath']
         self.read_colors()
         
     
