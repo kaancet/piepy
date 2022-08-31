@@ -95,6 +95,7 @@ class WheelData(SessionData):
 class WheelStats:
     __slots__ = ['all_trials','novel_trials','answered_trials',
                  'all_correct_percent','novel_correct_percent','answered_correct_percent',
+                 'easy_answered_trials','easy_answered_correct_percent',
                  'left_distribution','right_distribution','median_response_time','cutoff_time',
                  'bias','nogo_percent','model_info']
     def __init__(self,dict_in:dict=None,data_in:WheelData=None) -> None:
@@ -118,10 +119,17 @@ class WheelStats:
         self.all_trials = len(data)
         self.novel_trials = len(novel_data)
         self.answered_trials =len(answered_data)
+        
         # percents
         self.all_correct_percent = round(100 * len(data[data['answer']==1]) / len(data),3)
         self.novel_correct_percent = round(100 * len(novel_data[novel_data['answer']==1]) / len(novel_data),3)
         self.answered_correct_percent = round(100 * len(answered_data[answered_data['answer']==1]) / len(answered_data),3)
+        
+        ## performance on easy trials
+        easy_trials = data[data['contrast'].isin([1.0,0.5])]
+        easy_answered_data = easy_trials[(easy_trials['correction']==0) & (easy_trials['answer']!=0)]
+        self.easy_answered_trials = len(easy_answered_data)
+        self.easy_answered_correct_percent = round(100 * len(easy_answered_data[easy_answered_data['answer']==1]) / len(easy_answered_data),3)
 
         #left
         left_data = novel_data[novel_data['stim_side'] < 0]

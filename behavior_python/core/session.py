@@ -21,7 +21,7 @@ class SessionMeta:
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
                   'progressWindow', 'debiasingWindow', 'rewardDuration', 'decimationRatio']
         self.opto = False
-        opts,_ = parseProtocolFile(self.prot_file)
+        opts,params = parseProtocolFile(self.prot_file)
         for k, v in opts.items():
             if k not in ignore:
                 try:
@@ -32,8 +32,10 @@ class SessionMeta:
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
-
-
+                        
+        self.sf_values = params['sf'].to_numpy()
+        self.tf_values = params['tf'].to_numpy()
+        
         self.session_dir = self.prot_file.split('/')[-2]
         self.experiment_name = self.prot_file.split('/')[-1].split('.')[0]
         
@@ -263,7 +265,7 @@ class Session:
         """Helper method to convert the data into a .mat file"""
         import scipy.io as sio
         datafile = pjoin(self.data_paths.savePath,'sessionData.mat').replace("\\","/")
-        save_dict = {name: col.values for name, col in self.session_data.items()}
+        save_dict = {name: col.values for name, col in self.data.stim_data.items()}
         sio.savemat(datafile, save_dict)
         display(f'Saved .mat file at {datafile}')
         

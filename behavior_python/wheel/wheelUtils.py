@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from scipy import stats
 
 def find_duplicates(array):
     seen = {}
@@ -135,7 +136,7 @@ def get_wheel_t_range(wheel_arr):
 
 def get_trajectory_avg(wheel_arr:np.ndarray) -> np.ndarray:
     """ Averages a group of 2D wheel trajectory arrays"""
-    stats = {}
+    wheel_stats = {}
     
     wheel_t_range = get_wheel_t_range(wheel_arr)
 
@@ -152,10 +153,16 @@ def get_trajectory_avg(wheel_arr:np.ndarray) -> np.ndarray:
                 wheel_interp = np.interp(t,trial_wheel[:,0],trial_wheel[:,1],left=np.nan,right=np.nan).reshape(-1,1)
                 wheel_put = np.hstack((t,wheel_interp))
                 wheel_traj[:, :, i] = wheel_put
-            
+        
+        # wheel traj has time on rows, [time, wheel_pos] on columns and trials on depth
         #get the mean 
         avg = np.nanmean(wheel_traj[:, 1, :], axis=1).reshape(-1, 1)
-        return np.hstack((t, avg))
+        
+        sems_array = stats.sem(wheel_traj[:,1,:], axis=1,nan_policy='omit').reshape(-1,1)
+        
+        wheel_stats['avg'] = np.hstack((t, avg))
+        wheel_stats['sem'] = np.hstack((t,sems_array.data))
+        return wheel_stats
 
     else:
         return None

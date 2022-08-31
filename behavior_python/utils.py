@@ -26,9 +26,13 @@ def unique_except(x,exceptions:list):
     ret = [i for i in uniq if i not in exceptions]
     return np.asarray(ret)
 
-def nonan_unique(x) -> np.ndarray:
+def nonan_unique(x,sort:bool=False) -> np.ndarray:
     """ Returns the unqie list without nan values """
-    return np.unique(x[~np.isnan(x)])
+    u = pd.unique(x[~np.isnan(x)])
+    if sort:
+        return np.sort(u)
+    else:
+        return u
 
 def get_fraction(data_in:np.ndarray,fraction_of,window_size:int=10,min_period:int=None) -> np.ndarray:
     """ Returns the fraction of values in data_in """
@@ -423,7 +427,7 @@ def parseProtocolFile(protfile):
         tmp = [','.join(t) for t in tmp ]
         try:
             params = pd.read_csv(StringIO(u"\n".join(tmp)),
-                                 index_col=None)
+                                 index_col=False)
         except pd.io.common.EmptyDataError:
             params = None
     return options,params

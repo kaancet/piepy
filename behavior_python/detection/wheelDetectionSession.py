@@ -9,7 +9,7 @@ class WheelDetectionData(SessionData):
         self._convert = ['wheel','lick','reward']
         self.data = data
         self.make_loadable()
-        self.stim_data:dict = self.seperate_stim_data(isgrating)
+        self.stim_data = self.seperate_stim_data(isgrating)
     
     def get_answered_trials(self) -> pd.DataFrame:
         """ Correct answers and early answers """
@@ -81,7 +81,9 @@ class WheelDetectionData(SessionData):
 
 class WheelDetectionStats:
     __slots__ = ['all_trials','answered_trials','stim_trials','early_trials','miss_trials',
-                 'all_correct_percent','answered_correct_percent','hit_rate','false_alarm',
+                 'all_correct_percent','answered_correct_percent',
+                 'easy_answered_trials','easy_hit_rate',
+                 'hit_rate','false_alarm',
                  'median_response_time','nogo_percent']
     def __init__(self,dict_in:dict=None,data_in:WheelDetectionData=None) -> None:
         if data_in is not None:
@@ -112,6 +114,13 @@ class WheelDetectionStats:
         self.answered_correct_percent = round(100 * len(answered_data[answered_data['answer']==1]) / self.answered_trials,3)
         self.hit_rate = round(100 * len(stim_data[stim_data['answer']==1]) / self.stim_trials,3)
         self.false_alarm = round(100 * len(answered_data[answered_data['answer']==-1]) / self.answered_trials,3)
+        
+        ## performance on easy trials
+        easy_trials = data[data['contrast'].isin([1.0,0.5])] # earlies can't be easy or hard
+        easy_answered_data = easy_trials[easy_trials['answer']==1]
+        self.easy_answered_trials = len(easy_answered_data)
+        self.easy_hit_rate = round(100 * self.easy_answered_trials / len(easy_trials),3)
+        
         
         self.median_response_time = round(np.median(stim_data[stim_data['answer']==1]['response_latency']),3)
         
@@ -158,8 +167,11 @@ class WheelDetectionSession(Session):
             self.data = WheelDetectionData(session_data,isgrating=g)
             self.stats = WheelDetectionStats(data_in=self.data)
             
-            self.meta.water_given = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
-            self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
+            if self.meta.water_consumed is not None:
+                self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
+            else:
+                display('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
+                self.meta.water_per_reward = -1
             
             self.save_session()
             display('Saving data to {0}'.format(self.data_paths.savePath))

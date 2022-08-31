@@ -76,7 +76,10 @@ class Trial:
         reward_data = self.data['reward']
         reward_arr = np.array(reward_data[['duinotime', 'value']])
         if len(reward_arr):
-            reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
+            try:
+                reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
+            except:
+                reward_amount_uL = self.meta.rewardSize
             reward_arr = np.append(reward_arr,reward_arr[:,1])
             reward_arr[1] = reward_amount_uL
             # reward is a 3 element array: [time,value_il, value_ms]

@@ -69,12 +69,17 @@ class WheelDetectionBehavior(Behavior):
                     except:
                         summary_temp['level'] = -1
                     summary_temp['session_no'] = session_counter + 1
+                    
+                    # put data from session stats
+                    for k in detect_session.stats.__slots__:
+                        summary_temp[k] = getattr(detect_session.stats,k,None)
+
+                    # put values from session meta data
                     summary_temp['weight'] = detect_session.meta.weight
-                    summary_temp['correct_pct'] = detect_session.stats.all_correct_percent
-                    summary_temp['trial_count'] = detect_session.stats.all_trials
-                    summary_temp['nogo_percent'] = detect_session.stats.nogo_percent
-                    summary_temp['median_response_time'] = detect_session.stats.median_response_time
                     summary_temp['task'] = detect_session.meta.controller
+                    summary_temp['sf'] = detect_session.meta.sf_values
+                    summary_temp['tf'] = detect_session.meta.tf_values
+                    summary_temp['rig'] = detect_session.meta.rig
                     summary_temp = {**summary_temp, **gsheet_dict}
                     summary_to_append.append(summary_temp)
                     
