@@ -16,6 +16,8 @@ class WheelDetectionTrial(Trial):
         # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
         vstim = vstim[:-1]
         
+        if vstim.empty:
+            early_flag = -1
         for col in vstim.columns:
             if col in ignore:
                 continue
