@@ -110,73 +110,6 @@ def set_style(styledict='analysis'):
             plt.style.use('default')
             display(f'Matplotlib {styledict} style is nonexistant, using default style')
     display(f'Changed plotting style to {styledict}')
-   
-contrast_cycler = (cycler(color=['orangered',
-                                 'darkgoldenrod',
-                                 'turquoise',
-                                 'limegreen',
-                                 'darkorchid']))
-
-iter_contrasts = iter(contrast_cycler)
-contrast_styles = defaultdict(lambda : next(iter_contrasts))
-contrast_styles = {1:{'color':'teal'},
-                   0.5:{'color':'darkgoldenrod'},
-                   0.25:{'color':'turquoise'},
-                   0.125:{'color':'limegreen'},
-                   0.0625:{'color':'indigo'},
-                   0.03125:{'color':'hotpink'},
-                   0:{'color':'black'}}
-
-
-def create_color_palette(flex_size=10):
-    """ Creates a color palette where there is a fixed and flexible part
-    The fixed part is for common stimulus types and flexible is for new stim types
-    flex_size argument determines how many the flexible part has """
-    
-    colors = {**mcolors.BASE_COLORS, **mcolors.CSS4_COLORS}
-    chosen = np.random.choice(list(colors.keys()),replace=False,size=10)
-
-    stim_cycler = (cycler(color=chosen))
-    iter_styles = iter(stim_cycler)
-    return defaultdict(lambda : next(iter_styles))
-
-#TODO: MAKE THIS ROBUST AND FLEXIBLE BY HAVING AN EXTERNAL JSON FILE OF KNOWN 
-# COLORS AN DADD TO THAT WHENEVER THERE IS A NEW KEY (VERY OPTIONAL)
-# fixed part
-stim_styles = {'0.04cpd_8Hz': {'color':'tab:orange','linestyle':'-'},
-               '0.08cpd_2Hz': {'color':'tab:green','linestyle':'-'},
-               '0.1cpd_4Hz' : {'color':'slateblue','linestyle':'-'},
-               '0.16cpd_0.5Hz': {'color':'tab:purple','linestyle':'-'},
-               '0.04cpd_8Hz_opto_0': {'color':'navajowhite','linestyle':'-'},
-               '0.08cpd_2Hz_opto_0': {'color':'palegreen','linestyle':'-'},
-               '0.08cpd_2Hz_opto_0_080': {'color':'#00ffff','linestyle':'--'},
-               '0.08cpd_2Hz_opto_0_120': {'color':'#1997e6','linestyle':'--'},
-               '0.08cpd_2Hz_opto_0_160': {'color':'#3b19e6','linestyle':'--'},
-               '0.16cpd_0.5Hz_opto_0': {'color':'plum','linestyle':'-'},
-               '0.1cpd_4Hz_grating':{'color':'tab:gray','linestyle':'-'}}
-
-
-# stim_styles = {'grating':{'color':'tab:gray'},
-#                '0.05SF_2TF':{'color':'tab:purple'},
-#                'lowSF_highTF':{'color':'tab:orange'},
-#                'highSF_lowTF':{'color':'tab:purple'},
-#                'lowSF_highTF_opto_0':{'color':'tab:green'},
-#                'lowSF_highTF_opto_1':{'color':'tab:red'},
-#                'highSF_lowTF_opto_0':{'color':'tab:cyan'},
-#                'highSF_lowTF_opto_1':{'color':'tab:pink'},
-#                'lowSF_highTF_opto_-1':{'color':'tab:green'}}
-
-# flexible part
-stim_styles_flex = create_color_palette()
-
-def get_color(stim_key):
-    """ Returns the color corresponding to the stimulus key
-        If not present chooses from color cyler and puts it in the fixed colors"""
-    if stim_key not in stim_styles.keys():
-        new_color = stim_styles_flex[stim_key]
-        stim_styles[stim_key] = {'color':new_color}
-        
-    return stim_styles[stim_key]
 
 
 def plot_mondays(ax:plt.Axes,date_arr:list,dt_flag=True):
@@ -204,16 +137,33 @@ def dates_to_deltadays(date_arr:list,start_date=dt.date):
 
 
 class Color:
-    __slots__ = ['colorkey_path','color_keys']
+    __slots__ = ['colorkey_path','stim_keys','contrast_keys']
     def __init__(self):
          # this is hardcoded for now, fix this
-        self.colorkey_path = 'C:\\Users\\kaan\code\\visual-perception\\behavior_python\\colorkey.json'
-        self.read_colorkey()
+        self.colorkey_path = r"C:\Users\kaan\code\visual-perception\behavior_python\plotters\colorkey.json"
+        self.read_colors()
+        
     
-    def read_colorkey(self,path:str) -> None:
+    def read_colors(self) -> None:
         """ Reads the colorkey.json and returns a dict of color keys for different sftf and contrast values"""
         with open(self.colorkey_path,'r') as f:
-            self.color_keys = json.load(f)
+            keys = json.load(f)
+            self.stim_keys = keys['spatiotemporal']
+            self.contrast_keys = keys['contrast']
+            
+    def check_stim_colors(self,keys):
+        """ Checks if the stim key has a corresponding color value, if not adds a randomly selected color the key"""
+        new_colors = {}
+        for k in keys:
+            if k not in self.stim_keys:
+                print(f'Stim key {k} not present in colors, generating random color...')
+                colors = {**mcolors.BASE_COLORS, **mcolors.CSS4_COLORS}
+                new_colors[k] = {'color':np.random.choice(list(colors.keys()),replace=False,size=1)[0]}
+        if len(new_colors):
+            self.stim_keys = {**self.stim_keys, **new_colors}
+        else:
+            print('Colors checkout!!')
+                
     
     @staticmethod
     def hex2rgb(hex_code):
@@ -266,18 +216,18 @@ class Color:
         
         return color_range
     
-    def add_colorkey(self) -> None:
-        """ Add a colorkey to the json file """
-        pass
+    # def add_colorkey(self) -> None:
+    #     """ Add a colorkey to the json file """
+    #     pass
     
-    @staticmethod
-    def make_new_key(colorkey_dict) -> str:
-        """ Returns a hex color code, putting it equidistant from other keys"""
-        # Get the colors and make them hsv
-        h_values = []
+    # @staticmethod
+    # def make_new_key(colorkey_dict) -> str:
+    #     """ Returns a hex color code, putting it equidistant from other keys"""
+    #     # Get the colors and make them hsv
+    #     h_values = []
         
-        for k,v in colorkey_dict.items():
-            for key,color in v.items:
-                rgb = Color.hex2rgb(mcolors.cnames[color['color']])
-                h,_,_ = Color.rgb2hsv(rgb)
-                h_values.append(h)
+    #     for k,v in colorkey_dict.items():
+    #         for key,color in v.items:
+    #             rgb = Color.hex2rgb(mcolors.cnames[color['color']])
+    #             h,_,_ = Color.rgb2hsv(rgb)
+    #             h_values.append(h)

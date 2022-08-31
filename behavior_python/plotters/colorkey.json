@@ -1,21 +1,62 @@
 {
     "spatiotemporal":{
-        "0.04cpd_8Hz": {"color":"tab:orange"},
-        "0.08cpd_2Hz": {"color":"tab:green"},
-        "0.16cpd_0.5Hz": {"color":"tab:purple"},
-        "0.04cpd_8Hz_opto": {"color":"navajowhite"},
-        "0.08cpd_2Hz_opto": {"color":"palegreen"},
-        "0.16cpd_0.5Hz_opto": {"color":"plum"},
-        "grating":{"color":"tab:gray"},
-        "grating_opto":{"color":"gainsboro"}
+        "0.04cpd_8Hz": {
+            "color":"tab:orange"
+        },
+        "0.08cpd_2Hz": {
+            "color":"tab:green"
+        },
+        "0.16cpd_0.5Hz": {
+            "color":"tab:purple"
+        },
+        "0.04cpd_8Hz_opto_0": {
+            "color":"tab:orange",
+            "linestyle":"--",
+            "alpha":0.5
+        },
+        "0.04cpd_8Hz_opto_1": {
+            "color":"tab:orange",
+            "linestyle":":",
+            "alpha":0.5
+        },
+        "0.08cpd_2Hz_opto_0": {
+            "color":"tab:green",
+            "linestyle":"--",
+            "alpha":0.5
+        },
+        "0.08cpd_2Hz_opto_1": {
+            "color":"tab:green",
+            "linestyle":":",
+            "alpha":0.5
+        },
+        "0.16cpd_0.5Hz_opto_0": {
+            "color":"tab:purple",
+            "linestyle":"--",
+            "alpha":0.5
+        },
+        "0.16cpd_0.5Hz_opto_1": {
+            "color":"tab:purple",
+            "linestyle":":",
+            "alpha":0.5
+        },
+        "0.1cpd_4Hz_grating":{
+            "color":"tab:gray"
+        },
+        "0.1cpd_4Hz_grating_opto_0":{
+            "color":"gainsboro"
+        },
+        "all":{
+            "color":"k"
+        }
     },
     "contrast":{
-        "1":{"color":"teal"},
+        "1.0":{"color":"teal"},
         "0.5":{"color":"darkgoldenrod"},
         "0.25":{"color":"turquoise"},
         "0.125":{"color":"limegreen"},
         "0.0625":{"color":"indigo"},
         "0.03125":{"color":"hotpink"},
-        "0":{"color":"black"}
+        "0.0":{"color":"black"},
+        "-1":{"color":""}
     }
 }

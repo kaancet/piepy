@@ -1,6 +1,7 @@
 from .plotter_utils import *
 from os.path import join as pjoin
 from ..wheel.wheelUtils import get_trajectory_avg
+from scipy import stats
 import copy
 
 class BehaviorBasePlotter:
@@ -10,10 +11,11 @@ class BehaviorBasePlotter:
         self.summary_data = summary_data
         self.fig = None
         set_style('analysis')
+        self.color = Color()
 
 
 class BasePlotter:
-    __slots__ = ['data','fig']
+    __slots__ = ['data','fig','color']
     def __init__(self,data:dict,**kwargs):
         self.data = self.set_data(data)
         self.fig = None
@@ -21,6 +23,8 @@ class BasePlotter:
         # this dictionary resides insides of another dict 
         # that is usually the novel_stim_data, or data dict inside session 
         set_style('analysis')
+        self.color = Color()
+        self.color.check_stim_colors(data.keys())
 
     def set_data(self,data:dict):
         if isinstance(data,dict):
@@ -135,6 +139,8 @@ class PerformancePlotter(BasePlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
         
         for k,v in self.plot_data.items():
             if seperate_by is not None:
@@ -148,11 +154,11 @@ class PerformancePlotter(BasePlotter):
                 if seperate_by is not None:
                     data = v[v[seperate_by]==sep]
                     y_axis = get_fraction(data['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
-                    color = contrast_styles[sep]['color']
+                    color = self.color.contrast_keys[str(sep)]['color']
                 else:
                     data = v
                     y_axis = data['fraction_correct']
-                    color = contrast_styles[sep]['color']
+                    color = self.color.contrast_keys[str(sep)]['color']
                 
                 if plot_in_time:
                     x_axis_ = data['openstart_absolute'] / 60000
@@ -175,7 +181,7 @@ class PerformancePlotter(BasePlotter):
         ax.grid(alpha=0.5,axis='both')
         if seperate_by is not None:
             if len(seperate_by) > 1:
-                ax.legend(loc='upper right',frameon=False,fontsize=fontsize)
+                ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
         
         return ax
     
@@ -195,6 +201,8 @@ class ResponseTimePlotter(BasePlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
             
         if plot_in_time:
             if self.stimkey is not None:
@@ -205,24 +213,25 @@ class ResponseTimePlotter(BasePlotter):
                 x_axis_ = self.plot_data[self.stimkey]['trial_no']
             x_label_ = 'Trial No'
         
-        ax = self.__plot__(ax,x_axis_,self.plot_data[self.stimkey]['running_response_latency']/1000,
-                           color=stim_styles[self.stimkey]['color'] if self.stimkey is not None else 'royalblue',
-                           label=self.stimkey if self.stimkey is not None else 'all',
-                           **kwargs)
+        ax = self.__plot__(ax,x_axis_,self.plot_data[self.stimkey]['running_response_latency'],
+                           label=self.stimkey,
+                           **self.color.stim_keys[self.stimkey])
 
         # prettify
         fontsize = kwargs.get('fontsize',20)
-        ax.set_yscale('log')
+       
         ax.set_xlabel(x_label_, fontsize=fontsize)
-        ax.set_ylabel('Response Time(sec)', fontsize=fontsize)
+        ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         
-        ax.tick_params(axis='y', which='minor')
-        minor_locs = np.append(np.linspace(0,0.9,9),np.linspace(1,9,9))
+        ax.set_yscale('symlog')
+        minor_locs = [200,400,600,800,2000,4000,6000,8000]
         ax.yaxis.set_minor_locator(plt.FixedLocator(minor_locs))
-        ax.yaxis.set_minor_formatter(plt.FormatStrFormatter('%.1f'))
+        ax.yaxis.set_minor_formatter(plt.FormatStrFormatter('%d'))
+        ax.yaxis.set_major_locator(ticker.FixedLocator([100,1000,10000]))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
 
-        ax.set_yticklabels([format(y,'.0f') for y in ax.get_yticks()])
+        # ax.set_yticklabels([format(y,'.0f') for y in ax.get_yticks()])
         ax.grid(alpha=0.5,axis='both')
         
         return ax
@@ -279,6 +288,8 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
         
         signed_contrasts = [] 
         plot_pos = []
@@ -304,7 +315,8 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
                     mean = np.mean(response_times)
                     
                     ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
-                                    s=30,color=stim_styles[skey]['color'] if skey is not None else 'royalblue',
+                                    s=30,
+                                    color=self.color.stim_keys[skey]['color'] if skey!='all' else 'k',
                                     label=skey if skey is not None and j==0 and c==0.5 else '_',
                                     **kwargs)
 
@@ -316,7 +328,6 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         ax.set_xlabel('Stimulus Contrast', fontsize=fontsize)
         ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
-        ax.tick_params(axis='x')
         
         ax.set_yscale('symlog')
         minor_locs = [200,400,600,800,2000,4000,6000,8000]
@@ -497,32 +508,39 @@ class WheelTrajectoryPlotter(BasePlotter):
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
          
     @staticmethod
-    def __plot__(ax:plt.Axes,wheel_t,wheel_pos,**kwargs):
-         ax.plot(wheel_t, wheel_pos,
+    def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
+         ax.plot(wheel_pos, wheel_t,
                  linewidth=kwargs.get('linewidth',5),
                  alpha=1,
                  zorder=2,
                  **kwargs)
+         
          return ax
     
-    def plot(self,ax:plt.Axes=None,seperate_by:str='contrast',plot_range:list=None,**kwargs):
-        if seperate_by not in self.plot_data.columns:
+    def plot(self,ax:plt.Axes=None,seperate_by:str='contrast',plot_range:list=None,orientation:str='vertical',**kwargs):
+        if seperate_by not in self.plot_data[self.stimkey].columns:
             raise ValueError(f'{seperate_by} is not a valid field for this data. try: {self.plot_data.columns}')
         
         if plot_range is None:
             plot_range = [-200,1500]
         
         if ax is None:
-            self.fig = plt.figure(figsize=(8,14))
+            if orientation=='vertical':
+                self.fig = plt.figure(figsize=(8,14))
+            else:
+                self.fig = plt.figure(figsize=(14,8))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
         
-        seperator_list = np.unique(self.plot_data[seperate_by])
+        
+        seperator_list = np.unique(self.plot_data[self.stimkey][seperate_by])
         print(seperator_list)
         
-        sides = np.unique(self.plot_data['stim_side'])
+        sides = np.unique(self.plot_data[self.stimkey]['stim_side'])
         
         for i,side in enumerate(sides,start=1):
-            side_slice = self.plot_data[self.plot_data['stim_side'] == side]
+            side_slice = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['stim_side'] == side]
             
             for sep in seperator_list:
                 seperator_slice = side_slice[side_slice[seperate_by] == sep]
@@ -531,36 +549,69 @@ class WheelTrajectoryPlotter(BasePlotter):
                 # wheel_arr = seperator_slice['wheel'].apply(lambda x: x+side)
                 # seperator_slice.loc[:,'wheel'] = seperator_slice.loc[:,'wheel'] + s
 
-                avg = get_trajectory_avg(seperator_slice['wheel'].to_numpy())
-                
+                wheel_stats = get_trajectory_avg(seperator_slice['wheel'].to_numpy())
+                avg = wheel_stats['avg']
+                sem = wheel_stats['sem']
                 if avg is not None:
                     avg = avg[find_nearest(avg[:,0],plot_range[0])[0]:find_nearest(avg[:,0],plot_range[1])[0]]
-                    c = contrast_styles[sep]['color']
-                    ax = self.__plot__(ax,avg[:,1]+side,avg[:,0],
-                                       color=c,
-                                       label=sep if i==1 else '_',
-                                       **kwargs)
-        
-        ax.set_ylim(plot_range)
-        ax.set_xlim([-75, 75])
-        # closed loop start line
-        ax.plot(ax.get_xlim(),[0,0],'k',linewidth=2, alpha=0.8)
+                    sem = sem[find_nearest(sem[:,0],plot_range[0])[0]:find_nearest(sem[:,0],plot_range[1])[0]]
+                    
+                    c = self.color.contrast_keys[str(sep)]['color']
+                    if orientation=='vertical':
+                        wheel_x = avg[:,1]+side
+                        wheel_y = avg[:,0]
+                    else:
+                        wheel_x = avg[:,0]
+                        wheel_y = avg[:,1]+side
+                    ax = self.__plot__(ax,wheel_x,wheel_y,
+                                    color=c,
+                                    label=sep if i==1 else '_',
+                                    **kwargs)
+                    
 
-        # trigger zones
-        ax.plot([0,0], ax.get_ylim(), 'green', linestyle='--', linewidth=2,alpha=0.8)
+                    sem_plus = wheel_y + sem[:,1]
+                    sem_minus = wheel_y - sem[:,1]
+                    
+                    ax.fill_between(sem[:,0],sem_plus,sem_minus,
+                                    alpha=0.2,
+                                    color=c,
+                                    linewidth=0)
+                    
+        fontsize = kwargs.get('fontsize',20)
+        if orientation=='vertical':
+            ax.set_ylim(plot_range)
+            ax.set_xlim([-75, 75])
+            # closed loop start line
+            ax.plot(ax.get_xlim(),[0,0],'k',linewidth=2, alpha=0.8)
 
-        ax.plot([-50,-50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
-        ax.plot([50,50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            # trigger zones
+            ax.plot([0,0], ax.get_ylim(), 'green', linestyle='--', linewidth=2,alpha=0.8)
+
+            ax.plot([-50,-50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot([50,50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.set_xlabel('Wheel Position (deg)', fontsize=fontsize)
+            ax.set_ylabel('Time(ms)', fontsize=fontsize)
+            ax.yaxis.set_label_position('right')
+            ax.yaxis.tick_right()
+        else:
+            ax.set_xlim(plot_range)
+            ax.set_ylim([-75, 75])
+            
+            # closed loop start line
+            ax.plot([0,0],ax.get_ylim(),'k',linewidth=2, alpha=0.8)
+
+            # trigger zones
+            ax.plot(ax.get_xlim(),[0,0], 'green', linestyle='--', linewidth=2,alpha=0.8)
+
+            ax.plot(ax.get_xlim(),[-50,-50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot(ax.get_xlim(),[50,50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.set_ylabel('Wheel Position (deg)', fontsize=fontsize)
+            ax.set_xlabel('Time(ms)', fontsize=fontsize)
         
         # make it pretty
-        fontsize = kwargs.get('fontsize',20)
-        ax.yaxis.set_label_position('right')
-        ax.yaxis.tick_right()
         ax.spines['bottom'].set_visible(False)
         ax.spines['left'].set_visible(False)
-        
-        ax.set_xlabel('Wheel Position (deg)', fontsize=fontsize)
-        ax.set_ylabel('Time(ms)', fontsize=fontsize)
+   
         ax.tick_params(labelsize=fontsize)
         ax.grid(axis='y')
         ax.legend(frameon=False,fontsize=14)
