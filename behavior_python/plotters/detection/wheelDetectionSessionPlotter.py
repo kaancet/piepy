@@ -14,7 +14,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         """
         ax.plot([0, 100], [0.5, 0.5], 'gray', linestyle=':', linewidth=2,alpha=0.7)
 
-        ax.errorbar(100*x, y, err,
+        ax.errorbar(x, y, err,
                     linewidth=2,
                     markersize=kwargs.get('markersize',15),
                     markeredgecolor=kwargs.get('markeredgecolor','w'),
@@ -24,63 +24,123 @@ class DetectionPsychometricPlotter(BasePlotter):
                     **kwargs)
 
         return ax
+
         
-    def plot(self,ax:plt.Axes=None,color=None,**kwargs):
+    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,**kwargs):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
             
         for i,k in enumerate(self.data.keys()):
             # get contrast data
             v = self.data[k]
-            sides = nonan_unique(v['stim_side'])
+            
+            contrast_list = nonan_unique(v['contrast'],sort=True)
+            if not seperate_sides:
+                correct_ratios = []
+                confs = []
+                for c in contrast_list:
+                    c_data = v[v['contrast']==c]
+                    ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
+                    confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
+                    correct_ratios.append(ratio)
+            
+                ax = self.__plot__(ax,100*contrast_list,correct_ratios,confs,
+                                label=f'{k}(N={len(v)})',
+                                marker = 'o',
+                                **self.color.stim_keys[k])
+                dots = ax.collections[-1]
+                offsets = dots.get_offsets()
+                jittered_offsets = offsets + np.random.uniform(0, 1, offsets.shape)
+                dots.set_offsets(jittered_offsets)
+            
+            sides = nonan_unique(v['stim_side'],sort=True)
             for j,side in enumerate(sides):
                 side_data = v[v['stim_side']==side]
                 contrast_list = nonan_unique(side_data['contrast'])
-                correct_ratios = []
+                side_correct_ratios = []
                 confs = []
                 for c in contrast_list:
                     c_data = side_data[side_data['contrast']==c]
                     ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
                     confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
-                    correct_ratios.append(ratio)
-   
-                if side < 0:
-                    label = f'{k}_left(N={len(v)})'
-                    color = 'purple'
-                    if 'opto' in k:
-                        color = 'pink'
-                    marker = '<'
-                elif side > 0:
-                    label = f'{k}_right(N={len(v)})'
-                    color = stim_styles[k]['color']
-                    marker = '>'
+                    side_correct_ratios.append(ratio)
+                    
+                if not seperate_sides:
+                    pass     
+                    # if side < 0:
+                    #     marker = '$<$'
+                    #     color = self.color.stim_keys[k]['color']
+                    # elif side > 0:
+                    #     marker = '$>$'
+                    #     color = self.color.stim_keys[k]['color']
+                    # else:
+                    #     marker = 'o'
+                    #     if 'opto' in k:
+                    #         color = self.color.stim_keys[k]['color']
+                    #     else:
+                    #         color = 'k'
+                    # ax.scatter(100*contrast_list,side_correct_ratios,
+                    #         marker=marker,
+                    #         s = 100,
+                    #         color=color)
+                    # dots = ax.collections[-1]
+                    # offsets = dots.get_offsets()
+                    # jittered_offsets = offsets + np.random.uniform(0, 3, offsets.shape)
+                    # dots.set_offsets(jittered_offsets)
+                    
                 else:
-                    if 'opto' in k:
-                        color = stim_styles[k]['color']
+                    if side < 0:
+                        label = f'{k}_left(N={len(side_data)})'
+                        color = 'purple'
+                        if 'opto' in k:
+                            color = 'pink'
+                        marker = '<'
+                    elif side > 0:
+                        label = f'{k}_right(N={len(side_data)})'
+                        color = self.color.stim_keys[k]['color']
+                        marker = '>'
                     else:
-                        color = 'k'
-                    label = f'{k}_zero(N={len(v)})'
-                    marker = 'o'
-                
-                jitter = np.zeros((len(contrast_list))) + (i * 0.01) + (j * 0.02)
-                ax = self.__plot__(ax,contrast_list+jitter,correct_ratios,confs,
-                                color=color,
-                                label=label,
-                                marker = marker,
-                                **kwargs)
-
+                        if 'opto' in k:
+                            color = self.color.stim_keys[k]['color']
+                        else:
+                            color = 'k'
+                        label = f'{k}_zero(N={len(side_data)})'
+                        marker = 'o'
+                    
+                    ax = self.__plot__(ax,100*contrast_list,side_correct_ratios,confs,
+                                       label=label,
+                                       marker = marker,
+                                       color=color) 
+                    dots = ax.collections[-1]
+                    offsets = dots.get_offsets()
+                    jittered_offsets = offsets + np.random.uniform(0, 3, offsets.shape)
+                    dots.set_offsets(jittered_offsets)
+        
         # prettify
-        # ax.set_xscale('symlog')
         fontsize = kwargs.get('fontsize',15)
+        
+        ax.set_xscale('symlog')
+        # ax.xaxis.set_major_locator(ticker.FixedLocator([int(100*c) for c in contrast_list]))
+        # ax.xaxis.set_major_locator(ticker.LogLocator(base=10,numticks=15))
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
+        ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
+        
+        
         ax.set_ylim([0,1])
-        ax.set_yticklabels([str(int(100*i)) for i in ax.get_yticks()])
-        ax.set_xticks([int(100*c) for c in contrast_list])
+        ax.set_yticklabels([str(int(100*i)) for i in ax.get_yticks()])  
+        
         ax.set_xlabel('Contrast Value (%)', fontsize=fontsize)
         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
+        
+        
         ax.spines['left'].set_bounds(0, 1) 
-        ax.spines['bottom'].set_bounds(0, 100)
+        # ax.spines['bottom'].set_bounds(0, 1)
+        ax.spines['bottom'].set_position(('outward', 10))
+        ax.spines['left'].set_position(('outward', 10))
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         

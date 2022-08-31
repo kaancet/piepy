@@ -52,17 +52,17 @@ class WheelPsychometricPlotter(BasePlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
             
         for i,k in enumerate(self.fitters.keys()):
             v = self.fitters[k]
-            color = stim_styles[k]['color']
             
             jitter = i * 0.02
             ax = self.__plot__(ax,v.signed_contrast + jitter,v.percentage,
                                v.fitted_curve,v.confidence,
-                               color=color,
                                label=f'{k}(N={np.sum(v.counts)})',
-                               **kwargs)
+                               **self.color.stim_keys[k])
 
         # prettify
         fontsize = kwargs.get('fontsize',20)
@@ -80,7 +80,7 @@ class WheelPsychometricPlotter(BasePlotter):
 
 
 class WheelPerformancePlotter(PerformancePlotter):
-    def __init__(self,data,stimkey:str,**kwargs):
+    def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, stimkey, **kwargs)
         self.modify_data()
 
@@ -88,25 +88,15 @@ class WheelPerformancePlotter(PerformancePlotter):
         # change the self.plot_data here with methods if need to plot something else
         pass
 
-    # def plot(self, ax:plt.axes=None,*args,**kwargs):
-    # override the plot function calling __plot__ 
-    # <your code here>
-    # self.__plot__(x,y,ax)
-    
 
 class WheelResponseTimePlotter(ResponseTimePlotter):
-    def __init__(self,data,stimkey:str,**kwargs):
+    def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, stimkey, **kwargs)
         self.modify_data()
 
     def modify_data(self,*args,**kwargs):
         # change the self.plot_data here with methods if need to plot something else
         pass
-
-    # def plot(self, ax:plt.axes=None,*args,**kwargs):
-    # override the plot function calling __plot__ 
-    # <your code here>
-    # self.__plot__(x,y,ax)
 
 
 class WheelResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
@@ -133,8 +123,10 @@ class WheelResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
         
-        resp_times = self.plot_data['response_latency'].to_numpy()
+        resp_times = self.plot_data[self.stimkey]['response_latency'].to_numpy()
         
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins)
@@ -162,6 +154,8 @@ class WheelResponseTypeBarPlotter(ResponseTypeBarPlotter):
         if ax is None:
             self.fig = plt.figure(figsize=kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(111)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
             
         for answer in np.unique(self.plot_data[self.stimkey]['answer']):
             answer_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==answer]
@@ -209,7 +203,8 @@ class WheelLickScatterPlotter(LickScatterPlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
-            
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
         
         for row in self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==1].itertuples():
             if len(row.reward):
@@ -281,7 +276,7 @@ class WheelSummaryPlotter:
     def apply_cutoff(self) -> dict:
         out_data = {}
         if self.cutoff_time is not None:
-            print(f'Applying {self.cutoff_time} second cutoff to data')
+            display(f'Applying {self.cutoff_time} second cutoff to data')
             for k,data in self.data.items():
                 temp = data[data['response_latency'] <= self.cutoff_time]
                 out_data[k] = temp.copy()
@@ -292,12 +287,12 @@ class WheelSummaryPlotter:
     def init_plotters(self):
         cutoff_data = self.apply_cutoff()
         # TODO: Make this changable
-        self.plotters = {'performance':WheelPerformancePlotter(self.data, self.stimkey),
+        self.plotters = {'performance':WheelPerformancePlotter(cutoff_data, self.stimkey),
                          'responsepertype':WheelResponseTimeScatterCloudPlotter(cutoff_data,self.stimkey),
                          'curve':WheelPsychometricPlotter(cutoff_data),
                          'responsetime':WheelResponseTimePlotter(self.data,self.stimkey),
                          'perfpertype':WheelResponseTypeBarPlotter(cutoff_data,self.stimkey),
-                         'licktotal':LickPlotter(self.data, self.stimkey),
+                         'licktotal':LickPlotter(cutoff_data, self.stimkey),
                          'lickdist':WheelLickScatterPlotter(cutoff_data,self.stimkey)}
     
     def plot(self,**kwargs):
@@ -314,7 +309,7 @@ class WheelSummaryPlotter:
         ax_time = self.fig.add_subplot(gs_in1[0,0])
         self.plotters['responsetime'].plot(ax=ax_time)
         if self.cutoff_time is not None:
-            ax_time.axhline(self.cutoff_time/1000,linewidth=2,color='r')
+            ax_time.axhline(self.cutoff_time,linewidth=2,color='r')
         
         ax_perf = self.fig.add_subplot(gs_in1[1,0])
         ax_perf = self.plotters['performance'].plot(ax=ax_perf,seperate_by='contrast')
