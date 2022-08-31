@@ -1,5 +1,6 @@
 import time
 from os.path import join as pjoin
+import scipy.stats as st
 from behavior_python.core.session import Session, SessionData, SessionMeta
 from .wheelDetectionTrial import *
 
@@ -72,7 +73,7 @@ class WheelDetectionData(SessionData):
                     # early trials don't have any of vstim values => spatial_freq, temporal_freq and opto_pattern
                     # a very crude fix is to get all the early data, concat and order by trial_no
                     early_data = self.get_subset({'answer':-1})
-                    stimuli_data = stimuli_data.append(early_data)
+                    stimuli_data = pd.concat([stimuli_data,early_data])
                     stimuli_data.sort_values('trial_no',inplace=True)
                     
                 stim_data[key_new] = stimuli_data
@@ -83,7 +84,7 @@ class WheelDetectionStats:
     __slots__ = ['all_trials','answered_trials','stim_trials','early_trials','miss_trials',
                  'all_correct_percent','answered_correct_percent',
                  'easy_answered_trials','easy_hit_rate',
-                 'hit_rate','false_alarm',
+                 'hit_rate','false_alarm','d_prime',
                  'median_response_time','nogo_percent']
     def __init__(self,dict_in:dict=None,data_in:WheelDetectionData=None) -> None:
         if data_in is not None:
@@ -123,6 +124,9 @@ class WheelDetectionStats:
         
         
         self.median_response_time = round(np.median(stim_data[stim_data['answer']==1]['response_latency']),3)
+        
+        #d prime
+        self.d_prime = st.norm.ppf(self.hit_rate/100) - st.norm.ppf(self.false_alarm/100)
         
         if self.all_trials >= 200:
             data200 = data[:200]
@@ -282,7 +286,7 @@ class WheelDetectionSession(Session):
                 if t == len(trials):
                     display(f'Last trial {t} is discarded')
                     
-        session_data = session_data.append(data_to_append,ignore_index=True)
+        session_data = pd.DataFrame(data_to_append)
 
         if session_data.empty:
             print('''WARNING THIS SESSION HAS NO DATA

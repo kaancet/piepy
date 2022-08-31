@@ -88,7 +88,7 @@ class WheelDetectionBehavior(Behavior):
                     session_data['date'] = detect_session.meta.baredate
                     session_data['paradigm'] = gsheet_dict.get('paradigm','training_detection')
                     
-                    cumul_data = cumul_data.append(session_data,ignore_index=True)
+                    cumul_data = pd.concat([cumul_data,session_data],ignore_index=True)
                     cumul_data['cumul_trial_no'] = np.arange(len(cumul_data)) + 1
                     session_counter += 1
                 else:
