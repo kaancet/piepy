@@ -32,6 +32,54 @@ class WheelDetectionBehaviorSummaryPlotter:
         return data,stats 
 
 
+class WheelDetectionProgressionPlotter(BehaviorProgressionPlotter):
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame=None, summary_data:pd.DataFrame=None,**kwargs) -> None:
+        super().__init__(animalid, cumul_data, summary_data, **kwargs)
+        
+    def plot_cumul(self,x_axis:str,y_axis:str,color:str,ax:plt.Axes=None,**kwargs) -> plt.Axes:
+
+        
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+    def plot_summary(self,x_axis:str,y_axis:str,color:str='k',ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        
+        if x_axis not in ['session_difference','day_difference','dt_date']:
+            raise ValueError(f'{x_axis} is not a valid value for x_axis, try one of \n - session_difference, \n - day_difference,\n - dt_date')
+
+        if y_axis not in self.summary_data.columns:
+            raise ValueError(f'{y_axis} is not a valid value for y_axis, try one of {self.summary_data.columns}')
+
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+        #This gets actual training data
+        plot_data = self.summary_data[self.summary_data['paradigm']=='training_detection']
+        
+        x_axis_data = plot_data[x_axis].to_numpy()
+        print
+        y_axis_data = plot_data[y_axis].to_numpy()
+        
+        ax = self.__plot__(ax,x_axis_data,y_axis_data,color=color)
+        
+        #prettify
+        fontsize=kwargs.get('fontsize',14)
+        ax.set_xlabel(x_axis, fontsize=fontsize)
+        ax.set_ylabel(y_axis, fontsize=fontsize)
+
+        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
+        ax.tick_params(axis='both', labelsize=fontsize)
+        ax.grid(alpha=0.8,axis='both')
+
+        return ax
+
+
 class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
     __slots__ = ['plot_type']
     def __init__(self, animalid:str,session_list:list,stimkey:str=None, day_count:int=9,plot_type:str='summary',**kwargs):
@@ -83,7 +131,7 @@ class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
             display(f'Saved {savename} plot')
             
 
-class DetectionContrastProgressionPlotter(ContrastProgressionPlotter):
+class WheelDetectionContrastLevelsPlotter(ContrastLevelsPlotter):
     def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
         super().__init__(animalid, cumul_data, summary_data, **kwargs)
         self.animalid = animalid
