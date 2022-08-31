@@ -424,10 +424,11 @@ def parseProtocolFile(protfile):
                 break
         tmp = string[i::]
         tmp = [t.replace('\r','').replace('\t',' ').strip().split() for t in tmp]
-        tmp = [','.join(t) for t in tmp ]
+        tmp = [';'.join(t) for t in tmp ] # the delimiter is ";" becuase "," causes issue with evolveParams comma
         try:
             params = pd.read_csv(StringIO(u"\n".join(tmp)),
-                                 index_col=False)
+                                    index_col=False,
+                                    delimiter=';')
         except pd.io.common.EmptyDataError:
             params = None
     return options,params
