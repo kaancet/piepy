@@ -46,11 +46,12 @@ class DetectionPsychometricPlotter(BasePlotter):
                     ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
                     confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                     correct_ratios.append(ratio)
-            
+
                 ax = self.__plot__(ax,100*contrast_list,correct_ratios,confs,
                                 label=f'{k}(N={len(v)})',
                                 marker = 'o',
-                                **self.color.stim_keys[k])
+                                color = self.color.stim_keys[k]['color'] if color is None else color,
+                                **kwargs)
                 dots = ax.collections[-1]
                 offsets = dots.get_offsets()
                 jittered_offsets = offsets + np.random.uniform(0, 1, offsets.shape)

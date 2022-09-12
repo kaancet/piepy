@@ -3,83 +3,6 @@ from ..behaviorBasePlotters import *
 from .wheelSessionPlotter import *
 
 
-class WheelBehaviorPerformancePlotter(BehaviorBasePlotter):
-    def __init__(self,cumul_data,summary_data, **kwargs):
-        super().__init__(cumul_data,summary_data,**kwargs)
-    
-    def plot_from_summary(self,ax:plt.Axes=None,days_since:bool=True,tick_space:int=5,**kwargs) ->plt.Axes:
-        """ Plots the behavior progression from the summary data """
-        if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(10,8)))
-            ax = self.fig.add_subplot(1,1,1)
-        
-        plot_data = self.summary_data[self.summary_data['paradigm']=='training_wheel'] 
-        x_axis = plot_data['dt_date'].to_numpy()
-        
-        x_label = 'Session Dates'
-        if days_since:
-            # convert dates to days since first
-            start_date = plot_data.iloc[0]
-            x_axis = dates_to_deltadays(x_axis,start_date['dt_date'])
-            x_label = 'Days Since First Training'
-        
-        ax = self.__plot__(ax,x_axis,plot_data['correct_pct'].to_numpy(),
-                           color='forestgreen',
-                           linewidth=4,
-                           marker = 'o',
-                           markersize = 5,
-                           **kwargs)
-        
-        fontsize=kwargs.get('fontsize',14)
-        ax.spines['bottom'].set_bounds(ax.get_xlim()[0],ax.get_xlim()[1])
-        ax.set_xlabel(x_label, fontsize=fontsize)
-        ax.set_ylabel('Correct (%)', fontsize=fontsize)
-        
-        # xticks = [*range(len(self.summary_data))]
-        # ax.set_xticks(xticks[::tick_space])
-        # ax.set_xticklabels(x_axis[::tick_space])
-        
-        ax.set_ylim([0,100])
-        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
-        ax.tick_params(axis='both', labelsize=fontsize)
-        ax.grid(alpha=0.8,axis='both')
-
-        return ax
-        
-        
-    def plot_from_cumul(self,ax:plt.Axes=None,**kwargs) ->plt.Axes:
-        """ Plots the behavior progression from the aggregated cumulative data """
-        if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(12,8)))
-            ax = self.fig.add_subplot(1,1,1)
-        
-        
-        plot_data = self.cumul_data[self.cumul_data['session_no']>0]
-            
-        x_axis = plot_data['cumul_trial_no'].to_numpy()
-        
-        ax = self.__plot__(ax,x_axis,100 * plot_data['fraction_correct'].to_numpy(),
-                           color='forestgreen',
-                           linewidth=4,
-                           **kwargs)
-        
-        fontsize=kwargs.get('fontsize',14)
-        ax.spines['bottom'].set_bounds(ax.get_xlim()[0],ax.get_xlim()[1])
-        ax.set_xlabel('Total Trial No', fontsize=fontsize)
-        ax.set_ylabel('Correct (%)', fontsize=fontsize)
-        
-        # xticks = [*range(len(self.summary_data))]
-        # ax.set_xticks(xticks[::tick_space])
-        # ax.set_xticklabels(x_axis[::tick_space])
-        
-        ax.set_ylim([0,100])
-        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
-        ax.tick_params(axis='both', labelsize=fontsize)
-        ax.grid(alpha=0.8,axis='both')
-
-        return ax
-    
-
 class WheelBehaviorSummaryPlotter:
     __slots__ = ['animalid','plot_data','plot_stats','fig','stimkey']
     def __init__(self, animalid: str, session_list: list, stimkey: str = None, day_count: int = 9, **kwargs) -> None:
@@ -105,15 +28,97 @@ class WheelBehaviorSummaryPlotter:
             data[date_str] = w.data.stim_data
             stats[date_str] = w.stats
             
-        return data,stats 
-
+        return data,stats
     
+    
+class WheelProgressionPlotter(BehaviorProgressionPlotter):
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame=None, summary_data:pd.DataFrame=None,**kwargs) -> None:
+        super().__init__(animalid, cumul_data, summary_data, **kwargs)
+        
+    def plot_cumul(self,x_axis:str,y_axis:str,color:str,ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        self.check_axes(x_axis,y_axis,'cumul')
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+    def plot_summary(self,x_axis:str,y_axis:str,color:str='k',ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        
+        self.check_axes(x_axis,y_axis,'summary')
+
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+        #This gets actual training data
+        plot_data = self.summary_data[self.summary_data['paradigm']=='training_wheel']
+        
+        x_axis_data = plot_data[x_axis].to_numpy()
+        y_axis_data = plot_data[y_axis].to_numpy()
+        
+        ax = self.__plot__(ax,x_axis_data,y_axis_data,color=color)
+        
+        #prettify
+        fontsize=kwargs.get('fontsize',14)
+        ax.set_xlabel(x_axis, fontsize=fontsize)
+        ax.set_ylabel(y_axis, fontsize=fontsize)
+
+        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
+        ax.tick_params(axis='both', labelsize=fontsize)
+        ax.grid(alpha=0.8,axis='both')
+
+        return ax
+    
+
+class WheelScatterPlotter(BehaviorScatterPlotter):
+    def __init__(self,animalid:str, cumul_data:pd.DataFrame,summary_data:pd.DataFrame,**kwargs):
+        super().__init__(animalid, cumul_data, summary_data, **kwargs)
+        
+    def plot_cumul(self,x_axis:str,y_axis:str,color:str='k',ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        self.check_axes(x_axis,y_axis,'cumul')
+        pass
+    
+    def plot_summary(self,x_axis:str,y_axis:str,color:str='k',ax:plt.Axes=None,**kwargs) -> plt.Axes:
+
+        self.check_axes(x_axis,y_axis,'summary')
+
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+        
+        #This gets actual training data
+        plot_data = self.summary_data[self.summary_data['paradigm']=='training_wheel']
+        
+        # x_data = pd.to_numeric(self.summary_data[x_name])
+        
+        x_axis_data = plot_data[x_axis].to_numpy()
+        y_axis_data = plot_data[y_axis].to_numpy()
+        
+        ax = self.__plot__(ax,x_axis_data,y_axis_data,color=color,**kwargs)
+        
+        #prettify
+        fontsize=kwargs.get('fontsize',14)
+        ax.set_xlabel(x_axis, fontsize=fontsize)
+        ax.set_ylabel(y_axis, fontsize=fontsize)
+
+        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
+        ax.tick_params(axis='both', labelsize=fontsize)
+        ax.grid(alpha=0.8,axis='both')
+
+        return ax
+    
+
 class WheelPsychometricOverlay(WheelBehaviorSummaryPlotter):
     __slots__ = []
     def __init__(self, animalid: str, session_list: list, stimkey: str = None, day_count: int = 9, **kwargs) -> None:
         super().__init__(animalid, session_list, stimkey, day_count, **kwargs)        
     
-    def plot(self,ax:plt.Axes=None,**kwargs) -> plt.Axes:
+    def plot(self,ax:plt.Axes=None,do_avg:bool=False,**kwargs) -> plt.Axes:
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(10,8)))
             ax = self.fig.add_subplot(1,1,1)
@@ -125,20 +130,12 @@ class WheelPsychometricOverlay(WheelBehaviorSummaryPlotter):
             p = WheelPsychometricPlotter(self.plot_data[date])
             ax = p.plot(ax=ax,color=c_range[i],alpha=alpha_range[i],zorder=i)
             labels.append(date)
+            
+        if do_avg:
+            pass
 
         handles,_ = ax.get_legend_handles_labels()
         ax.legend(handles,labels)
-        
-    def save(self,saveloc:str) -> None:
-        if self.fig is not None:
-            saveloc = pjoin(saveloc,'psychometricOverlays',self.animalid)
-            if not os.path.exists(saveloc):
-                os.makedirs(saveloc)
-            last_date = list(self.plot_data.keys())[-1]
-            savename = f'{last_date}__psychometricOverlay.pdf'
-            saveloc = pjoin(saveloc,savename)
-            self.fig.savefig(saveloc,bbox_inches='tight')
-            display(f'Saved {savename} plot')
 
 
 class WheelPastDaysGridSummary(WheelBehaviorSummaryPlotter):
@@ -178,20 +175,9 @@ class WheelPastDaysGridSummary(WheelBehaviorSummaryPlotter):
             ax_resp = plotters['responsepertype'].plot(ax=ax_resp,**kwargs)
             ax_resp.set_title(f'#trials={self.plot_stats[date].novel_trials} \t PC%={self.plot_stats[date].answered_correct_percent}')         
         self.fig.tight_layout()
-            
-    def save(self,saveloc) -> None:
-        if self.fig is not None:
-            saveloc = pjoin(saveloc,'gridSummaries',self.animalid)
-            if not os.path.exists(saveloc):
-                os.makedirs(saveloc)
-            last_date = list(self.plot_data.keys())[-1]
-            savename = f'{last_date}_past9days_{self.plot_type}.pdf'
-            saveloc = pjoin(saveloc,savename)
-            self.fig.savefig(saveloc,bbox_inches='tight')
-            display(f'Saved {savename} plot')
                    
             
-class WheelContrastProgressionPlotter(ContrastProgressionPlotter):
+class WheelContrastProgressionPlotter(ContrastLevelsPlotter):
     def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
         super().__init__(animalid,cumul_data, summary_data, **kwargs)
         self.animalid = animalid
@@ -291,41 +277,7 @@ class WheelContrastProgressionPlotter(ContrastProgressionPlotter):
         cbar.ax.yaxis.set_label_position('left')
         cbar.ax.yaxis.set_ticks_position('left')
         return ax,cax 
-    
-    
-class WheelBehaviorScatter(BehaviorScatterPlotter):
-    def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
-        super().__init__(animalid,cumul_data, summary_data, **kwargs)
-        self.animalid = animalid
-    
-    def plot(self, ax:plt.Axes=None, x_name:str=None, y_name:str=None, **kwargs):
-        self.x_name = x_name
-        self.y_name = y_name
-        
-        try:
-            x_data = pd.to_numeric(self.summary_data[x_name])
-            y_data = pd.to_numeric(self.summary_data[y_name])
-        except KeyError as k:
-            raise(f'The column name {k} is not correct, try one of:\n{self.summary_data.columns}')
-        except ValueError as v:
-            print(v)
-            
-        x_data = x_data.to_numpy()
-        y_data = y_data.to_numpy()
-        
-        if ax is None:
-            self.fig = plt.figure(figsize=kwargs.get('figsize',(15,10)))
-            ax = self.fig.add_subplot(1,1,1)
-            
-        ax = self.__plot__(ax,x_data,y_data,**kwargs)
-        
-        fontsize = 15
-        ax.set_xlabel(x_name,fontsize=fontsize)
-        ax.set_ylabel(y_name,fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize)
-        
-        return ax
-        
+
         
     
         

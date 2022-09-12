@@ -13,6 +13,16 @@ class BehaviorBasePlotter:
         set_style('analysis')
         self.summary_data = self.add_difference_columns(self.summary_data)
         
+    def list_valid_axes(self,data_type:str='summary'):
+        temp = f'''The valid axes for {data_type} type data are:\n'''
+        if data_type == 'summary':
+            for c in self.summary_data.columns:
+                temp += f'- {c}\n'
+        elif data_type == 'cumul':
+            for c in self.cumul_data.columns:
+                temp += f'- {c}\n'
+        print(temp)
+        
     @staticmethod
     def add_difference_columns(data) -> None:
         """ Adds difference columns to the plot data like the day difference, session difference """
@@ -37,7 +47,7 @@ class BehaviorBasePlotter:
         analysis_path = cfg['analysisPath']
         last_date = self.cumul_data['date'].iloc[-1]
         if self.fig is not None:
-            saveloc = pjoin(analysis_path,'behavior_results','python_figures',self.animalid,last_date,self.__class__.__name__)
+            saveloc = pjoin(analysis_path,'behavior_results','python_figures',self.animalid,last_date)
             if not os.path.exists(saveloc):
                 os.makedirs(saveloc)
             savename = f'{last_date}_{self.__class__.__name__}_{self.animalid}.pdf'
@@ -52,6 +62,20 @@ class BehaviorProgressionPlotter(BehaviorBasePlotter):
         It has a plotting function that takes the x and y axis and color values"""
     def __init__(self, animalid, cumul_data, summary_data, **kwargs) -> None:
         super().__init__(animalid,cumul_data, summary_data, **kwargs)
+        
+    def check_axes(self,x_axis,y_axis,data_type:str='summary') -> None:
+        if data_type == 'summary':
+            data_to_check = self.summary_data
+            
+            if x_axis not in ['session_difference','day_difference','dt_date']:
+                raise KeyError(f'''{x_axis} is not a valid value for x_axis, try one of \n - session_difference, \n - day_difference,\n - dt_date''')
+            
+        elif data_type == 'cumul':
+            data_to_check = self.cumul_data
+        
+        if y_axis not in data_to_check.columns:
+            raise KeyError(f'''{y_axis} is not a valid value for y_axis, try one of {self.summary_data.columns}''')
+           
         
     @staticmethod
     def __plot__(ax,x,y,color,**kwargs) -> plt.Axes:
@@ -68,6 +92,22 @@ class BehaviorScatterPlotter(BehaviorBasePlotter):
     def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
         super().__init__(animalid, cumul_data, summary_data, **kwargs)
         
+    def check_axes(self,x_axis,y_axis,data_type:str='summary') -> None:
+        if data_type == 'summary':
+            data_to_check = self.summary_data
+        elif data_type == 'cumul':
+            data_to_check = self.cumul_data
+        
+        try:
+            tmp = data_to_check[x_axis]
+        except KeyError as k:
+            raise KeyError(f'The column name {x_axis} is not valid for x_axis, try one of:\n{self.summary_data.columns}')
+        
+        try:
+            tmp = data_to_check[y_axis]
+        except KeyError as k:
+            raise KeyError(f'The column name {y_axis} is not valid for x_axis, try one of:\n{self.summary_data.columns}')
+
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
         ax.scatter(x,y,**kwargs)
