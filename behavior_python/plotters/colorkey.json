@@ -10,40 +10,39 @@
             "color":"tab:purple"
         },
         "0.04cpd_8Hz_opto_0": {
-            "color":"tab:orange",
-            "linestyle":"--",
-            "alpha":0.5
+            "color":"cornflowerblue",
+            "linestyle":"--"
         },
         "0.04cpd_8Hz_opto_1": {
-            "color":"tab:orange",
-            "linestyle":":",
-            "alpha":0.5
+            "color":"cornflowerblue",
+            "linestyle":":"
         },
         "0.08cpd_2Hz_opto_0": {
-            "color":"tab:green",
-            "linestyle":"--",
-            "alpha":0.5
+            "color":"deepskyblue",
+            "linestyle":"--"
         },
         "0.08cpd_2Hz_opto_1": {
-            "color":"tab:green",
-            "linestyle":":",
-            "alpha":0.5
+            "color":"deepskyblue",
+            "linestyle":":"
         },
         "0.16cpd_0.5Hz_opto_0": {
-            "color":"tab:purple",
-            "linestyle":"--",
-            "alpha":0.5
+            "color":"mediumblue",
+            "linestyle":"--"
         },
         "0.16cpd_0.5Hz_opto_1": {
-            "color":"tab:purple",
-            "linestyle":":",
-            "alpha":0.5
+            "color":"mediumblue",
+            "linestyle":":"
         },
         "0.1cpd_4Hz_grating":{
             "color":"tab:gray"
         },
         "0.1cpd_4Hz_grating_opto_0":{
-            "color":"gainsboro"
+            "color":"aqua",
+            "linestyle":"--"
+        },
+        "0.1cpd_4Hz_grating_opto_1":{
+            "color":"aqua",
+            "linestyle":":"
         },
         "all":{
             "color":"k"
@@ -57,6 +56,6 @@
         "0.0625":{"color":"indigo"},
         "0.03125":{"color":"hotpink"},
         "0.0":{"color":"black"},
-        "-1":{"color":""}
+        "-1":{"color":"silver"}
     }
 }
