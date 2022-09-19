@@ -12,7 +12,6 @@ class DetectionPsychometricPlotter(BasePlotter):
         x,y and err values are used to plot the points and 
         x_fit and y_fit values are used to plot the fitted curve
         """
-        ax.plot([0, 100], [0.5, 0.5], 'gray', linestyle=':', linewidth=2,alpha=0.7)
 
         ax.errorbar(x, y, err,
                     linewidth=2,
@@ -26,7 +25,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         return ax
 
         
-    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,**kwargs):
+    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
@@ -38,24 +37,38 @@ class DetectionPsychometricPlotter(BasePlotter):
             v = self.data[k]
             
             contrast_list = nonan_unique(v['contrast'],sort=True)
+            
+            correct_ratios = []
+            confs = []
+            for c in contrast_list:
+                c_data = v[v['contrast']==c]
+                ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
+                confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
+                correct_ratios.append(ratio)
+                
             if not seperate_sides:
-                correct_ratios = []
-                confs = []
-                for c in contrast_list:
-                    c_data = v[v['contrast']==c]
-                    ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
-                    confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
-                    correct_ratios.append(ratio)
-
-                ax = self.__plot__(ax,100*contrast_list,correct_ratios,confs,
-                                label=f'{k}(N={len(v)})',
-                                marker = 'o',
-                                color = self.color.stim_keys[k]['color'] if color is None else color,
-                                **kwargs)
-                dots = ax.collections[-1]
-                offsets = dots.get_offsets()
-                jittered_offsets = offsets + np.random.uniform(0, 1, offsets.shape)
-                dots.set_offsets(jittered_offsets)
+                jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast_list])
+                jittered_offset[0] += np.random.uniform(0,jitter)/100
+                ax = self.__plot__(ax,
+                                   (100*contrast_list)+jittered_offset,
+                                   correct_ratios,confs,
+                                   label=f'{k}(N={len(v)})',
+                                   marker = 'o',
+                                   color = self.color.stim_keys[k]['color'] if color is None else color,
+                                   linestyle = self.color.stim_keys[k]['linestyle'],
+                                   **kwargs)
+                
+                # lines = ax.collections[-1]
+                # line_offsets = lines.get_offsets()
+                # jittered_offsets = line_offsets + np.random.uniform(0, jitter, line_offsets.shape)
+                # lines.set_offsets(jittered_offsets)
+                # #dots
+                # ax.lines[0]._ind_offset = jitter
+                
+            if 'opto' not in k and 0 in contrast_list:
+                # draw the baseline only on non-opto
+                idx_0 = np.where(contrast_list==0)[0][0]
+                ax.plot([0, 100], [correct_ratios[idx_0], correct_ratios[idx_0]], 'gray', linestyle=':', linewidth=2,alpha=0.7)
             
             sides = nonan_unique(v['stim_side'],sort=True)
             for j,side in enumerate(sides):
@@ -110,15 +123,21 @@ class DetectionPsychometricPlotter(BasePlotter):
                             color = 'k'
                         label = f'{k}_zero(N={len(side_data)})'
                         marker = 'o'
-                    
-                    ax = self.__plot__(ax,100*contrast_list,side_correct_ratios,confs,
+                        
+                    jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast_list])
+                    jittered_offset[0] += np.random.uniform(0,jitter)/100
+                    ax = self.__plot__(ax,
+                                       100*contrast_list+jittered_offset,
+                                       side_correct_ratios,
+                                       confs,
                                        label=label,
                                        marker = marker,
-                                       color=color) 
-                    dots = ax.collections[-1]
-                    offsets = dots.get_offsets()
-                    jittered_offsets = offsets + np.random.uniform(0, 3, offsets.shape)
-                    dots.set_offsets(jittered_offsets)
+                                       color=color,
+                                       linestyle=self.color.stim_keys[k].get('linestyle','-')) 
+                    # dots = ax.collections[-1]
+                    # offsets = dots.get_offsets()
+                    # jittered_offsets = offsets + np.random.uniform(0, jitter, offsets.shape)
+                    # dots.set_offsets(jittered_offsets)
         
         # prettify
         fontsize = kwargs.get('fontsize',15)
@@ -129,9 +148,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
         ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
         
-        
-        ax.set_ylim([0,1])
-        ax.set_yticklabels([str(int(100*i)) for i in ax.get_yticks()])  
+        ax.set_ylim([0,1]) 
         
         ax.set_xlabel('Contrast Value (%)', fontsize=fontsize)
         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
@@ -339,7 +356,7 @@ class DetectionResponseScatterPlotter(BasePlotter):
         """ sets the plot data wrt to given argument and excludes nogo trials"""
         d = self.plot_data[self.stimkey]
         if wrt=='sorted':
-            #add blank_time to correct answers 
+            # add blank_time to correct answers 
             d['wrt_response_latency'] = d[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']==1 else x['response_latency'],axis=1)
             
         elif wrt=='onset':

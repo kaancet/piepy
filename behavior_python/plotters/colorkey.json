@@ -1,13 +1,16 @@
 {
     "spatiotemporal":{
         "0.04cpd_8Hz": {
-            "color":"tab:orange"
+            "color":"tab:orange",
+            "linestyle":"-"
         },
         "0.08cpd_2Hz": {
-            "color":"tab:green"
+            "color":"tab:green",
+            "linestyle":"-"
         },
         "0.16cpd_0.5Hz": {
-            "color":"tab:purple"
+            "color":"tab:purple",
+            "linestyle":"-"
         },
         "0.04cpd_8Hz_opto_0": {
             "color":"cornflowerblue",
@@ -34,7 +37,8 @@
             "linestyle":":"
         },
         "0.1cpd_4Hz_grating":{
-            "color":"tab:gray"
+            "color":"tab:gray",
+            "linestyle":"-"
         },
         "0.1cpd_4Hz_grating_opto_0":{
             "color":"aqua",
@@ -45,7 +49,8 @@
             "linestyle":":"
         },
         "all":{
-            "color":"k"
+            "color":"k",
+            "linestyle":"-"
         }
     },
     "contrast":{
