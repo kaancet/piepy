@@ -3,7 +3,8 @@ from ..behaviorBasePlotters import *
 from .wheelDetectionSessionPlotter import *
 
 
-class WheelDetectionBehaviorSummaryPlotter:
+class WheelDetectionBehaviorPlotter:
+    """ """
     __slots__ = ['animalid','plot_data','plot_stats','fig','stimkey']
     def __init__(self, animalid: str, session_list: list, stimkey: str = None, day_count: int = 9, **kwargs) -> None:
         self.animalid = animalid
@@ -73,7 +74,7 @@ class WheelDetectionProgressionPlotter(BehaviorProgressionPlotter):
         x_axis_data = plot_data[x_axis].to_numpy()
         y_axis_data = plot_data[y_axis].to_numpy()
         
-        ax = self.__plot__(ax,x_axis_data,y_axis_data,color=color)
+        ax = self.__plot__(ax,x_axis_data,y_axis_data,color=color,**kwargs)
         
         #prettify
         fontsize=kwargs.get('fontsize',14)
@@ -122,10 +123,46 @@ class WheelDetectionScatterPlotter(BehaviorScatterPlotter):
         ax.tick_params(axis='both', labelsize=fontsize)
         ax.grid(alpha=0.8,axis='both')
 
-        return ax       
+        return ax     
+    
+    
+class WheelDetectionPCFAPlotter(WheelDetectionProgressionPlotter):  
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame=None, summary_data:pd.DataFrame=None,**kwargs) -> None:
+        super().__init__(animalid, cumul_data, summary_data, **kwargs)
+        
+    def plot(self,x_axis:str='session_difference',ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+        ax = self.plot_summary(x_axis=x_axis,
+                               y_axis='hit_rate',
+                               color='forestgreen',
+                               ax=ax,
+                               **kwargs)
+        ax2 = ax.twinx()
+        ax2 = self.plot_summary(x_axis=x_axis,
+                               y_axis='false_alarm',
+                               color='maroon',
+                               ax=ax2,
+                               **kwargs)
+        
+        #prettify
+        fontsize=kwargs.get('fontsize',14)
+        ax.set_xlabel(x_axis, fontsize=fontsize)
+        ax.set_ylabel('Hit Rate (%)', fontsize=fontsize)
+        ax2.set_ylabel('FA Rate (%)', fontsize=fontsize)
+        
+        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
+        ax.tick_params(axis='both', labelsize=fontsize)
+        ax.grid(alpha=0.8,axis='both')
+        
+        return ax
 
 
-class WheelDetectionPsychometricOverlayPlotter(WheelDetectionBehaviorSummaryPlotter):
+class WheelDetectionPsychometricOverlayPlotter(WheelDetectionBehaviorPlotter):
     __slots__ = []
     def __init__(self, animalid: str, session_list: list, stimkey: str = None, day_count: int = 9, **kwargs) -> None:
         super().__init__(animalid, session_list, stimkey, day_count, **kwargs)
@@ -153,7 +190,7 @@ class WheelDetectionPsychometricOverlayPlotter(WheelDetectionBehaviorSummaryPlot
         ax.legend(handles,labels)
 
 
-class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorSummaryPlotter):
+class WheelDetectionPastDaysGridSummary(WheelDetectionBehaviorPlotter):
     __slots__ = ['plot_type']
     def __init__(self, animalid:str,session_list:list,stimkey:str=None, day_count:int=9,plot_type:str='summary',**kwargs):
         super().__init__(animalid,session_list,stimkey,day_count)
@@ -293,3 +330,38 @@ class WheelDetectionContrastLevelsPlotter(ContrastLevelsPlotter):
         cbar.ax.yaxis.set_ticks_position('left')
         
         return ax, cax
+
+
+class WheelDetectionBehaviorSummaryPlotter(BehaviorBasePlotter):
+    def __init__(self, animalid:str, cumul_data, summary_data, dateinterval:list=None,**kwargs) -> None:
+        super().__init__(animalid,cumul_data, summary_data, **kwargs)
+        self.filter_dates(dateinterval)
+        self.init_plotters()
+        
+    def init_plotters(self):
+        self.plotters = {'weight': WeightProgressionPLotter(self.animalid,self.cumul_data,self.summary_data),
+                         'perf': WheelDetectionPCFAPlotter(self.animalid,self.cumul_data,self.summary_data)
+                        }
+        
+        
+    def plot(self,ax:plt.Axes=None,**kwargs) -> plt.Axes:
+        
+        self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
+        widths = [1,1]
+        heights = [1,1]
+        
+        gs = self.fig.add_gridspec(ncols=len(widths), nrows=len(heights), 
+                                   width_ratios=widths,height_ratios=heights,
+                                   left=kwargs.get('left',0),right=kwargs.get('right',1),
+                                   wspace=kwargs.get('wspace',0.3),hspace=kwargs.get('hspace',0.4))    
+    
+        ax_weight = self.fig.add_subplot(gs[0,0])
+        ax_weight = self.plotters['weight'].plot(ax=ax_weight,marker='o',markersize=5)
+        
+        #plot %80-%90 line
+        
+    
+        ax_perf = self.fig.add_subplot(gs[1,0])
+        ax_perf = self.plotters['perf'].plot(ax=ax_perf,marker='o',markersize=5)
+        
+        self.fig.tight_layout()

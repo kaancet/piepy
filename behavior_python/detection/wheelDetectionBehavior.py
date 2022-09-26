@@ -46,6 +46,12 @@ class WheelDetectionBehavior(Behavior):
             # this loads the most recent found data
             cumul_data = pd.read_pickle(pjoin(self.analysisfolder,self.cumul_file_loc,'detectTrainingData.behave'))
             summary_data = pd.read_csv(pjoin(self.analysisfolder,self.summary_file_loc,'detectTrainingDataSummary.csv'),dtype={'date':str})
+            
+
+            summary_data.sf = summary_data.sf.apply(lambda x: [float(i) for i in x.strip("[]").split(", ")] if not isinstance(x,float) else x)
+            summary_data.tf = summary_data.tf.apply(lambda x: [float(i) for i in x.strip("[]").split(", ")] if not isinstance(x,float) else x)      
+   
+            
             session_counter = summary_data['session_no'].iloc[-1]
             
         if not just_load:

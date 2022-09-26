@@ -64,8 +64,8 @@ class WheelData(SessionData):
         # analysing each stim type and opto and opto_pattern seperately
         for opto in optogenetic:
             for i,_ in enumerate(sfreq):
-                skey = sfreq[i] if sfreq[i]%1 else int(sfreq[i])
-                tkey = tfreq[i] if tfreq[i]%1 else int(tfreq[i])
+                skey = float(sfreq[i])
+                tkey = float(tfreq[i])
                 key = f'{skey}cpd_{tkey}Hz'
                 if isgrating:
                     key += '_grating'

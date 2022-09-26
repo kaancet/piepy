@@ -32,9 +32,9 @@ class SessionMeta:
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
-                        
-        self.sf_values = params['sf'].to_numpy()
-        self.tf_values = params['tf'].to_numpy()
+                               
+        self.sf_values = nonan_unique(params['sf'].to_numpy())
+        self.tf_values = nonan_unique(params['tf'].to_numpy())
         
         self.session_dir = self.prot_file.split('/')[-2]
         self.experiment_name = self.prot_file.split('/')[-1].split('.')[0]

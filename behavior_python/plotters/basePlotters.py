@@ -4,15 +4,6 @@ from ..wheel.wheelUtils import get_trajectory_avg
 from scipy import stats
 import copy
 
-class BehaviorBasePlotter:
-    __slots__ = ['cumul_data','summary_data','fig']
-    def __init__(self,cumul_data:pd.DataFrame=None,summary_data:pd.DataFrame=None) -> None:
-        self.cumul_data = cumul_data
-        self.summary_data = summary_data
-        self.fig = None
-        set_style('analysis')
-        self.color = Color()
-
 
 class BasePlotter:
     __slots__ = ['data','fig','color']

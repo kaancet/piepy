@@ -4,13 +4,14 @@ from ..wheel.wheelUtils import get_trajectory_avg
 from ..utils import getConfig
 
 class BehaviorBasePlotter:
-    __slots__ = ['animalid','cumul_data','summary_data','fig']
+    __slots__ = ['animalid','cumul_data','summary_data','fig','color']
     def __init__(self,animalid:str,cumul_data:pd.DataFrame=None,summary_data:pd.DataFrame=None) -> None:
         self.animalid = animalid
         self.cumul_data = cumul_data
         self.summary_data = summary_data
         self.fig = None
         set_style('analysis')
+        self.color = Color()
         self.summary_data = self.add_difference_columns(self.summary_data)
         
     def list_valid_axes(self,data_type:str='summary'):
@@ -23,11 +24,31 @@ class BehaviorBasePlotter:
                 temp += f'- {c}\n'
         print(temp)
         
+    def filter_dates(self,dateinterval:list=None) -> None:
+        """ Filters both summary and cumul data according to given date interval"""
+        if dateinterval is None:
+            return None
+        
+        if not isinstance(dateinterval,list):
+            raise ValueError('dateinterval argument needs to be a list')
+        else:
+            if len(dateinterval) != 2:
+                raise ValueError(f'dateinterval argument needs to have 2 dates, got {len(dateinterval)}')
+            
+        try:
+            dateinterval_dt = [dt.strptime(d,"%y%m%d").date() for d in dateinterval]
+        except:
+            raise ValueError(f'dates need to be in YYMMDD format, got {dateinterval[0]} instead')
+        
+        self.summary_data = self.summary_data[(self.summary_data['dt_date']>=dateinterval_dt[0]) & (self.summary_data['dt_date']<=dateinterval_dt[1])]
+        self.cumul_data = self.cumul_data[(self.cumul_data['dt_date']>=dateinterval_dt[0]) & (self.cumul_data['dt_date']<=dateinterval_dt[1])]
+        display(f'Filtered data between the dates {dateinterval[0]} - {dateinterval[1]} !')        
+        
     @staticmethod
     def add_difference_columns(data) -> None:
         """ Adds difference columns to the plot data like the day difference, session difference """
         try:
-            start_day = data[data['paradigm'].str.contains('training')]['dt_date'].iloc[0]
+            start_day = data[data['paradigm'].str.contains('training',na=False)]['dt_date'].iloc[0]
             sesh_idx = data.index[data['dt_date']==start_day].to_list()[0]
             start_sesh = data['session_no'].iloc[int(sesh_idx)]
         except:
@@ -60,7 +81,7 @@ class BehaviorProgressionPlotter(BehaviorBasePlotter):
     """ This is a general progression plotter class which can be extended to plot specific progressions
         such as weight, performance, responsetime, etc.
         It has a plotting function that takes the x and y axis and color values"""
-    def __init__(self, animalid, cumul_data, summary_data, **kwargs) -> None:
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame, summary_data:pd.DataFrame, **kwargs) -> None:
         super().__init__(animalid,cumul_data, summary_data, **kwargs)
         
     def check_axes(self,x_axis,y_axis,data_type:str='summary') -> None:
@@ -89,8 +110,8 @@ class BehaviorScatterPlotter(BehaviorBasePlotter):
     """ This is a general scatter plotter class which can be extended to plot specific 
         such as weight, performance, responsetime, etc.
         It has a plotting function that takes the x and y axis and color values"""
-    def __init__(self, animalid:str, cumul_data, summary_data, **kwargs) -> None:
-        super().__init__(animalid, cumul_data, summary_data, **kwargs)
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame, summary_data:pd.DataFrame, **kwargs) -> None:
+        super().__init__(animalid,cumul_data, summary_data, **kwargs)
         
     def check_axes(self,x_axis,y_axis,data_type:str='summary') -> None:
         if data_type == 'summary':
@@ -111,7 +132,6 @@ class BehaviorScatterPlotter(BehaviorBasePlotter):
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
         ax.scatter(x,y,**kwargs)
-        
         return ax
         
 
@@ -128,4 +148,50 @@ class ContrastLevelsPlotter(BehaviorBasePlotter):
                        cmap=cmap)
         return ax,im
     
+        
+class WeightProgressionPLotter(BehaviorProgressionPlotter):
+    def __init__(self, animalid:str, cumul_data:pd.DataFrame, summary_data:pd.DataFrame, **kwargs) -> None:
+        super().__init__(animalid,cumul_data, summary_data, **kwargs)
+        
+    def plot(self,x_axis:str='session_difference',ax:plt.Axes=None,**kwargs):
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+        
+        water_res_starts = self.summary_data[self.summary_data['paradigm']=='water restriction start']
+        
+        for i in range(10): #arbitrary check count, should not be this many water restriction start/stops in reality
+            latest_water_restriction_weight = water_res_starts['weight'].iloc[-1-i]
+            if not np.isnan(latest_water_restriction_weight):
+                break
+            
+        x_axis_data = self.summary_data[x_axis].to_numpy()
+        y_axis_data = self.summary_data['weight'].to_numpy()
+        
+        ax = self.__plot__(ax,x=x_axis_data,y=y_axis_data,color='k',**kwargs)
+        
+        ax.axhline(y=latest_water_restriction_weight*0.9,
+                     color='orange',
+                     linewidth=2,
+                     linestyle=':')
+        
+        ax.axhline(y=latest_water_restriction_weight*0.8,
+                     color='red',
+                     linewidth=2,
+                     linestyle=':')
+        
+        #prettify
+        fontsize=kwargs.get('fontsize',14)
+        ax.set_xlabel(x_axis, fontsize=fontsize)
+        ax.set_ylabel('Weight (g)', fontsize=fontsize)
+
+        ax.tick_params(axis='x', rotation=45,length=20, width=2, which='major')
+        ax.tick_params(axis='both', labelsize=fontsize)
+        ax.grid(alpha=0.8,axis='both')
+
+        return ax
+        
+        
         

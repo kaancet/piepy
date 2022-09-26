@@ -68,7 +68,7 @@ class DetectionPsychometricPlotter(BasePlotter):
             if 'opto' not in k and 0 in contrast_list:
                 # draw the baseline only on non-opto
                 idx_0 = np.where(contrast_list==0)[0][0]
-                ax.plot([0, 100], [correct_ratios[idx_0], correct_ratios[idx_0]], 'gray', linestyle=':', linewidth=2,alpha=0.7)
+                ax.plot([0, 100], [correct_ratios[idx_0], correct_ratios[idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
             
             sides = nonan_unique(v['stim_side'],sort=True)
             for j,side in enumerate(sides):
@@ -162,6 +162,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         
+        ax.grid(alpha=0.4)
         ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
         
         return ax

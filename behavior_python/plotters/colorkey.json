@@ -1,10 +1,10 @@
 {
     "spatiotemporal":{
-        "0.04cpd_8Hz": {
+        "0.04cpd_8.0Hz": {
             "color":"tab:orange",
             "linestyle":"-"
         },
-        "0.08cpd_2Hz": {
+        "0.08cpd_2.0Hz": {
             "color":"tab:green",
             "linestyle":"-"
         },
@@ -12,19 +12,19 @@
             "color":"tab:purple",
             "linestyle":"-"
         },
-        "0.04cpd_8Hz_opto_0": {
+        "0.04cpd_8.0Hz_opto_0": {
             "color":"cornflowerblue",
             "linestyle":"--"
         },
-        "0.04cpd_8Hz_opto_1": {
+        "0.04cpd_8.0Hz_opto_1": {
             "color":"cornflowerblue",
             "linestyle":":"
         },
-        "0.08cpd_2Hz_opto_0": {
+        "0.08cpd_2.0Hz_opto_0": {
             "color":"deepskyblue",
             "linestyle":"--"
         },
-        "0.08cpd_2Hz_opto_1": {
+        "0.08cpd_2.0Hz_opto_1": {
             "color":"deepskyblue",
             "linestyle":":"
         },
@@ -36,15 +36,15 @@
             "color":"mediumblue",
             "linestyle":":"
         },
-        "0.1cpd_4Hz_grating":{
+        "0.1cpd_4.0Hz_grating":{
             "color":"tab:gray",
             "linestyle":"-"
         },
-        "0.1cpd_4Hz_grating_opto_0":{
+        "0.1cpd_4.0Hz_grating_opto_0":{
             "color":"aqua",
             "linestyle":"--"
         },
-        "0.1cpd_4Hz_grating_opto_1":{
+        "0.1cpd_4.0Hz_grating_opto_1":{
             "color":"aqua",
             "linestyle":":"
         },
