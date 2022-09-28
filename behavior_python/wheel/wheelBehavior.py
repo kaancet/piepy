@@ -46,6 +46,10 @@ class WheelBehavior(Behavior):
             # this loads the most recent found data
             cumul_data = pd.read_pickle(pjoin(self.analysisfolder,self.cumul_file_loc,'wheelTrainingData.behave'))
             summary_data = pd.read_csv(pjoin(self.analysisfolder,self.summary_file_loc,'wheelTrainingDataSummary.csv'),dtype={'date':str})
+            # to_csv reads lists as string, parse them to actiual lists
+            summary_data.sf = summary_data.sf.apply(lambda x: [float(i) for i in x.strip("[]").split(", ")] if not isinstance(x,float) else x)
+            summary_data.tf = summary_data.tf.apply(lambda x: [float(i) for i in x.strip("[]").split(", ")] if not isinstance(x,float) else x)      
+
             session_counter = summary_data['session_no'].iloc[-1]
         
         if not just_load:
@@ -59,7 +63,6 @@ class WheelBehavior(Behavior):
                                                         cols=['paradigm','supp water [µl]','user','time [hh:mm]','rig water [µl]'])
                 
                 if len(session_data):
-                    
                     # add behavior related fields as a dictionary to summary data
                     summary_temp = {}
                     summary_temp['date'] = wheel_session.meta.baredate
@@ -91,20 +94,17 @@ class WheelBehavior(Behavior):
                     cumul_data = cumul_data.append(session_data,ignore_index=True)
                     cumul_data['cumul_trial_no'] = np.arange(len(cumul_data)) + 1
                     session_counter += 1
-                    
                 else:
                     display(f' >>> WARNING << NO DATA FOR SESSION {sesh[0]}')
                     continue
-                
-                
             
             if len(missing_sessions):
                 cumul_data = get_running_stats(cumul_data,window_size=50)
-                summary_data = summary_data.append(summary_to_append,ignore_index=True)
+                summary_data = pd.concat([summary_data,summary_to_append],ignore_index=True)
                 # adding the non-data stages of training once in the beginning
                 if len(missing_sessions) == len(self.session_list):
                     non_data = self.get_non_data()
-                    summary_data = summary_data.append(non_data,ignore_index=True)
+                    summary_data = pd.concat([summary_data,non_data],ignore_index=True)
                 # Failsafe date sorting for non-analyzed all trials and empty sessions(?)
                 summary_data = summary_data.sort_values('date', ascending=True)
                 summary_data.reset_index(inplace=True,drop=True)
