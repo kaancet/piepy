@@ -7,24 +7,27 @@ from .wheelDetectionTrial import *
 class WheelDetectionData(SessionData):
     __slots__ = ['stim_data']
     def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
+        super().__init__(data,cutoff_time=-1)
         self._convert = ['wheel','lick','reward']
         self.data = data
         self.make_loadable()
+        self.data = get_running_stats(self.data)
+        
         self.stim_data = self.seperate_stim_data(isgrating)
     
-    def get_answered_trials(self) -> pd.DataFrame:
+    def get_answered_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
         """ Correct answers and early answers """
-        answered_df = self.data[self.data['answer']!=0]
+        answered_df = data_in[data_in['answer']!=0]
         return answered_df
     
-    def get_wait_trials(self) -> pd.DataFrame:
-        wait_df = self.data[self.data['answer']!=-1]
+    def get_wait_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
+        wait_df = data_in[data_in['answer']!=-1]
         return wait_df
     
-    def seperate_stim_data(self,isgrating:bool=False) -> None:
+    def seperate_stim_data(self,data_in:pd.DataFrame,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
         stim_data = {}
-        nonearly_data = self.data[self.data['answer']!=-1]
+        nonearly_data = data_in[data_in['answer']!=-1]
         sfreq = nonan_unique(nonearly_data['spatial_freq'].to_numpy())
         tfreq = nonan_unique(nonearly_data['temporal_freq'].to_numpy())
         optogenetic = np.unique(nonearly_data['opto'])
@@ -165,7 +168,7 @@ class WheelDetectionSession(Session):
             self.set_statelog_column_keys()
 
             session_data = self.get_session_data()
-            session_data = get_running_stats(session_data)
+            # session_data = get_running_stats(session_data)
             
             g = 'grating' in self.data_paths.stimlog
             self.data = WheelDetectionData(session_data,isgrating=g)

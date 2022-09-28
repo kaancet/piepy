@@ -95,20 +95,33 @@ class SessionMeta:
 
 class SessionData:
     """ The SessionData object is to pass around the session data to plotters and analyzers"""
-    __slots__ = ['data','_convert']
-    def __init__(self,data:pd.DataFrame) -> None:
+    __slots__ = ['data','_convert','unfiltered_data']
+    def __init__(self,data:pd.DataFrame,cutoff_time:float=1000) -> None:
         self._convert = []
-        self.data = data
+        self.unfiltered_data = data
+        
+        if cutoff_time == -1:
+            self.data = self.unfiltered_data
+        else:
+            self.data = self.filter_by_response_time(cutoff_time)
         
     def get_subset(self,subset_dict:dict):
-        """ Gets the subset of data that satisfies the conditions in the subset_dict"""
-        df = self.data
+        """ Gets the subset of data that satisfies the conditions in the subset_dict. Makes a copy to return """
+        df = self.data.copy(deep=True)
         for k,v in subset_dict.items():
             if k in self.data.columns:
                 df = df[df[k]==v]
             else:
                 raise ValueError(f'There is no column named {k} in session data')
         return df
+    
+    def filter_by_response_time(self,cutoff_time:float=1000) -> dict:
+        """ Filters the trials by response time, uses ms for time unit. 
+        Makes a copy of the data to return"""
+        out_data = self.unfiltered_data.copy(deep=True)
+        out_data = out_data[out_data['response_latency']<cutoff_time]
+        display(f'Filtered by response time, trial count {len(self.unfiltered_data)} -> {len(out_data)}')
+        return out_data
 
     def make_saveable(self) -> pd.DataFrame:
         """ The columns that have numpy.ndarrays need to be saved as lists in DataFrame columns!

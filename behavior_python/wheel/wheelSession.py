@@ -14,46 +14,45 @@ HIGHTF = 16
 
 class WheelData(SessionData):
     __slots__ = ['stim_data']
-    def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
+    def __init__(self,data:pd.DataFrame,isgrating:bool=False,cutoff_time:float=1000) -> None:
+        super().__init__(data,cutoff_time)
         self._convert = ['stim_pos','wheel','lick','reward']
-        self.data = data
         self.make_loadable()
-        self.stim_data:dict = self.seperate_stim_data(isgrating)
+        self.data = get_running_stats(self.data)
+            
+        self.stim_data = self.seperate_stim_data(self.data,isgrating)
 
     def __repr__(self):
         rep = f'''WheelData Object 
         stim_types = {list(self.stim_data.keys())}'''
         return rep
         
-    def get_novel_trials(self,stim_type:str=None,get_running:bool=True) -> pd.DataFrame:
+    def get_novel_trials(self,stim_type:str=None) -> pd.DataFrame:
         if stim_type is not None:
             if stim_type in self.stim_data.keys():
                 novel_df = self.stim_data[stim_type]
         else:
             novel_df = self.data[self.data['correction']==0]
 
-        if get_running:
-           novel_df = get_running_stats(novel_df)
-
         return novel_df
     
-    def get_answered_trials(self) -> pd.DataFrame:
-        answered_df = self.data[(self.data['correction']==0) & (self.data['answer']!=0)]
+    def get_answered_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
+        answered_df = data_in[(data_in['correction']==0) & (data_in['answer']!=0)]
         return answered_df
     
-    def seperate_stim_data(self,isgrating:bool=False) -> None:
+    def seperate_stim_data(self,data_in:pd.DataFrame,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
         stim_data = {}
-        sfreq,s_idx = np.unique(self.data['spatial_freq'],return_index=True)
+        sfreq,s_idx = np.unique(data_in['spatial_freq'],return_index=True)
         sfreq = sfreq[s_idx.argsort()]
-        tfreq,t_idx = np.unique(self.data['temporal_freq'],return_index=True)
+        tfreq,t_idx = np.unique(data_in['temporal_freq'],return_index=True)
         tfreq = tfreq[t_idx.argsort()]
 
-        optogenetic,o_idx = np.unique(self.data['opto'],return_index=True)
+        optogenetic,o_idx = np.unique(data_in['opto'],return_index=True)
         optogenetic = optogenetic[o_idx.argsort()]
         
-        if 'opto_pattern' in self.data.columns:
-            pattern_ids = np.unique(self.data['opto_pattern'])
+        if 'opto_pattern' in data_in.columns:
+            pattern_ids = np.unique(data_in['opto_pattern'])
             # remove nans
             pattern_ids = pattern_ids[~np.isnan(pattern_ids)]
             # remove -1(no opto no pattern, thi is extra failsafe)
@@ -93,7 +92,7 @@ class WheelData(SessionData):
 
 
 class WheelStats:
-    __slots__ = ['all_trials','novel_trials','answered_trials',
+    __slots__ = ['all_trials','answered_trials',
                  'all_correct_percent','novel_correct_percent','answered_correct_percent',
                  'easy_answered_trials','easy_answered_correct_percent',
                  'left_distribution','right_distribution','median_response_time','cutoff_time',
@@ -114,15 +113,15 @@ class WheelStats:
     def init_from_data(self,data_in:WheelData):
         data = data_in.data
         novel_data = data_in.get_novel_trials()
-        answered_data = data_in.get_answered_trials()
+        answered_data = data_in.get_answered_trials(data)
         #counts
         self.all_trials = len(data)
-        self.novel_trials = len(novel_data)
+        # self.novel_trials = len(novel_data)
         self.answered_trials =len(answered_data)
         
         # percents
         self.all_correct_percent = round(100 * len(data[data['answer']==1]) / len(data),3)
-        self.novel_correct_percent = round(100 * len(novel_data[novel_data['answer']==1]) / len(novel_data),3)
+        # self.novel_correct_percent = round(100 * len(novel_data[novel_data['answer']==1]) / len(novel_data),3)
         self.answered_correct_percent = round(100 * len(answered_data[answered_data['answer']==1]) / len(answered_data),3)
         
         ## performance on easy trials
@@ -132,10 +131,10 @@ class WheelStats:
         self.easy_answered_correct_percent = round(100 * len(easy_answered_data[easy_answered_data['answer']==1]) / len(easy_answered_data),3)
 
         #left
-        left_data = novel_data[novel_data['stim_side'] < 0]
+        left_data = data[data['stim_side'] < 0]
         self.left_distribution= [len(left_data[left_data['answer']==1]), len(left_data[left_data['answer']==-1]),len(left_data[left_data['answer']==0])]
         #right 
-        right_data = novel_data[novel_data['stim_side'] > 0]
+        right_data = data[data['stim_side'] > 0]
         self.right_distribution = [len(right_data[right_data['answer']==1]), len(right_data[right_data['answer']==-1]),len(right_data[right_data['answer']==0])]
 
         self.median_response_time = round(np.median(answered_data['response_latency']),3)
@@ -195,7 +194,7 @@ class WheelSession(Session):
             self.set_statelog_column_keys()
 
             session_data = self.get_session_data()
-            session_data = get_running_stats(session_data)
+            # session_data = get_running_stats(session_data)
             
             g = 'grating' in self.data_paths.stimlog
             self.data = WheelData(session_data,isgrating=g)
