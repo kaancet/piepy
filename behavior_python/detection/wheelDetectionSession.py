@@ -13,7 +13,7 @@ class WheelDetectionData(SessionData):
         self.make_loadable()
         self.data = get_running_stats(self.data)
         
-        self.stim_data = self.seperate_stim_data(isgrating)
+        self.stim_data = self.seperate_stim_data(self.data,isgrating)
     
     def get_answered_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
         """ Correct answers and early answers """
@@ -103,9 +103,9 @@ class WheelDetectionStats:
     
     def init_from_data(self,data_in:WheelDetectionData):
         data = data_in.data
-        answered_data = data_in.get_answered_trials()
+        answered_data = data_in.get_answered_trials(data)
         early_data = answered_data[answered_data['answer']==-1]
-        stim_data = data_in.get_wait_trials()
+        stim_data = data_in.get_wait_trials(data)
         miss_data = stim_data[stim_data['answer']==0]
         #counts
         self.all_trials = len(data)
