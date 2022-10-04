@@ -204,10 +204,6 @@ class OnePSession(Session):
             ref_img_path = pjoin(ref_dir,ref_img[0])
             print(f'Found reference image at {ref_img_path}')
             self.reference_img = tf.imread(ref_img_path)
-            try:
-                self.reference_img = self.reference_img[0,:,:]
-            except IndexError:
-                pass
         else:
             print(f' >>>WARNING<<< No reference image found at {self.data_paths.camPath}')
         

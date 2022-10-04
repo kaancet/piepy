@@ -42,7 +42,6 @@ class DataPaths:
             extension = os.path.splitext(s_file)[1]
             temp_key = extension.split('.')[-1]
             log_path = pjoin(self.sessionPath,s_file).replace("\\",os.sep)
-            setattr(self, temp_key, log_path)
             if self.runno is not None:
                 if self.runno in s_file:
                     log_path = pjoin(self.sessionPath,s_file).replace("\\","/")
