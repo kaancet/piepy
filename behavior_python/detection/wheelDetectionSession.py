@@ -7,7 +7,7 @@ from .wheelDetectionTrial import *
 class WheelDetectionData(SessionData):
     __slots__ = ['stim_data']
     def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
-        super().__init__(data,cutoff_time=-1)
+        super().__init__(data)
         self._convert = ['wheel','lick','reward']
         self.data = data
         self.make_loadable()
@@ -57,25 +57,25 @@ class WheelDetectionData(SessionData):
                         # stimuli data
                         try:
                             # if opto_pattern exists, ususally it should exist
-                            stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                            stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                             'temporal_freq':tfreq[i],
                                                             'opto':opto,
                                                             'opto_pattern':opto_pattern})
                             
                         except:
-                            stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                            stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                             'temporal_freq':tfreq[i],
                                                             'opto':opto})
                             
                     
                 else:
                     key_new = key
-                    stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                    stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                     'temporal_freq':tfreq[i],
                                                     'opto':opto})
                     # early trials don't have any of vstim values => spatial_freq, temporal_freq and opto_pattern
                     # a very crude fix is to get all the early data, concat and order by trial_no
-                    early_data = self.get_subset({'answer':-1})
+                    early_data = self.get_subset(data_in,{'answer':-1})
                     stimuli_data = pd.concat([stimuli_data,early_data])
                     stimuli_data.sort_values('trial_no',inplace=True)
                     

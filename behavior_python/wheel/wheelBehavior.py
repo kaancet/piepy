@@ -30,11 +30,23 @@ class WheelBehavior(Behavior):
         
     def filter_sessions(self):
         return [i for i in self.session_list if 'detect' not in i[0]]
+    
+    @staticmethod
+    def filter_by_response_time(data_in:pd.DataFrame,cutoff_time:int=1000) -> pd.DataFrame:
+        """ Filters the trials in a session by response time, uses ms for time unit. 
+        Makes a copy of the data to return"""
+        out_data = data_in.copy(deep=True)
+        out_data = out_data[out_data['response_latency']<cutoff_time]
+        display(f'Filtered by response time, trial count {len(data_in)} -> {len(out_data)}')
+        return out_data
 
     @timeit('Getting behavior data ...')
-    def get_behavior(self,just_load:bool=False):
+    def get_behavior(self,just_load:bool=False,cutoff_time:int=1000):
         """ Loads the behavior data(cumul and summary)"""
-        missing_sessions = self.get_unanalyzed_sessions('wheel')
+        missing_sessions_full = self.get_unanalyzed_sessions('wheel')
+        #remove habituation sessions
+        missing_sessions = [i for i in missing_sessions_full if 'habituation' not in i[0]]
+        display(f'Removed {len(missing_sessions_full)-len(missing_sessions)} habituation sessions')
         pbar = tqdm(missing_sessions)
         
         if len(missing_sessions) == len(self.session_list):
@@ -57,12 +69,30 @@ class WheelBehavior(Behavior):
             for i,sesh in enumerate(pbar):
                 pbar.set_description(f'Analyzing {sesh[0]} [{i+1}/{len(missing_sessions)}]')
                 wheel_session = WheelSession(sesh[0],load_flag=self.load_data)
-                session_data = wheel_session.data.data
-
-                gsheet_dict = self.get_googlesheet_data(wheel_session.meta.baredate,
-                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]','rig water [µl]'])
                 
-                if len(session_data):
+                
+                if cutoff_time == -1:
+                    session_data = wheel_session.data.data
+                    # session_stim_data = wheel_session.data.stim_data
+                    session_stats = wheel_session.stats
+                    skip = False
+                else:
+                    # do cutoff
+                    session_data = self.filter_by_response_time(wheel_session.data.data,cutoff_time)
+                    
+                    if len(session_data) > 20:
+                        g = 'grating' in wheel_session.data_paths.stimlog
+                        session_data = get_running_stats(session_data)
+                        # session_stim_data = wheel_session.data.seperate_stim_data(session_data,g)
+                        session_stats = WheelStats(data_in=session_data)
+                        skip = False
+                    else:
+                        skip = True
+                        
+                        
+                if not skip:
+                    gsheet_dict = self.get_googlesheet_data(wheel_session.meta.baredate,
+                                                        cols=['paradigm','supp water [µl]','user','time [hh:mm]','rig water [µl]'])
                     # add behavior related fields as a dictionary to summary data
                     summary_temp = {}
                     summary_temp['date'] = wheel_session.meta.baredate
@@ -74,8 +104,8 @@ class WheelBehavior(Behavior):
                     summary_temp['session_no'] = session_counter + 1
                     
                     # put data from session stats
-                    for k in wheel_session.stats.__slots__:
-                        summary_temp[k] = getattr(wheel_session.stats,k,None)
+                    for k in session_stats.__slots__:
+                        summary_temp[k] = getattr(session_stats,k,None)
 
                     # put values from session meta data
                     summary_temp['weight'] = wheel_session.meta.weight
@@ -95,11 +125,12 @@ class WheelBehavior(Behavior):
                     cumul_data['cumul_trial_no'] = np.arange(len(cumul_data)) + 1
                     session_counter += 1
                 else:
-                    display(f' >>> WARNING << NO DATA FOR SESSION {sesh[0]}')
+                    display(f' >>> WARNING << LESS THAN 20 TRIALS({len(session_data)}) FOR SESSION {sesh[0]}, SKIPPING...')
                     continue
             
             if len(missing_sessions):
                 cumul_data = get_running_stats(cumul_data,window_size=50)
+                summary_to_append = pd.DataFrame(summary_to_append)
                 summary_data = pd.concat([summary_data,summary_to_append],ignore_index=True)
                 # adding the non-data stages of training once in the beginning
                 if len(missing_sessions) == len(self.session_list):

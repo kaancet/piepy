@@ -14,12 +14,11 @@ HIGHTF = 16
 
 class WheelData(SessionData):
     __slots__ = ['stim_data']
-    def __init__(self,data:pd.DataFrame,isgrating:bool=False,cutoff_time:float=1000) -> None:
-        super().__init__(data,cutoff_time)
+    def __init__(self,data:pd.DataFrame,isgrating:bool=False) -> None:
+        super().__init__(data)
         self._convert = ['stim_pos','wheel','lick','reward']
         self.make_loadable()
         self.data = get_running_stats(self.data)
-            
         self.stim_data = self.seperate_stim_data(self.data,isgrating)
 
     def __repr__(self):
@@ -35,10 +34,6 @@ class WheelData(SessionData):
             novel_df = self.data[self.data['correction']==0]
 
         return novel_df
-    
-    def get_answered_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
-        answered_df = data_in[(data_in['correction']==0) & (data_in['answer']!=0)]
-        return answered_df
     
     def seperate_stim_data(self,data_in:pd.DataFrame,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
@@ -79,12 +74,12 @@ class WheelData(SessionData):
                     # stimuli data
                     try:
                         # if opto_pattern exists, ususally it should exist
-                        stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                        stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                         'temporal_freq':tfreq[i],
                                                         'opto':opto,
                                                         'opto_pattern':opto_pattern})      
                     except:
-                        stimuli_data = self.get_subset({'spatial_freq':sfreq[i],
+                        stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                         'temporal_freq':tfreq[i],
                                                         'opto':opto})   
                     stim_data[key_new] = stimuli_data
@@ -95,9 +90,9 @@ class WheelStats:
     __slots__ = ['all_trials','answered_trials',
                  'all_correct_percent','novel_correct_percent','answered_correct_percent',
                  'easy_answered_trials','easy_answered_correct_percent',
-                 'left_distribution','right_distribution','median_response_time','cutoff_time',
+                 'left_distribution','right_distribution','median_response_time',
                  'bias','nogo_percent','model_info']
-    def __init__(self,dict_in:dict=None,data_in:WheelData=None) -> None:
+    def __init__(self,dict_in:dict=None,data_in:pd.DataFrame=None) -> None:
 
         if data_in is not None:
             self.init_from_data(data_in)
@@ -110,54 +105,48 @@ class WheelStats:
             rep += f'''{k} = {getattr(self,k,None)}\n'''
         return rep
 
-    def init_from_data(self,data_in:WheelData):
-        data = data_in.data
-        novel_data = data_in.get_novel_trials()
-        answered_data = data_in.get_answered_trials(data)
+    def init_from_data(self,data_in:pd.DataFrame):
+        
+        # novel_data = data_in.get_novel_trials()
+        answered_data = data_in[(data_in['correction']==0) & (data_in['answer']!=0)]
+        
         #counts
-        self.all_trials = len(data)
+        self.all_trials = len(data_in)
         # self.novel_trials = len(novel_data)
         self.answered_trials =len(answered_data)
         
         # percents
-        self.all_correct_percent = round(100 * len(data[data['answer']==1]) / len(data),3)
+        self.all_correct_percent = round(100 * len(data_in[data_in['answer']==1]) / len(data_in),3)
         # self.novel_correct_percent = round(100 * len(novel_data[novel_data['answer']==1]) / len(novel_data),3)
         self.answered_correct_percent = round(100 * len(answered_data[answered_data['answer']==1]) / len(answered_data),3)
         
         ## performance on easy trials
-        easy_trials = data[data['contrast'].isin([1.0,0.5])]
+        easy_trials = data_in[data_in['contrast'].isin([1.0,0.5])]
         easy_answered_data = easy_trials[(easy_trials['correction']==0) & (easy_trials['answer']!=0)]
         self.easy_answered_trials = len(easy_answered_data)
         self.easy_answered_correct_percent = round(100 * len(easy_answered_data[easy_answered_data['answer']==1]) / len(easy_answered_data),3)
 
         #left
-        left_data = data[data['stim_side'] < 0]
+        left_data = data_in[data_in['stim_side'] < 0]
         self.left_distribution= [len(left_data[left_data['answer']==1]), len(left_data[left_data['answer']==-1]),len(left_data[left_data['answer']==0])]
         #right 
-        right_data = data[data['stim_side'] > 0]
+        right_data = data_in[data_in['stim_side'] > 0]
         self.right_distribution = [len(right_data[right_data['answer']==1]), len(right_data[right_data['answer']==-1]),len(right_data[right_data['answer']==0])]
 
         self.median_response_time = round(np.median(answered_data['response_latency']),3)
 
         # add session response_time cutoff to summary by taking the mean of first 10% of trials
         # the overall dataset is used for this to have a more balanced cutoff threshold
-        first10p = int(len(data)/10)
-        cutoff = np.mean(data.loc[:first10p,'response_latency'],axis=None) * 2
-        self.cutoff_time = round(cutoff/1000,3)
+        # first10p = int(len(data)/10)
+        # cutoff = np.mean(data.loc[:first10p,'response_latency'],axis=None) * 2
+        # self.cutoff_time = round(cutoff/1000,3)
         
         n_left_resp = self.left_distribution[0] + self.right_distribution[1]
         n_right_resp = self.right_distribution[0] + self.left_distribution[1]
         self.bias = np.round((n_right_resp - n_left_resp)/(n_right_resp + n_left_resp),3)
         
-        if self.all_trials >= 200:
-            data200 = data[:200]
-           
-        else:
-            data200 = data
-        
-        data200_answered = len(data200[data200['answer']!=0])
-        data200_nogo = len(data200[data200['answer']==0])
-        self.nogo_percent = round(100 * (data200_nogo / data200_answered),3)
+        _nogo = len(data_in[data_in['answer']==0])
+        self.nogo_percent = round(100 * (_nogo / self.all_trials),3)
 
     def init_from_dict(self,dict_in:dict):
         for k,v in dict_in.items():
@@ -176,7 +165,7 @@ class WheelSession(Session):
         """
     def __init__(self,sessiondir, *args,**kwargs):
         super().__init__(sessiondir,*args,**kwargs)
-        
+        self.skipped = False
         start = time.time()
 
         # add specific data paths
@@ -198,7 +187,7 @@ class WheelSession(Session):
             
             g = 'grating' in self.data_paths.stimlog
             self.data = WheelData(session_data,isgrating=g)
-            self.stats = WheelStats(data_in=self.data)
+            self.stats = WheelStats(data_in=self.data.data)
             self.meta.water_given = round(float(np.sum([a[1] for a in self.data.data['reward'] if len(a)])),3)
             if self.meta.water_consumed is not None:
                 self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
@@ -207,6 +196,9 @@ class WheelSession(Session):
                 self.meta.water_per_reward = -1
             
             self.save_session()
+            # else:
+            #     self.skipped = True
+            #     display(f'\n >>> WARNING <<< Session has less than {min_trial_count} trials after filtering({len(self.data.data)}), skipping session...')
 
         end = time.time()
         display('Done! t={0:.2f} s'.format(end-start))

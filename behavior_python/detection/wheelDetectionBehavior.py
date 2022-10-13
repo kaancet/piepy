@@ -101,6 +101,7 @@ class WheelDetectionBehavior(Behavior):
                 
             if len(missing_sessions):
                 cumul_data = get_running_stats(cumul_data,window_size=50)
+                summary_to_append = pd.DataFrame(summary_to_append)
                 summary_data = pd.concat([summary_data,summary_to_append],ignore_index=True)
                 # adding the non-data stages of training once in the beginning
                 if len(missing_sessions) == len(self.session_list):
