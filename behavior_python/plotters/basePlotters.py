@@ -493,7 +493,7 @@ class LickScatterPlotter(BasePlotter):
     
     
 class WheelTrajectoryPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
+    __slots__ = ['stimkey','plot_data','side_sep_dict']
     def __init__(self, data: dict, stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
@@ -507,10 +507,8 @@ class WheelTrajectoryPlotter(BasePlotter):
                  **kwargs)
          
          return ax
-    
-    def plot(self,ax:plt.Axes=None,seperate_by:str='contrast',plot_range:list=None,orientation:str='vertical',**kwargs):
-        if seperate_by not in self.plot_data[self.stimkey].columns:
-            raise ValueError(f'{seperate_by} is not a valid field for this data. try: {self.plot_data.columns}')
+     
+    def plot(self,ax:plt.Axes=None,plot_range:list=None,orientation:str='vertical',**kwargs):
         
         if plot_range is None:
             plot_range = [-200,1500]
@@ -524,25 +522,14 @@ class WheelTrajectoryPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
         
-        
-        seperator_list = np.unique(self.plot_data[self.stimkey][seperate_by])
-        print(seperator_list)
-        
-        sides = np.unique(self.plot_data[self.stimkey]['stim_side'])
-        
-        for i,side in enumerate(sides,start=1):
-            side_slice = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['stim_side'] == side]
+       
+        for side,side_stats in self.side_sep_dict.items():
             
-            for sep in seperator_list:
-                seperator_slice = side_slice[side_slice[seperate_by] == sep]
+            for i,sep in enumerate(side_stats.keys()):
+                sep_stats = side_stats[sep]
+                avg = sep_stats['avg']
+                sem = sep_stats['sem']
                 
-                # shift wheel according to side
-                # wheel_arr = seperator_slice['wheel'].apply(lambda x: x+side)
-                # seperator_slice.loc[:,'wheel'] = seperator_slice.loc[:,'wheel'] + s
-
-                wheel_stats = get_trajectory_avg(seperator_slice['wheel'].to_numpy())
-                avg = wheel_stats['avg']
-                sem = wheel_stats['sem']
                 if avg is not None:
                     avg = avg[find_nearest(avg[:,0],plot_range[0])[0]:find_nearest(avg[:,0],plot_range[1])[0]]
                     sem = sem[find_nearest(sem[:,0],plot_range[0])[0]:find_nearest(sem[:,0],plot_range[1])[0]]
@@ -567,7 +554,7 @@ class WheelTrajectoryPlotter(BasePlotter):
                                     alpha=0.2,
                                     color=c,
                                     linewidth=0)
-                    
+        
         fontsize = kwargs.get('fontsize',20)
         if orientation=='vertical':
             ax.set_ylim(plot_range)
@@ -575,11 +562,6 @@ class WheelTrajectoryPlotter(BasePlotter):
             # closed loop start line
             ax.plot(ax.get_xlim(),[0,0],'k',linewidth=2, alpha=0.8)
 
-            # trigger zones
-            ax.plot([0,0], ax.get_ylim(), 'green', linestyle='--', linewidth=2,alpha=0.8)
-
-            ax.plot([-50,-50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
-            ax.plot([50,50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
             ax.set_xlabel('Wheel Position (deg)', fontsize=fontsize)
             ax.set_ylabel('Time(ms)', fontsize=fontsize)
             ax.yaxis.set_label_position('right')
@@ -591,11 +573,6 @@ class WheelTrajectoryPlotter(BasePlotter):
             # closed loop start line
             ax.plot([0,0],ax.get_ylim(),'k',linewidth=2, alpha=0.8)
 
-            # trigger zones
-            ax.plot(ax.get_xlim(),[0,0], 'green', linestyle='--', linewidth=2,alpha=0.8)
-
-            ax.plot(ax.get_xlim(),[-50,-50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
-            ax.plot(ax.get_xlim(),[50,50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
             ax.set_ylabel('Wheel Position (deg)', fontsize=fontsize)
             ax.set_xlabel('Time(ms)', fontsize=fontsize)
         

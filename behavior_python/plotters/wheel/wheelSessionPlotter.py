@@ -256,11 +256,54 @@ class WheelLickScatterPlotter(LickScatterPlotter):
 
 class WheelWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
-    def __init__(self, data: dict, stimkey: str = None, **kwargs):
+    def __init__(self, data: dict, stimkey: str = None, seperate_by:str='contrast',**kwargs):
         super().__init__(data, stimkey, **kwargs)
+        self.side_sep_dict = self.seperate_wheel_data(seperate_by)
+    
+    def seperate_wheel_data(self,seperate_by:str='contrast'):
+        """ Seperates the wheel data depending on the seperate_by argument 
+        Returns a dict with sides as keys, that has dictionaries with seperator values as keys"""
+        side_sep_dict = {}
+        if seperate_by not in self.plot_data[self.stimkey].columns:
+            raise ValueError(f'{seperate_by} is not a valid field for this data. try: {self.plot_data.columns}')
         
-    def modify_data(self):
-        pass
+        seperator_list = nonan_unique(self.plot_data[self.stimkey][seperate_by])
+        
+        sides = np.unique(self.plot_data[self.stimkey]['stim_side'])
+        
+        for i,side in enumerate(sides,start=1):
+            side_slice = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['stim_side'] == side]
+            
+            side_sep_dict[side] = {}
+            for sep in seperator_list:
+                seperator_slice = side_slice[side_slice[seperate_by] == sep]
+                
+                # shift wheel according to side
+                # wheel_arr = seperator_slice['wheel'].apply(lambda x: x+side)
+                # seperator_slice.loc[:,'wheel'] = seperator_slice.loc[:,'wheel'] + s
+
+                wheel_stats = get_trajectory_avg(seperator_slice['wheel'].to_numpy())
+                side_sep_dict[side][sep] = {'avg': wheel_stats['avg'],
+                                            'sem':wheel_stats['sem']}
+                                
+        return side_sep_dict
+                
+    def plot(self,ax:plt.Axes=None,plot_range:list=None,orientation:str='vertical',**kwargs):
+        ax = super().plot(ax,plot_range,orientation,**kwargs)
+        
+        if orientation=='vertical':
+            # trigger zones
+            ax.plot([0,0], ax.get_ylim(), 'green', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot([-50,-50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot([50,50], ax.get_ylim(), 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+
+        else:
+            # trigger zones
+            ax.plot(ax.get_xlim(),[0,0], 'green', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot(ax.get_xlim(),[-50,-50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            ax.plot(ax.get_xlim(),[50,50], 'maroon', linestyle='--', linewidth=2,alpha=0.8)
+            
+        return ax
             
 
 class WheelSummaryPlotter:
