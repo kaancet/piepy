@@ -16,6 +16,9 @@ class BasePlotter:
         set_style('analysis')
         self.color = Color()
         self.color.check_stim_colors(data.keys())
+        
+        c_list = nonan_unique(data[list(data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
 
     def set_data(self,data:dict):
         if isinstance(data,dict):
@@ -30,24 +33,29 @@ class BasePlotter:
         stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
         if stimkey is not None and stimkey not in data.keys():
-            # error handling
-            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
+            if stimkey != 'all':
+                # error handling
+                raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
         elif stimkey is None and len(data.keys()) == 1:
             # if there is only one key just take that data in the dictionary
             key = list(data.keys())[0]
             return data,key
-        elif stimkey is None and len(data.keys()) > 1:
+        elif stimkey == 'all':
             # if there are multiple keys and no stimkey selection, concat all the data and sort by trial_no
             stimkey = 'all'
             all_data = {stimkey:pd.DataFrame()}
             for k,v in data.items():
-                all_data = pd.concat([all_data,v])
-            all_data.sort_values('trial_no',inplace=True)
+                all_data[stimkey] = pd.concat([all_data[stimkey],v],ignore_index=True)
+            all_data[stimkey].sort_values('trial_no',inplace=True)
             return all_data,stimkey
-        else:
+        elif stimkey is None and len(data.keys()) > 1:
             # select specific data
+            key = ''
+            return data,stimkey
+        else:
             d = {stimkey:data[stimkey]}
             return d,stimkey
+
     
     @staticmethod
     def threshold_responsetime(stim_data: pd.DataFrame, time_cutoff, cutoff_mode: str = 'low') -> pd.DataFrame:
@@ -268,8 +276,8 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
             kwargs.pop('fontsize')
         ax.scatter(contrast,time,alpha=0.6,**kwargs)
         
-        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,c='b')
-        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[mean,mean],linewidth=3,c='k')
+        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,c=kwargs.get('color','b'))
+        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[mean,mean],linewidth=3,c=kwargs.get('color','k'))
                    
         #elements is returned to be able to modify properties of plot elements outside(e.g. color)
 
@@ -508,10 +516,12 @@ class WheelTrajectoryPlotter(BasePlotter):
          
          return ax
      
-    def plot(self,ax:plt.Axes=None,plot_range:list=None,orientation:str='vertical',**kwargs):
+    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',**kwargs):
         
-        if plot_range is None:
-            plot_range = [-200,1500]
+        if plot_range_time is None:
+            plot_range_time = [-200,1500]
+        if plot_range_trj is None:
+            plot_range_trj = [-75,75]
         
         if ax is None:
             if orientation=='vertical':
@@ -522,7 +532,6 @@ class WheelTrajectoryPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
         
-       
         for side,side_stats in self.side_sep_dict.items():
             
             for i,sep in enumerate(side_stats.keys()):
@@ -531,34 +540,43 @@ class WheelTrajectoryPlotter(BasePlotter):
                 sem = sep_stats['sem']
                 
                 if avg is not None:
-                    avg = avg[find_nearest(avg[:,0],plot_range[0])[0]:find_nearest(avg[:,0],plot_range[1])[0]]
-                    sem = sem[find_nearest(sem[:,0],plot_range[0])[0]:find_nearest(sem[:,0],plot_range[1])[0]]
+                    avg = avg[find_nearest(avg[:,0],plot_range_time[0])[0]:find_nearest(avg[:,0],plot_range_time[1])[0]]
+                    sem = sem[find_nearest(sem[:,0],plot_range_time[0])[0]:find_nearest(sem[:,0],plot_range_time[1])[0]]
                     
                     c = self.color.contrast_keys[str(sep)]['color']
                     if orientation=='vertical':
                         wheel_x = avg[:,1]+side
                         wheel_y = avg[:,0]
-                    else:
-                        wheel_x = avg[:,0]
-                        wheel_y = avg[:,1]+side
-                    ax = self.__plot__(ax,wheel_x,wheel_y,
-                                    color=c,
-                                    label=sep if i==1 else '_',
-                                    **kwargs)
-                    
-
-                    sem_plus = wheel_y + sem[:,1]
-                    sem_minus = wheel_y - sem[:,1]
-                    
-                    ax.fill_between(sem[:,0],sem_plus,sem_minus,
+                        sem_plus = wheel_x + sem[:,1]
+                        sem_minus = wheel_x - sem[:,1]
+                        
+                        ax.fill_betweenx(sem_plus,sem_minus,sem[:,0],
                                     alpha=0.2,
                                     color=c,
                                     linewidth=0)
+                    else:
+                        wheel_x = avg[:,0]
+                        wheel_y = avg[:,1]+side
+                        sem_plus = wheel_y + sem[:,1]
+                        sem_minus = wheel_y - sem[:,1]
+                        
+                        ax.fill_between(sem[:,0],sem_plus,sem_minus,
+                                    alpha=0.2,
+                                    color=c,
+                                    linewidth=0)
+                        
+                    ax = self.__plot__(ax,wheel_x,wheel_y,
+                                    color=c,
+                                    label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
+                                    **kwargs)
+                    
+
+                    
         
         fontsize = kwargs.get('fontsize',20)
         if orientation=='vertical':
-            ax.set_ylim(plot_range)
-            ax.set_xlim([-75, 75])
+            ax.set_ylim(plot_range_time)
+            ax.set_xlim(plot_range_trj)
             # closed loop start line
             ax.plot(ax.get_xlim(),[0,0],'k',linewidth=2, alpha=0.8)
 
@@ -567,8 +585,8 @@ class WheelTrajectoryPlotter(BasePlotter):
             ax.yaxis.set_label_position('right')
             ax.yaxis.tick_right()
         else:
-            ax.set_xlim(plot_range)
-            ax.set_ylim([-75, 75])
+            ax.set_xlim(plot_range_time)
+            ax.set_ylim(plot_range_trj)
             
             # closed loop start line
             ax.plot([0,0],ax.get_ylim(),'k',linewidth=2, alpha=0.8)

@@ -15,7 +15,6 @@ class DetectionPsychometricPlotter(BasePlotter):
 
         ax.errorbar(x, y, err,
                     linewidth=2,
-                    markersize=kwargs.get('markersize',15),
                     markeredgecolor=kwargs.get('markeredgecolor','w'),
                     markeredgewidth=kwargs.get('markeredgewidth',2),
                     elinewidth=kwargs.get('elinewidth',3),
@@ -54,6 +53,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                                    correct_ratios,confs,
                                    label=f'{k}(N={len(v)})',
                                    marker = 'o',
+                                   markersize=18,
                                    color = self.color.stim_keys[k]['color'] if color is None else color,
                                    linestyle = self.color.stim_keys[k]['linestyle'],
                                    **kwargs)
@@ -82,48 +82,25 @@ class DetectionPsychometricPlotter(BasePlotter):
                     confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                     side_correct_ratios.append(ratio)
                     
-                if not seperate_sides:
-                    pass     
-                    # if side < 0:
-                    #     marker = '$<$'
-                    #     color = self.color.stim_keys[k]['color']
-                    # elif side > 0:
-                    #     marker = '$>$'
-                    #     color = self.color.stim_keys[k]['color']
-                    # else:
-                    #     marker = 'o'
-                    #     if 'opto' in k:
-                    #         color = self.color.stim_keys[k]['color']
-                    #     else:
-                    #         color = 'k'
-                    # ax.scatter(100*contrast_list,side_correct_ratios,
-                    #         marker=marker,
-                    #         s = 100,
-                    #         color=color)
-                    # dots = ax.collections[-1]
-                    # offsets = dots.get_offsets()
-                    # jittered_offsets = offsets + np.random.uniform(0, 3, offsets.shape)
-                    # dots.set_offsets(jittered_offsets)
-                    
-                else:
+                if seperate_sides:
                     if side < 0:
                         label = f'{k}_left(N={len(side_data)})'
-                        color = 'purple'
-                        if 'opto' in k:
-                            color = 'pink'
+                        init_color = self.color.name2hsv(self.color.stim_keys[k]['color'])
+                        # make color lighter here
+                        color = self.color.lighten(init_color,l_coeff=0.5)
                         marker = '<'
+                        markersize = 24
                     elif side > 0:
                         label = f'{k}_right(N={len(side_data)})'
                         color = self.color.stim_keys[k]['color']
                         marker = '>'
+                        markersize = 24
                     else:
-                        if 'opto' in k:
-                            color = self.color.stim_keys[k]['color']
-                        else:
-                            color = 'k'
+                        color = self.color.stim_keys[k]['color']
                         label = f'{k}_zero(N={len(side_data)})'
                         marker = 'o'
-                        
+                        markersize = 18
+                    
                     jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast_list])
                     jittered_offset[0] += np.random.uniform(0,jitter)/100
                     ax = self.__plot__(ax,
@@ -132,6 +109,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                                        confs,
                                        label=label,
                                        marker = marker,
+                                       markersize=markersize,
                                        color=color,
                                        linestyle=self.color.stim_keys[k].get('linestyle','-')) 
                     # dots = ax.collections[-1]
@@ -186,7 +164,7 @@ class DetectionPerformancePlotter(PerformancePlotter):
 
 class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
     __slots__ = []
-    def __init__(self, data, stimkey: str, **kwargs):
+    def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
         self.modify_data()
         
@@ -496,6 +474,8 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
     def __init__(self, data: dict, stimkey: str = None, seperate_by:str='contrast',**kwargs):
         super().__init__(data, stimkey, **kwargs)
+        
+        
         self.side_sep_dict = self.seperate_wheel_data(seperate_by)
         
     def seperate_wheel_data(self,seperate_by):
@@ -526,13 +506,12 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
                     side_sep_dict[side][sep] = {'avg': wheel_stats['avg'],
                                                 'sem':wheel_stats['sem']}
                 else:
-                    print(f'NO dat ain {side} and {sep}')
+                    print(f'NO data in {side} and {sep}')
                                 
         return side_sep_dict
     
-    def plot(self,ax:plt.Axes=None,plot_range:list=None,orientation:str='vertical',**kwargs):
-        ax = super().plot(ax,plot_range,orientation,**kwargs)
-        
+    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',**kwargs):
+        ax = super().plot(ax,plot_range_time,plot_range_trj,orientation,**kwargs)
         return ax
 
    
