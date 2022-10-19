@@ -163,8 +163,26 @@ class Color:
         if len(new_colors):
             self.stim_keys = {**self.stim_keys, **new_colors}
         else:
-            print('Colors checkout!!')
+            print('Stimulus colors checkout!!')
+            
+    def check_contrast_colors(self,contrasts):
+        """ Checks if the contrast key has a corresponding color value, if not adds a randomly selected color the key"""
+        new_colors = {}
+        for c in contrasts:
+            str_key = str(c)
+            if str_key not in self.contrast_keys:
+                print(f'Stim key {str_key} not present in colors, generating random color...')
+                colors = {**mcolors.BASE_COLORS, **mcolors.CSS4_COLORS}
+                new_colors[str_key] = {'color':np.random.choice(list(colors.keys()),replace=False,size=1)[0]}
+        if len(new_colors):
+            self.contrast_keys = {**self.contrast_keys, **new_colors}
+        else:
+            print('Contrast colors checkout!!')
                 
+    @staticmethod
+    def name2hsv(color_name:str)->tuple:
+        rgb = mcolors.to_rgb(color_name)
+        return Color.rgb2hsv(rgb,normalize=False) # no need to normalize here, already 0-1 range from mcolors method
     
     @staticmethod
     def hex2rgb(hex_code):
@@ -184,8 +202,9 @@ class Color:
         return tuple(i/255. for i in rgb_tuple)
     
     @staticmethod
-    def rgb2hsv(rgb_tuple):
-        rgb_tuple = Color.normalize_rgb(rgb_tuple)
+    def rgb2hsv(rgb_tuple,normalize:bool=True):
+        if normalize:
+            rgb_tuple = Color.normalize_rgb(rgb_tuple)
         r,g,b = rgb_tuple
         return colorsys.rgb_to_hsv(r,g,b)
     
@@ -193,6 +212,15 @@ class Color:
     def hsv2rgb(hsv_tuple):
         h,s,v = hsv_tuple
         return colorsys.hsv_to_rgb(h,s,v)
+    
+    @staticmethod
+    def lighten(hsv_tuple,l_coeff:float=0.33):
+        """Lightens the hsv_tuple by l_coeff percent, aka from S subtracts l_coeff percent of the S value"""
+        if not l_coeff <=1 and l_coeff>=0:
+            raise ValueError(f'The l_coeff value needs to be 0<=l_coeff<= 1, got {l_coeff} instead')
+        h,s,v = hsv_tuple
+        s_new = s - (s*l_coeff)
+        return Color.rgb2hex(Color.hsv2rgb((h,s_new,v)))
     
     @staticmethod
     def make_color_range(start_color:str,rng:int,s_limit:list=[20,100],v_limit:list=[20,100]) -> list:
