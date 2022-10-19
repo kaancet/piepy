@@ -48,7 +48,7 @@ class WheelDetectionTrial(Trial):
             vstim_dict['spatial_freq'] = vstim_dict['sf_r'] if vstim_dict['correct'] else vstim_dict['sf_l']
             vstim_dict['temporal_freq'] = vstim_dict['tf_r'] if vstim_dict['correct'] else vstim_dict['tf_l']
             # vstim_dict['stim_side'] = vstim_dict['stim_pos'][0]
-            vstim_dict['stim_side'] =  1 if vstim_dict['correct'] else -1
+            vstim_dict['stim_side'] = vstim_dict['posx_r'][0] if vstim_dict['correct'] else vstim_dict['posx_l'][0]
             if vstim_dict['contrast'] == 0:
                 vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
@@ -61,10 +61,11 @@ class WheelDetectionTrial(Trial):
         wheel_arr = np.array(wheel_data[['duinotime', 'value']])
         
         # resetting the wheel position so the 0 point is aligned with trialstart and converting encoder ticks into degrees
+        # also resetting the time frame into the trial itself rather than the whole session
         if len(wheel_arr):
             reset_idx = find_nearest(wheel_arr[:,0],time_anchor)[0]
             wheel_arr[:,1] = np.apply_along_axis(reset_wheel_pos,0,wheel_arr[:,1],reset_idx) * wheel_deg_per_tick
-
+            wheel_arr[:,0] = np.apply_along_axis(lambda x: x-time_anchor,0,wheel_arr[:,0])
         return wheel_arr
     
     def trial_data_from_logs(self) -> list:
@@ -92,6 +93,10 @@ class WheelDetectionTrial(Trial):
             
             # stim start
             elif curr_trans == 'stimstart':
+                # get the stim start from riglog
+                if 'screen' in self.data.keys():
+                    if not self.data['screen'].empty:
+                        trial_log_data['stim_start_rig'] = self.data['screen']['duinotime'].iloc[0]
                 trial_log_data['stim_start'] = row[self.column_keys['elapsed']]
                 
             # correct 
@@ -123,6 +128,10 @@ class WheelDetectionTrial(Trial):
                 
             # stim dissappear
             elif curr_trans == 'stimendcorrect' or curr_trans == 'stimendincorrect':
+                if 'screen' in self.data.keys():
+                    if not self.data['screen'].empty:
+                        trial_log_data['stim_end_rig'] = self.data['screen']['duinotime'].iloc[1]
+
                 trial_log_data['stim_end'] = row[self.column_keys['elapsed']]
 
             # correction or trial end
@@ -132,7 +141,13 @@ class WheelDetectionTrial(Trial):
                 vstim_log = self.get_vstim_props(trial_log_data['answer'])
                 
                 rig_logs = {}
-                rig_logs['wheel'] = self.get_wheel_pos(trial_log_data['cue_start'])
+                
+                if 'stim_start_rig' in trial_log_data.keys():
+                    # stim trials have their wheels reset on cue start
+                    rig_logs['wheel'] = self.get_wheel_pos(trial_log_data['stim_start_rig'])
+                else:
+                    # early trials have their wheels reset on cue start
+                    rig_logs['wheel'] = self.get_wheel_pos(trial_log_data['cue_start'])
                 rig_logs['lick'] = self.get_licks()
                 rig_logs['reward'] = self.get_reward()
                 
