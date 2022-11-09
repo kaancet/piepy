@@ -75,9 +75,9 @@ class WheelDetectionData(SessionData):
                                                     'opto':opto})
                     # early trials don't have any of vstim values => spatial_freq, temporal_freq and opto_pattern
                     # a very crude fix is to get all the early data, concat and order by trial_no
-                    early_data = self.get_subset(data_in,{'answer':-1})
-                    stimuli_data = pd.concat([stimuli_data,early_data])
-                    stimuli_data.sort_values('trial_no',inplace=True)
+                    # early_data = self.get_subset(data_in,{'answer':-1})
+                    # stimuli_data = pd.concat([stimuli_data,early_data])
+                    # stimuli_data.sort_values('trial_no',inplace=True)
                     
                 stim_data[key_new] = stimuli_data
         return stim_data
