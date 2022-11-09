@@ -128,11 +128,15 @@ class WheelDetectionTrial(Trial):
                 
             # stim dissappear
             elif curr_trans == 'stimendcorrect' or curr_trans == 'stimendincorrect':
-                if 'screen' in self.data.keys():
-                    if not self.data['screen'].empty:
-                        trial_log_data['stim_end_rig'] = self.data['screen']['duinotime'].iloc[1]
+                if 'stim_start' in trial_log_data.keys():
+                    # if there is no stim start, there should be no stim end
+                    if 'screen' in self.data.keys():
+                        if not self.data['screen'].empty:
+                            trial_log_data['stim_end_rig'] = self.data['screen']['duinotime'].iloc[1]
 
-                trial_log_data['stim_end'] = row[self.column_keys['elapsed']]
+                    trial_log_data['stim_end'] = row[self.column_keys['elapsed']]
+                else:
+                    pass
 
             # correction or trial end
             elif curr_trans == 'correction' or curr_trans == 'trialend':
