@@ -508,13 +508,32 @@ class WheelTrajectoryPlotter(BasePlotter):
          
     @staticmethod
     def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
-         ax.plot(wheel_pos, wheel_t,
-                 linewidth=kwargs.get('linewidth',5),
-                 alpha=1,
-                 zorder=2,
-                 **kwargs)
-         
-         return ax
+        ax.plot(wheel_pos, wheel_t,
+                linewidth=kwargs.get('linewidth',5),
+                alpha=1,
+                zorder=2,
+                **kwargs)
+        
+        return ax
+    
+    @staticmethod
+    def __plot_density__(ax,x_bins,y_dens,**kwargs): 
+        ax.plot(x_bins[1:],y_dens,c='k',alpha=0.8,linewidth=3,**kwargs) #right edges
+        return ax
+    
+    def pool_trial_ends(self) -> np.ndarray:
+        """ Gets the relative(from stim start) stimulus end times"""
+        pooled_ends = []
+        pool_data = self.plot_data[self.stimkey].copy(deep=True)
+        # pool_data = pool_data[(pool_data['answer']==1) & (pool_data['isCatch']==0)]
+        pool_data = pool_data[pool_data['isCatch']==0]
+        for row in pool_data.itertuples():
+            try:
+                temp = row.stim_end_rig - row.stim_start_rig
+            except AttributeError:
+                temp = row.stim_end - row.stim_start
+            pooled_ends.append(temp)
+        return np.array(pooled_ends)
      
     def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',**kwargs):
         

@@ -22,7 +22,14 @@ class DetectionPsychometricPlotter(BasePlotter):
                     **kwargs)
 
         return ax
-
+    
+    @staticmethod
+    def _dict2label(d:dict) -> str:
+        ret = f'''\nN=['''
+        for k,v in d.items():
+            ret += fr'''{float(k)*100}:$\bf{v}$, '''
+        ret += ''']'''
+        return ret
         
     def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
         if ax is None:
@@ -39,8 +46,10 @@ class DetectionPsychometricPlotter(BasePlotter):
             
             correct_ratios = []
             confs = []
+            counts = {}
             for c in contrast_list:
                 c_data = v[v['contrast']==c]
+                counts[c] = len(c_data)
                 ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
                 confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                 correct_ratios.append(ratio)
@@ -51,7 +60,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                 ax = self.__plot__(ax,
                                    (100*contrast_list)+jittered_offset,
                                    correct_ratios,confs,
-                                   label=f'{k}(N={len(v)})',
+                                   label=f'{k}{self._dict2label(counts)}',
                                    marker = 'o',
                                    markersize=18,
                                    color = self.color.stim_keys[k]['color'] if color is None else color,
@@ -76,28 +85,30 @@ class DetectionPsychometricPlotter(BasePlotter):
                 contrast_list = nonan_unique(side_data['contrast'])
                 side_correct_ratios = []
                 confs = []
+                counts = {}
                 for c in contrast_list:
                     c_data = side_data[side_data['contrast']==c]
+                    counts[c] = len(c_data)
                     ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
                     confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                     side_correct_ratios.append(ratio)
                     
                 if seperate_sides:
                     if side < 0:
-                        label = f'{k}_left(N={len(side_data)})'
+                        label = f'{k}{self._dict2label(counts)}'
                         init_color = self.color.name2hsv(self.color.stim_keys[k]['color'])
                         # make color lighter here
                         color = self.color.lighten(init_color,l_coeff=0.5)
                         marker = '<'
                         markersize = 24
                     elif side > 0:
-                        label = f'{k}_right(N={len(side_data)})'
+                        label = f'{k}{self._dict2label(counts)}'
                         color = self.color.stim_keys[k]['color']
                         marker = '>'
                         markersize = 24
                     else:
                         color = self.color.stim_keys[k]['color']
-                        label = f'{k}_zero(N={len(side_data)})'
+                        label = f'{k}{self._dict2label(counts)}'
                         marker = 'o'
                         markersize = 18
                     
@@ -510,8 +521,21 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
                                 
         return side_sep_dict
     
-    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',**kwargs):
+    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',bin_width:int=None,**kwargs):
         ax = super().plot(ax,plot_range_time,plot_range_trj,orientation,**kwargs)
+        
+        if bin_width is not None:
+            bins = np.arange(0,plot_range_time[-1],bin_width,dtype='int')
+            
+            ax_density = ax.inset_axes([0,0,1,0.1],frameon=False,sharex=ax)
+            
+            pooled_licks = self.pool_trial_ends()
+            
+            hist,bins = np.histogram(pooled_licks,bins=bins,range=plot_range_time)
+            ax_density = self.__plot_density__(ax_density,bins,hist,zorder=2,**kwargs)
+            ax_density.set_yticks([])
+            ax_density.set_yticklabels([])
+        
         return ax
 
    
