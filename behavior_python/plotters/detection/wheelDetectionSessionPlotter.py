@@ -1,10 +1,13 @@
+from tkinter import font
 from ..basePlotters import *
 from behavior_python.wheel.wheelAnalysis import WheelAnalysis
+from scipy.stats import fisher_exact, barnard_exact
 
 
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data:dict, **kwargs) -> None:
         super().__init__(data,**kwargs)
+        self.hit_rate_dict = self.get_hitrates()
         
     @staticmethod
     def __plot__(ax,x,y,err,**kwargs):
@@ -30,15 +33,53 @@ class DetectionPsychometricPlotter(BasePlotter):
             ret += fr'''{float(k)*100}:$\bf{v}$, '''
         ret += ''']'''
         return ret
-        
-    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
-        if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
-            ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
+    
+    def get_pvalues(self,stim_side:str='contra',stim_data_keys:list=None):
+        """ Calculates the p-values for each contrast in different datasets"""
+        if stim_data_keys is None:
+            stim_data_keys = self.data.keys()
             
+        if not len(stim_data_keys)==2:
+            display('Can only calculate p-values for 2x2 contingency tables')
+            return 0
+        
+        contingency_table = np.zeros((2,2))
+        contingency_table[:] = np.nan
+        table_dict = {}
+        for i,k in enumerate(stim_data_keys):
+            v = self.data[k]
+            if stim_side == 'contra':
+                side_data = v[v['stim_side'] > 0]
+            elif stim_side == 'ipsi':
+                side_data = v[v['stim_side'] < 0]
+            elif stim_side == 'catch':
+                side_data = v[v['stim_side'] == 0]
+            else:
+                raise ValueError(f'stim_side argument only takes [contra,ipsi,catch] values')
+            
+            contrast_list = nonan_unique(side_data['contrast'],sort=True)
+            
+            for c in contrast_list:
+                data_correct = side_data[(side_data['contrast']==c) & (side_data['answer']==1)]
+                data_incorrect = side_data[(side_data['contrast']==c) & (side_data['answer']==0)]
+                
+                if c not in table_dict.keys():
+                    table_dict[c] = np.copy(contingency_table)
+                
+                table_dict[c][i,:] = [len(data_correct), len(data_incorrect)]
+                
+        p_values = {}
+        for k,table in table_dict.items():
+            res = barnard_exact(table, alternative='two-sided')
+            p_values[k] = res.pvalue
+        
+        return p_values
+    
+    def get_hitrates(self) -> None:
+        """ Gets the hit rates, counts and confidence intervals for each contrast for each side """
+        hit_rate_dict = {}
         for i,k in enumerate(self.data.keys()):
+            hit_rate_dict[k] = {}
             # get contrast data
             v = self.data[k]
             
@@ -53,33 +94,15 @@ class DetectionPsychometricPlotter(BasePlotter):
                 ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
                 confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                 correct_ratios.append(ratio)
-                
-            if not seperate_sides:
-                jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast_list])
-                jittered_offset[0] += np.random.uniform(0,jitter)/100
-                ax = self.__plot__(ax,
-                                   (100*contrast_list)+jittered_offset,
-                                   correct_ratios,confs,
-                                   label=f'{k}{self._dict2label(counts)}',
-                                   marker = 'o',
-                                   markersize=18,
-                                   color = self.color.stim_keys[k]['color'] if color is None else color,
-                                   linestyle = self.color.stim_keys[k]['linestyle'],
-                                   **kwargs)
-                
-                # lines = ax.collections[-1]
-                # line_offsets = lines.get_offsets()
-                # jittered_offsets = line_offsets + np.random.uniform(0, jitter, line_offsets.shape)
-                # lines.set_offsets(jittered_offsets)
-                # #dots
-                # ax.lines[0]._ind_offset = jitter
-                
-            if 'opto' not in k and 0 in contrast_list:
-                # draw the baseline only on non-opto
-                idx_0 = np.where(contrast_list==0)[0][0]
-                ax.plot([0, 100], [correct_ratios[idx_0], correct_ratios[idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
+            
+            hit_rate_dict[k]['nonsided'] = {'contrasts': contrast_list,
+                                            'counts':counts,
+                                            'hit_rate':correct_ratios,
+                                            'confs':confs
+                                            }
             
             sides = nonan_unique(v['stim_side'],sort=True)
+            
             for j,side in enumerate(sides):
                 side_data = v[v['stim_side']==side]
                 contrast_list = nonan_unique(side_data['contrast'])
@@ -93,43 +116,131 @@ class DetectionPsychometricPlotter(BasePlotter):
                     confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
                     side_correct_ratios.append(ratio)
                     
-                if seperate_sides:
+                hit_rate_dict[k][side] = {'contrasts':contrast_list,
+                                          'counts':counts,
+                                          'hit_rate':side_correct_ratios,
+                                          'confs':confs
+                                          }
+                
+        return hit_rate_dict
+    
+    def get_deltahit(self,contrast:float,side:str='contra'):
+        """Return the delta between the hitrates of a given contrast """
+        
+        non_opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' not in k][0]
+        opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' in k][0]
+        
+        if side=='catch':
+            side_key = 0.0
+        elif side == 'contra':
+            temp_keys = [k for k in self.hit_rate_dict[non_opto_key].keys() if isinstance(k,float)]
+            side_key = [k for k in temp_keys if k>0][0]
+        elif side == 'ipsi':
+            temp_keys = [k for k in self.hit_rate_dict[non_opto_key].keys() if isinstance(k,float)]
+            side_key = [k for k in temp_keys if k<0][0]
+        
+        nonopto_dict = self.hit_rate_dict[non_opto_key][side_key]
+        idx_c = np.where(nonopto_dict['contrasts']==contrast)[0][0]
+        nonopto_hit = nonopto_dict['hit_rate'][idx_c]
+        
+        opto_dict = self.hit_rate_dict[opto_key][side_key]
+        idx_c = np.where(opto_dict['contrasts']==contrast)[0][0]
+        opto_hit = opto_dict['hit_rate'][idx_c]
+        
+        return nonopto_hit - opto_hit
+        
+                
+    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
+        """ Plots the hit rates with 95% confidence intervals"""
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            if 'figsize' in kwargs:
+                kwargs.pop('figsize')
+                
+        p_values_contra = self.get_pvalues()
+        p_values_catch = self.get_pvalues(stim_side='catch')
+        self.p_values = {**p_values_contra,**p_values_catch}
+        
+        
+        for k,v in self.hit_rate_dict.items():
+            if not seperate_sides:
+                data = v['nonsided']
+                jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in data['contrasts']])
+                jittered_offset[0] += np.random.uniform(0,jitter)/100
+                ax = self.__plot__(ax,
+                                   (100*data['contrasts'])+jittered_offset,
+                                   data['hit_rate'],
+                                   data['confs'],
+                                   label=f"{k}{self._dict2label(data['counts'])}",
+                                   marker = 'o',
+                                   markersize=18,
+                                   color = self.color.stim_keys[k]['color'] if color is None else color,
+                                   linestyle = self.color.stim_keys[k]['linestyle'],
+                                   **kwargs)
+        
+                if 'opto' not in k and 0 in data['contrasts']:
+                    # draw the baseline only on non-opto
+                    idx_0 = np.where(data['contrasts']==0)[0][0]
+                    ax.plot([0, 100], [data['hit_rate'][idx_0], data['hit_rate'][idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
+                
+            
+            else:
+                sides = [k for k in v.keys() if isinstance(k,float)]
+                for j,side in enumerate(sides):
+                    side_data = v[side]
+ 
+                    label = f"{k}{self._dict2label(side_data['counts'])}"
                     if side < 0:
-                        label = f'{k}{self._dict2label(counts)}'
                         init_color = self.color.name2hsv(self.color.stim_keys[k]['color'])
                         # make color lighter here
                         color = self.color.lighten(init_color,l_coeff=0.5)
                         marker = '<'
                         markersize = 24
                     elif side > 0:
-                        label = f'{k}{self._dict2label(counts)}'
                         color = self.color.stim_keys[k]['color']
                         marker = '>'
                         markersize = 24
                     else:
                         color = self.color.stim_keys[k]['color']
-                        label = f'{k}{self._dict2label(counts)}'
                         marker = 'o'
                         markersize = 18
-                    
-                    jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast_list])
+                        
+                        if 'opto' not in k:
+                            # draw the baseline only on non-opto
+                            ax.plot([0, 100], [side_data['hit_rate'], side_data['hit_rate']], 'k', linestyle=':', linewidth=2,alpha=0.7)
+                        
+                    jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in side_data['contrasts']])
                     jittered_offset[0] += np.random.uniform(0,jitter)/100
                     ax = self.__plot__(ax,
-                                       100*contrast_list+jittered_offset,
-                                       side_correct_ratios,
-                                       confs,
-                                       label=label,
-                                       marker = marker,
-                                       markersize=markersize,
-                                       color=color,
-                                       linestyle=self.color.stim_keys[k].get('linestyle','-')) 
-                    # dots = ax.collections[-1]
-                    # offsets = dots.get_offsets()
-                    # jittered_offsets = offsets + np.random.uniform(0, jitter, offsets.shape)
-                    # dots.set_offsets(jittered_offsets)
+                                    100*side_data['contrasts']+jittered_offset,
+                                    side_data['hit_rate'],
+                                    side_data['confs'],
+                                    label=label,
+                                    marker = marker,
+                                    markersize=markersize,
+                                    color=color,
+                                    linestyle=self.color.stim_keys[k].get('linestyle','-')) 
+                    
+                    # if 'opto' not in k and 0 in side_data['contrasts']:
+                    # # draw the baseline only on non-opto
+                    #     idx_0 = np.where(side_data['contrasts']==0)[0][0]
+                    #     ax.plot([0, 100], [side_data['hit_rate'][idx_0], side_data['hit_rate'][idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
         
         # prettify
         fontsize = kwargs.get('fontsize',15)
+               
+        # put the significance starts
+        for c,p in self.p_values.items():
+            stars = ''
+            if p < 0.001:
+                stars = '***'
+            elif 0.001 < p < 0.01:
+                stars = '**'
+            elif 0.01 < p < 0.05:
+                stars = '*'
+                
+            ax.text(100*c, 1.04, stars, fontsize=30)
         
         ax.set_xscale('symlog')
         # ax.xaxis.set_major_locator(ticker.FixedLocator([int(100*c) for c in contrast_list]))
@@ -137,12 +248,11 @@ class DetectionPsychometricPlotter(BasePlotter):
         ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
         ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
         
-        ax.set_ylim([0,1]) 
+        ax.set_ylim([0,1.05]) 
         
         ax.set_xlabel('Contrast Value (%)', fontsize=fontsize)
         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
-        
         
         ax.spines['left'].set_bounds(0, 1) 
         # ax.spines['bottom'].set_bounds(0, 1)
