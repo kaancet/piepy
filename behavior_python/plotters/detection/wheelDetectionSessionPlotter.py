@@ -124,7 +124,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                 
         return hit_rate_dict
     
-    def get_deltahit(self,contrast:float,side:str='contra'):
+    def get_deltahit(self,contrast:float,side:str='contra',normalize:bool=False):
         """Return the delta between the hitrates of a given contrast """
         
         non_opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' not in k][0]
@@ -147,7 +147,11 @@ class DetectionPsychometricPlotter(BasePlotter):
         idx_c = np.where(opto_dict['contrasts']==contrast)[0][0]
         opto_hit = opto_dict['hit_rate'][idx_c]
         
-        return nonopto_hit - opto_hit
+        delta_hit = nonopto_hit - opto_hit
+        if normalize:
+            delta_hit = delta_hit/(1.01-nonopto_hit)
+        
+        return delta_hit
         
                 
     def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
