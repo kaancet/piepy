@@ -1,3 +1,4 @@
+import cv2
 from .stacks import *
 from .myio import *
 from .retinoutils import *
@@ -50,7 +51,7 @@ class OnePSession(Session):
     def _get_avg(self):
         pass
     
-    def get_trial_average(self,batch_count:int=None,downsample:int=1,frame_count:int=0,trial_count:int=None,pre_stim_t:float=0,post_stim_t:float=0):
+    def get_trial_average(self,batch_count:int=None,downsample:int=1,frame_count:int=0,trial_count:int=None,pre_stim_t:float=0,post_stim_t:float=0,overF:bool=False):
         """ This is the main method that stim_mat, binary file and tiff stack is created 
         and the average is calculated for the run """
         
@@ -154,8 +155,7 @@ class OnePSession(Session):
                     downed_frames = read_frames[:,0,:,:]
                 temp_mat[bookmark:bookmark+read_frames.shape[0],0,:,:] = downed_frames
                 bookmark += read_frames.shape[0]
-
-            
+                
             batch_last_frame_div = np.where(end_frames==curr_batch[-1])[0][0]
             npbar = tqdm(range(batch_last_frame_div - prev_last_frame))
             for mult,j in enumerate(npbar):
@@ -171,14 +171,21 @@ class OnePSession(Session):
             
             del temp_mat
         
+        # do df
         if extra_start_frames:
-            mean_mat = mean_mat - np.mean(mean_mat[:extra_start_frames+1,:,:,:],axis=0)
+            mean_mat[:,0,:,:] = mean_mat[:,0,:,:] - np.mean(mean_mat[:extra_start_frames+1,0,:,:],axis=0)
         else:
-            mean_mat = mean_mat - np.mean(mean_mat,axis=0)
-        self.trial_average = mean_mat.astype(np.float16)
+            mean_mat[:,0,:,:] = mean_mat[:,0,:,:] - np.mean(mean_mat[:,0,:,:],axis=0)
+            
+        if overF: # do df/F
+            mean_mat[:,0,:,:] = mean_mat[:,0,:,:] / (np.mean(mean_mat[:extra_start_frames+1,0,:,:],axis=0)+333)
+            
+        # self.trial_average = mean_mat.astype(np.float16)
+        # normalize to 16bit uint
+        self.trial_average = cv2.normalize(mean_mat, None, 0, 2**16, cv2.NORM_MINMAX, cv2.CV_16U)
         
         #save average
-        self.save_avg(frame_count=frame_count,trial_count=trial_count,start_frames=extra_start_frames,extra_end_frames=extra_end_frames,downsample=downsample,batch_count=batch_count)
+        self.save_avg(frame_count=frame_count,trial_count=trial_count,start_frames=extra_start_frames,extra_end_frames=extra_end_frames,downsample=downsample,batch_count=batch_count,overF=overF)
    
     def save_avg(self,**kwargs):
         run_analysis_dir = pjoin(self.data_paths.analysisPath,self.name)
@@ -187,7 +194,7 @@ class OnePSession(Session):
             os.makedirs(mov_dir)
         save_name = pjoin(mov_dir,f'avg_{self.run_no}')
         for k,v in kwargs.items():
-            save_name += f'_{k}{v}'
+            save_name += f'_{k}{int(v)}'
         save_name += '.tif'
         tf.imwrite(save_name,self.trial_average)
         print(f'Saved {save_name}')
