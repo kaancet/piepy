@@ -3,6 +3,8 @@ from os.path import join as pjoin
 from ..wheel.wheelUtils import get_trajectory_avg
 from scipy import stats
 import copy
+import matplotlib.patheffects as pe
+from behavior_python.detection.wheelDetectionAnalysis import DetectionAnalysis
 
 
 class BasePlotter:
@@ -237,11 +239,11 @@ class ResponseTimePlotter(BasePlotter):
 
 
 class ResponseTimeScatterCloudPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.plot_data = self.threshold_responsetime(self.plot_data,kwargs.get('cutoff'))   
+        self.plot_data = self.threshold_responsetime(self.plot_data,kwargs.get('cutoff')) 
+        self.stat_analysis = DetectionAnalysis(data=self.plot_data)  
     
     @staticmethod      
     def time_to_log(time_data_arr:np.ndarray) -> np.ndarray:
@@ -276,8 +278,13 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
             kwargs.pop('fontsize')
         ax.scatter(contrast,time,alpha=0.6,**kwargs)
         
-        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,c=kwargs.get('color','b'))
-        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[mean,mean],linewidth=3,c=kwargs.get('color','k'))
+        #median
+        ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,
+                c=kwargs.get('color','b'),path_effects=[pe.Stroke(linewidth=6, foreground='b'), pe.Normal()])
+        
+        #mean
+        # ax.plot([pos-cloud_width/2,pos+cloud_width/2],[mean,mean],linewidth=3,
+        #         c=kwargs.get('color','k'),path_effects=[pe.Stroke(linewidth=6, foreground='k'), pe.Normal()])
                    
         #elements is returned to be able to modify properties of plot elements outside(e.g. color)
 
@@ -292,7 +299,7 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         
         signed_contrasts = [] 
         plot_pos = []
-        
+        resp_times_dict = defaultdict(dict)
         for si,skey in enumerate(self.plot_data.keys()):
             stim_data = self.plot_data[skey]
             for i,c in enumerate(np.unique(stim_data['contrast']),start=1):
@@ -307,20 +314,46 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
                         cpos = np.sign(side) * i
                     
                     plot_pos.append(cpos)
-                    signed_contrasts.append(np.sign(side)*c)   
-                    response_times = self.time_to_log(side_data['response_latency'].to_numpy())
+                    signed_contrasts.append(np.sign(side)*c)
+                    non_miss_data = side_data[side_data['answer']==1]
+                    resp_times_dict[cpos][skey] = side_data['response_latency'].to_numpy()
+                    response_times = self.time_to_log(non_miss_data['response_latency'].to_numpy())
+                    
                     x_dots,y_dots = self.make_dot_cloud(response_times,cpos,cloud_width)
                     median = np.median(response_times)
                     mean = np.mean(response_times)
                     
                     ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
-                                    s=30,
                                     color=self.color.stim_keys[skey]['color'] if skey!='all' else 'k',
-                                    label=skey if skey is not None and j==0 and c==0.5 else '_',
+                                    label=skey if skey is not None and j==0 and c==0.125 else '_',
                                     **kwargs)
-
+                    
+        # add p values
+        for cpos,c_d in resp_times_dict.items():
+            if len(c_d) < 2:
+                continue #skip contrasts with single stim data type
+            non_opto_key = [k for k in c_d.keys() if 'opto' not in k][0]
+            non_opto_rt = c_d[non_opto_key]
+            
+            opto_keys = [k for k in c_d.keys() if 'opto' in k]
+            for i,o_k in enumerate(opto_keys):
+                opto_rt = c_d[o_k]
+                if len(opto_rt):
+                    p = self.stat_analysis.get_pvalues_nonparametric(non_opto_rt,opto_rt)
+                else:
+                    continue
+                stars = ''
+                if p < 0.001:
+                    stars = '***'
+                elif 0.001 < p < 0.01:
+                    stars = '**'
+                elif 0.01 < p < 0.05:
+                    stars = '*'
+                
+                ax.text(cpos, 2000+i*200, stars,color=self.color.stim_keys[o_k]['color'], fontsize=30)
+        
         # mid line
-        ax.set_ylim([90,30000])
+        ax.set_ylim([90,3000])
         ax.plot([0,0],ax.get_ylim(),color='gray',linewidth=2,alpha=0.5)
         
         fontsize = kwargs.get('fontsize',20)
@@ -343,9 +376,9 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         ax.xaxis.set_major_formatter(ticker.FixedFormatter([str(int(100*c)) for c in np.sort(signed_contrasts)]))
             
         ax.grid(alpha=0.5,axis='y')
-        ax.legend(loc='upper right',fontsize=fontsize,frameon=False)
+        ax.legend(loc='upper left',fontsize=fontsize,frameon=False)
         
-        return ax   
+        return ax    
         
 
 class ResponseTimeHistogramPlotter(BasePlotter):

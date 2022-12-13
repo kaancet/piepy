@@ -1,13 +1,12 @@
-from tkinter import font
 from ..basePlotters import *
-from behavior_python.wheel.wheelAnalysis import WheelAnalysis
 from scipy.stats import fisher_exact, barnard_exact
 
 
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data:dict, **kwargs) -> None:
         super().__init__(data,**kwargs)
-        self.hit_rate_dict = self.get_hitrates()
+        self.stat_analysis = DetectionAnalysis(data=data)
+        self.hit_rate_dict = self.stat_analysis.get_hitrates()
         
     @staticmethod
     def __plot__(ax,x,y,err,**kwargs):
@@ -15,7 +14,6 @@ class DetectionPsychometricPlotter(BasePlotter):
         x,y and err values are used to plot the points and 
         x_fit and y_fit values are used to plot the fitted curve
         """
-
         ax.errorbar(x, y, err,
                     linewidth=2,
                     markeredgecolor=kwargs.get('markeredgecolor','w'),
@@ -33,127 +31,7 @@ class DetectionPsychometricPlotter(BasePlotter):
             ret += fr'''{float(k)*100}:$\bf{v}$, '''
         ret += ''']'''
         return ret
-    
-    def get_pvalues(self,stim_side:str='contra',stim_data_keys:list=None):
-        """ Calculates the p-values for each contrast in different datasets"""
-        if stim_data_keys is None:
-            stim_data_keys = self.data.keys()
-            
-        if not len(stim_data_keys)==2:
-            display('Can only calculate p-values for 2x2 contingency tables')
-            return 0
-        
-        contingency_table = np.zeros((2,2))
-        contingency_table[:] = np.nan
-        table_dict = {}
-        for i,k in enumerate(stim_data_keys):
-            v = self.data[k]
-            if stim_side == 'contra':
-                side_data = v[v['stim_side'] > 0]
-            elif stim_side == 'ipsi':
-                side_data = v[v['stim_side'] < 0]
-            elif stim_side == 'catch':
-                side_data = v[v['stim_side'] == 0]
-            else:
-                raise ValueError(f'stim_side argument only takes [contra,ipsi,catch] values')
-            
-            contrast_list = nonan_unique(side_data['contrast'],sort=True)
-            
-            for c in contrast_list:
-                data_correct = side_data[(side_data['contrast']==c) & (side_data['answer']==1)]
-                data_incorrect = side_data[(side_data['contrast']==c) & (side_data['answer']==0)]
-                
-                if c not in table_dict.keys():
-                    table_dict[c] = np.copy(contingency_table)
-                
-                table_dict[c][i,:] = [len(data_correct), len(data_incorrect)]
-                
-        p_values = {}
-        for k,table in table_dict.items():
-            res = barnard_exact(table, alternative='two-sided')
-            p_values[k] = res.pvalue
-        
-        return p_values
-    
-    def get_hitrates(self) -> None:
-        """ Gets the hit rates, counts and confidence intervals for each contrast for each side """
-        hit_rate_dict = {}
-        for i,k in enumerate(self.data.keys()):
-            hit_rate_dict[k] = {}
-            # get contrast data
-            v = self.data[k]
-            
-            contrast_list = nonan_unique(v['contrast'],sort=True)
-            
-            correct_ratios = []
-            confs = []
-            counts = {}
-            for c in contrast_list:
-                c_data = v[v['contrast']==c]
-                counts[c] = len(c_data)
-                ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
-                confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
-                correct_ratios.append(ratio)
-            
-            hit_rate_dict[k]['nonsided'] = {'contrasts': contrast_list,
-                                            'counts':counts,
-                                            'hit_rate':correct_ratios,
-                                            'confs':confs
-                                            }
-            
-            sides = nonan_unique(v['stim_side'],sort=True)
-            
-            for j,side in enumerate(sides):
-                side_data = v[v['stim_side']==side]
-                contrast_list = nonan_unique(side_data['contrast'])
-                side_correct_ratios = []
-                confs = []
-                counts = {}
-                for c in contrast_list:
-                    c_data = side_data[side_data['contrast']==c]
-                    counts[c] = len(c_data)
-                    ratio = len(c_data[c_data['answer']==1]) / len(c_data[c_data['answer']!=-1])
-                    confs.append(1.96 * np.sqrt((ratio * (1 - ratio)) / len(c_data)))
-                    side_correct_ratios.append(ratio)
-                    
-                hit_rate_dict[k][side] = {'contrasts':contrast_list,
-                                          'counts':counts,
-                                          'hit_rate':side_correct_ratios,
-                                          'confs':confs
-                                          }
-                
-        return hit_rate_dict
-    
-    def get_deltahit(self,contrast:float,side:str='contra',normalize:bool=False):
-        """Return the delta between the hitrates of a given contrast """
-        
-        non_opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' not in k][0]
-        opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' in k][0]
-        
-        if side=='catch':
-            side_key = 0.0
-        elif side == 'contra':
-            temp_keys = [k for k in self.hit_rate_dict[non_opto_key].keys() if isinstance(k,float)]
-            side_key = [k for k in temp_keys if k>0][0]
-        elif side == 'ipsi':
-            temp_keys = [k for k in self.hit_rate_dict[non_opto_key].keys() if isinstance(k,float)]
-            side_key = [k for k in temp_keys if k<0][0]
-        
-        nonopto_dict = self.hit_rate_dict[non_opto_key][side_key]
-        idx_c = np.where(nonopto_dict['contrasts']==contrast)[0][0]
-        nonopto_hit = nonopto_dict['hit_rate'][idx_c]
-        
-        opto_dict = self.hit_rate_dict[opto_key][side_key]
-        idx_c = np.where(opto_dict['contrasts']==contrast)[0][0]
-        opto_hit = opto_dict['hit_rate'][idx_c]
-        
-        delta_hit = nonopto_hit - opto_hit
-        if normalize:
-            delta_hit = delta_hit/(1.01-nonopto_hit)
-        
-        return delta_hit
-        
-                
+                   
     def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
         """ Plots the hit rates with 95% confidence intervals"""
         if ax is None:
@@ -161,11 +39,15 @@ class DetectionPsychometricPlotter(BasePlotter):
             ax = self.fig.add_subplot(1,1,1)
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
-                
-        p_values_contra = self.get_pvalues()
-        p_values_catch = self.get_pvalues(stim_side='catch')
-        self.p_values = {**p_values_contra,**p_values_catch}
         
+        non_opto_key = [k for k in self.data.keys() if 'opto' not in k][0]
+        opto_keys = [k for k in self.data.keys() if 'opto' in k]
+        
+        self.p_values = {}
+        for o_k in opto_keys:
+            p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k])
+            p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k],stim_side='catch')
+            self.p_values[o_k] = {**p_values_contra,**p_values_catch}
         
         for k,v in self.hit_rate_dict.items():
             if not seperate_sides:
@@ -235,16 +117,17 @@ class DetectionPsychometricPlotter(BasePlotter):
         fontsize = kwargs.get('fontsize',15)
                
         # put the significance starts
-        for c,p in self.p_values.items():
-            stars = ''
-            if p < 0.001:
-                stars = '***'
-            elif 0.001 < p < 0.01:
-                stars = '**'
-            elif 0.01 < p < 0.05:
-                stars = '*'
-                
-            ax.text(100*c, 1.04, stars, fontsize=30)
+        for i,k in enumerate(self.p_values.keys()):
+            for c,p in self.p_values[k].items():
+                stars = ''
+                if p < 0.001:
+                    stars = '***'
+                elif 0.001 < p < 0.01:
+                    stars = '**'
+                elif 0.01 < p < 0.05:
+                    stars = '*'
+                    
+                ax.text(100*c, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
         
         ax.set_xscale('symlog')
         # ax.xaxis.set_major_locator(ticker.FixedLocator([int(100*c) for c in contrast_list]))
