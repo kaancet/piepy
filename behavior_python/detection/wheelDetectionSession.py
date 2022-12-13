@@ -66,8 +66,9 @@ class WheelDetectionData(SessionData):
                             stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
                                                             'temporal_freq':tfreq[i],
                                                             'opto':opto})
+                        
+                        stim_data[key_new] = stimuli_data
                             
-                    
                 else:
                     key_new = key
                     stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
@@ -79,7 +80,7 @@ class WheelDetectionData(SessionData):
                     # stimuli_data = pd.concat([stimuli_data,early_data])
                     # stimuli_data.sort_values('trial_no',inplace=True)
                     
-                stim_data[key_new] = stimuli_data
+                    stim_data[key_new] = stimuli_data
         return stim_data
         
 
