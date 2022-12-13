@@ -10,45 +10,34 @@ from behavior_python.detection.wheelDetectionAnalysis import DetectionAnalysis
 class BasePlotter:
     __slots__ = ['data','fig','color']
     def __init__(self,data:dict,**kwargs):
-        self.data = self.set_data(data)
+        self.data = data
         self.fig = None
         # session data is a dict that has the stimulus types
         # this dictionary resides insides of another dict 
         # that is usually the novel_stim_data, or data dict inside session 
         set_style('analysis')
         self.color = Color()
-        self.color.check_stim_colors(data.keys())
-        
-        c_list = nonan_unique(data[list(data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
-
-    def set_data(self,data:dict):
-        if isinstance(data,dict):
-            return data
-        else:
-            TypeError(f'The input session data should be a pandas DataFrame with keys corresponding to different stimulus types. Got {type(data)} instead')
 
     @staticmethod
-    def select_stim_data(data: dict, stimkey:str=None) -> dict:
+    def select_stim_data(data_in, stimkey:str=None) -> dict:
         """ Returns the selected stimulus type from session data
-        data : Main session data dictionary
-        stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
+            data_in : Main session data object or stim_data dictionary
+            stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
-        if stimkey is not None and stimkey not in data.keys():
-            if stimkey != 'all':
-                # error handling
-                raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
+        if isinstance(data_in,dict):
+            data = data_in
+        else:
+            data = data_in.stim_data 
+            data_all = data_in.data
+        if stimkey is not None and stimkey not in data.keys() and stimkey != 'all':
+            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
         elif stimkey is None and len(data.keys()) == 1:
             # if there is only one key just take that data in the dictionary
             key = list(data.keys())[0]
             return data,key
         elif stimkey == 'all':
-            # if there are multiple keys and no stimkey selection, concat all the data and sort by trial_no
             stimkey = 'all'
-            all_data = {stimkey:pd.DataFrame()}
-            for k,v in data.items():
-                all_data[stimkey] = pd.concat([all_data[stimkey],v],ignore_index=True)
-            all_data[stimkey].sort_values('trial_no',inplace=True)
+            all_data = {'all':data_all}
             return all_data,stimkey
         elif stimkey is None and len(data.keys()) > 1:
             # select specific data
@@ -58,7 +47,6 @@ class BasePlotter:
             d = {stimkey:data[stimkey]}
             return d,stimkey
 
-    
     @staticmethod
     def threshold_responsetime(stim_data: pd.DataFrame, time_cutoff, cutoff_mode: str = 'low') -> pd.DataFrame:
         """ Returns the stimulus data filtered by the given response time
@@ -125,6 +113,10 @@ class PerformancePlotter(BasePlotter):
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data,self.stimkey = self.select_stim_data(self.data,stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
 
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
@@ -192,6 +184,10 @@ class ResponseTimePlotter(BasePlotter):
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data,self.stimkey = self.select_stim_data(self.data,stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
         
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
@@ -242,6 +238,10 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
         self.plot_data = self.threshold_responsetime(self.plot_data,kwargs.get('cutoff')) 
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)  
     
@@ -386,6 +386,10 @@ class ResponseTimeHistogramPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
         
     @staticmethod
     def bin_times(time_arr,bin_width=50,bins:np.ndarray=None):
@@ -412,6 +416,10 @@ class ResponseTypeBarPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
         
     @staticmethod
     def position_bars(bar_loc,bar_count,bar_width,padding):
@@ -435,6 +443,10 @@ class LickPlotter(BasePlotter):
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
         
     def pool_licks(self):
         
@@ -500,6 +512,10 @@ class LickScatterPlotter(BasePlotter):
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
     
     @staticmethod
     def __plot_scatter__(ax,t,lick_arr,**kwargs):
@@ -538,6 +554,11 @@ class WheelTrajectoryPlotter(BasePlotter):
     def __init__(self, data: dict, stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
+        self.color.check_stim_colors(self.plot_data.keys())
+        
+        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
+        self.color.check_contrast_colors(c_list)
+        
          
     @staticmethod
     def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
