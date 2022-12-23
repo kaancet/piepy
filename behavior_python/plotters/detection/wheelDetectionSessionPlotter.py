@@ -643,7 +643,7 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
    
 class DetectionSummaryPlotter:
     __slots__ = ['data','fig','plotters','stimkey']
-    def __init__(self, data:dict, stimkey:str=None,**kwargs):
+    def __init__(self, data, stimkey:str=None,**kwargs):
         self.data = data # gets the stim data dict
         self.stimkey = stimkey
         self.fig = None
@@ -651,12 +651,12 @@ class DetectionSummaryPlotter:
         
     def init_plotters(self):
         # TODO: Make this changable
-        self.plotters = {'performance':DetectionPerformancePlotter(self.data, self.stimkey),
+        self.plotters = {'performance':DetectionPerformancePlotter(self.data, stimkey='all'),
                          'responsepertype':DetectionResponseTimeScatterCloudPlotter(self.data,self.stimkey),
-                         'resptype':DetectionResponseTypeBarPlotter(self.data,self.stimkey),
-                         'licktotal':LickPlotter(self.data, self.stimkey),
-                         'resphist':DetectionResponseHistogramPlotter(self.data,self.stimkey),
-                         'respscatter':DetectionResponseScatterPlotter(self.data,self.stimkey),
+                         'resptype':DetectionResponseTypeBarPlotter(self.data,stimkey='all'),
+                         'licktotal':LickPlotter(self.data, stimkey='all'),
+                         'resphist':DetectionResponseHistogramPlotter(self.data,stimkey='all'),
+                         'respscatter':DetectionResponseScatterPlotter(self.data,stimkey='all'),
                          'lickdist':DetectionLickScatterPlotter(self.data,self.stimkey)}
     
     def plot(self,**kwargs):
