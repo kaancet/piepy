@@ -32,16 +32,26 @@ class OnePSession(Session):
     
     def get_frame_t(self):
         """ Gets the avg frame time from experiment duration and frame count """
-        tmp = [i for i in self.camlog_comments if '# [' in i]
-        exp_start = dt.strptime(tmp[0].split(']')[0][-8:],'%H:%M:%S')
-        exp_end = dt.strptime(tmp[-1].split(']')[0][-8:],'%H:%M:%S')
         
-        exp_dur = exp_end - exp_start
-        exp_dur = exp_dur.seconds
-        
-        total_frame_count = len(self.camlog)
-        
-        self.frame_t = (exp_dur/total_frame_count) # in seconds
+        avg_ftime = np.mean(np.diff(self.camlog.timestamp))
+        if avg_ftime == 0:
+            tmp = [i for i in self.camlog_comments if '# [' in i]
+            exp_start = dt.strptime(tmp[0].split(']')[0][-8:],'%H:%M:%S')
+            exp_end = dt.strptime(tmp[-1].split(']')[0][-8:],'%H:%M:%S')
+            
+            exp_dur = exp_end - exp_start
+            exp_dur = exp_dur.seconds
+            
+            total_frame_count = len(self.camlog)
+            
+            self.frame_t = (exp_dur/total_frame_count) # in seconds
+        else:
+            # potential failsafe for pycams rig differences?
+            if avg_ftime<1:
+                self.frame_t = avg_ftime 
+            else:
+                self.frame_t = avg_ftime / 10_000 # pycams measures in 10 microsecond intervals
+            
         display(f'Avg. frame time: {self.frame_t*1000} ms, does this make sense?')
     
     def get_stack(self):
