@@ -41,7 +41,9 @@ class DetectionAnalysis:
             
             for j,side in enumerate(sides):
                 side_data = v[v['stim_side']==side]
-                contrast_list = nonan_unique(side_data['contrast'])
+                contrast_list = nonan_unique(side_data['contrast'],sort=True)
+                if side<0:
+                    contrast_list = contrast_list[::-1]
                 side_correct_ratios = []
                 confs = []
                 counts = {}
