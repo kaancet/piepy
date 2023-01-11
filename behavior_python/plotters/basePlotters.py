@@ -12,16 +12,13 @@ class BasePlotter:
     def __init__(self,data:dict,**kwargs):
         self.data = data
         self.fig = None
-        # session data is a dict that has the stimulus types
-        # this dictionary resides insides of another dict 
-        # that is usually the novel_stim_data, or data dict inside session 
         set_style('analysis')
         self.color = Color()
 
     @staticmethod
     def select_stim_data(data_in, stimkey:str=None) -> dict:
         """ Returns the selected stimulus type from session data
-            data_in : Main session data object or stim_data dictionary
+            data_in : Main session data object OR stim_data dictionary
             stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
         if isinstance(data_in,dict):

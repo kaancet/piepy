@@ -180,6 +180,9 @@ class DetectionPsychometricBarPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
                 
+            if 'key_pairs' in kwargs:
+                key_pairs = kwargs.pop('key_pairs')
+                
         non_opto_key = [k for k in self.data.keys() if 'opto' not in k][0]
         opto_keys = [k for k in self.data.keys() if 'opto' in k]
         
@@ -220,7 +223,7 @@ class DetectionPsychometricBarPlotter(BasePlotter):
                        width=bar_width,
                        color = self.color.stim_keys[k]['color'],
                        error_kw = {'elinewidth':2},
-                       label = f"{k}{self._dict2label(counts4labels)}" if j==len(sides)-1 else '_')
+                       label = f"{key_pairs[k]}{self._dict2label(counts4labels)}" if j==len(sides)-1 else '_')
 
         # put the significance starts
         for i,k in enumerate(self.p_values.keys()):
