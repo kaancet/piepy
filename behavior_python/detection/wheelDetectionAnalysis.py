@@ -62,7 +62,7 @@ class DetectionAnalysis:
                 
         return hit_rate_dict
 
-    def get_deltahit(self,contrast:float,side:str='contra'):
+    def get_deltahit(self,contrast:float,side:str='contra',index_normalize:bool=False):
         """Return the delta between the hitrates of a given contrast """
         
         non_opto_key = [k for k in self.hit_rate_dict.keys() if 'opto' not in k][0]
@@ -84,11 +84,16 @@ class DetectionAnalysis:
         opto_dict = self.hit_rate_dict[opto_key][side_key]
         idx_c = np.where(opto_dict['contrasts']==contrast)[0][0]
         opto_hit = opto_dict['hit_rate'][idx_c]
-        
-        delta_hit = (nonopto_hit - opto_hit) / (nonopto_hit + opto_hit)
+        if index_normalize:
+            try:
+                delta_hit = (nonopto_hit - opto_hit) / nonopto_hit
+            except ZeroDivisionError:
+                delta_hit = 0
+        else:
+            delta_hit = nonopto_hit - opto_hit
         
         return delta_hit
-
+    
     def get_hitrate_pvalues_exact(self, stim_data_keys:list=None, stim_side:str='contra', method:str='barnard') -> dict:
         """ Calculates the p-values for each contrast in different stim datasets"""
         if stim_data_keys is None:
