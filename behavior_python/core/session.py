@@ -99,8 +99,9 @@ class SessionData:
     def __init__(self,data:pd.DataFrame) -> None:
         self._convert = []
         self.data = data
-        
-    def get_subset(self,data_in:pd.DataFrame,subset_dict:dict):
+    
+    @staticmethod
+    def get_subset(data_in:pd.DataFrame,subset_dict:dict):
         """ Gets the subset of data that satisfies the conditions in the subset_dict. Makes a copy to return """
         df = data_in.copy(deep=True)
         for k,v in subset_dict.items():
