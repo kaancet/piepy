@@ -368,6 +368,17 @@ class WheelSession(Session):
                     'nCells':0}
         self.save_to_db(db_dict)
         
+    @staticmethod
+    def filter_trials_by_response(data_in:WheelData, cutoff_time:float=1000) -> WheelData:
+        """ Filters the trials in a session by response time, uses ms for time unit. 
+        Makes a copy of the data to return"""
+        
+        out_data = data.copy(deep=True)
+        out_data = out_data[out_data['response_latency']<cutoff_time]
+        display(f'Filtered by response time, trial count {len(data_in)} -> {len(out_data)}')
+        return out_data
+        
+        
 @timeit('Getting rolling averages...')
 def get_running_stats(data_in:pd.DataFrame,window_size:int=10) -> pd.DataFrame:
     """ Gets the running statistics of certain columns"""
@@ -387,6 +398,8 @@ def get_running_stats(data_in:pd.DataFrame,window_size:int=10) -> pd.DataFrame:
         
     return data_in        
 
+
+        
 
 def main():
     from argparse import ArgumentParser

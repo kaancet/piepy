@@ -3,6 +3,7 @@ boninbehavior.egg-info/*
 *.DS_Store
 *.ipynb_checkpoints
 /behavior_python/notebooks
+/behavior_python/figure_notebooks
 *.ipynb
 /.vscode
 config.json

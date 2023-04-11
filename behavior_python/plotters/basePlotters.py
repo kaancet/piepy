@@ -277,7 +277,7 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         
         #median
         ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,
-                c=kwargs.get('color','b'),path_effects=[pe.Stroke(linewidth=6, foreground='b'), pe.Normal()])
+                c=kwargs.get('color','b'),path_effects=[pe.Stroke(linewidth=6, foreground='k'), pe.Normal()])
         
         #mean
         # ax.plot([pos-cloud_width/2,pos+cloud_width/2],[mean,mean],linewidth=3,
@@ -287,7 +287,18 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
 
         return ax
     
-    def plot(self,ax:plt.Axes=None,cloud_width=0.33,**kwargs):
+    @staticmethod
+    def add_jitter_to_misses(resp_times,jitter_lims=[0,100]):
+        """ Adds jitter in y-dimension to missed trial dot"""
+        
+        miss_locs = np.where(resp_times>=1000)[0]
+        jitter = np.random.choice(np.arange(jitter_lims[0],jitter_lims[1]),len(miss_locs),replace=True)
+        
+        resp_times[miss_locs] = resp_times[miss_locs] + jitter
+        return resp_times
+        
+    
+    def plot(self,ax:plt.Axes=None,cloud_width=0.33,plot_misses:bool=False,**kwargs):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
@@ -297,8 +308,10 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         signed_contrasts = [] 
         plot_pos = []
         resp_times_dict = defaultdict(dict)
+        
         for si,skey in enumerate(self.plot_data.keys()):
             stim_data = self.plot_data[skey]
+            has_zero = 0
             for i,c in enumerate(np.unique(stim_data['contrast']),start=1):
                 contrast_data = stim_data[stim_data['contrast']==c]
                 for j,side in enumerate(np.unique(contrast_data['stim_side'])):
@@ -306,48 +319,60 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
                     if c == 0:
                         side_data = contrast_data
                         cpos = 0
+                        has_zero = 1
                     else:
                         side_data = contrast_data[contrast_data['stim_side']==side]
-                        cpos = np.sign(side) * i
+                        cpos = np.sign(side) * i if has_zero else np.sign(side)*i+1
                     
                     plot_pos.append(cpos)
                     signed_contrasts.append(np.sign(side)*c)
-                    non_miss_data = side_data[side_data['answer']==1]
+                    if plot_misses:
+                        data2plot = side_data[side_data['answer']!=-1]
+                    else:
+                        data2plot = side_data[side_data['answer']==1]
+                        
                     resp_times_dict[cpos][skey] = side_data['response_latency'].to_numpy()
-                    response_times = self.time_to_log(non_miss_data['response_latency'].to_numpy())
+
+                    response_times = self.time_to_log(data2plot['response_latency'].to_numpy())
+                    response_times = self.add_jitter_to_misses(response_times)
                     
                     x_dots,y_dots = self.make_dot_cloud(response_times,cpos,cloud_width)
                     median = np.median(response_times)
                     mean = np.mean(response_times)
-                    
+                    print(skey,side,c,median)
                     ax = self.__plot__(ax,x_dots,y_dots,median,mean,cpos,cloud_width,
                                     color=self.color.stim_keys[skey]['color'] if skey!='all' else 'k',
                                     label=skey if skey is not None and j==0 and c==0.125 else '_',
                                     **kwargs)
-                    
-        # add p values
-        for cpos,c_d in resp_times_dict.items():
-            if len(c_d) < 2:
-                continue #skip contrasts with single stim data type
-            non_opto_key = [k for k in c_d.keys() if 'opto' not in k][0]
-            non_opto_rt = c_d[non_opto_key]
+        
+        
+        if len(self.plot_data.keys())>1:
+            non_opto_keys = [k for k in self.plot_data.keys() if 'opto' not in k]
+            opto_keys = [k for k in self.plot_data.keys() if 'opto' in k]
             
-            opto_keys = [k for k in c_d.keys() if 'opto' in k]
-            for i,o_k in enumerate(opto_keys):
-                opto_rt = c_d[o_k]
-                if len(opto_rt):
-                    p = self.stat_analysis.get_pvalues_nonparametric(non_opto_rt,opto_rt)
-                else:
-                    continue
-                stars = ''
-                if p < 0.001:
-                    stars = '***'
-                elif 0.001 < p < 0.01:
-                    stars = '**'
-                elif 0.01 < p < 0.05:
-                    stars = '*'
+            opto_nonopto_pairs = {non_opto_keys[i]:opto_keys[i] for i in range(len(non_opto_keys)) if non_opto_keys[i] in opto_keys[i]}
+        
+            # add p values
+            for cpos,c_d in resp_times_dict.items():
+                if len(c_d) < 2:
+                    continue #skip contrasts with single stim data type
                 
-                ax.text(cpos, 2000+i*200, stars,color=self.color.stim_keys[o_k]['color'], fontsize=30)
+                for non_k,opto_k in opto_nonopto_pairs.items():
+                    non_opto_rt = c_d[non_k]
+                    if opto_k in c_d.keys():
+                        opto_rt = c_d[opto_k]
+                        p = self.stat_analysis.get_pvalues_nonparametric(non_opto_rt,opto_rt)
+                    else:
+                        continue
+                    stars = ''
+                    if p < 0.001:
+                        stars = '***'
+                    elif 0.001 < p < 0.01:
+                        stars = '**'
+                    elif 0.01 < p < 0.05:
+                        stars = '*'
+                    
+                    ax.text(cpos, 2000+i*200, stars,color=self.color.stim_keys[opto_k]['color'], fontsize=30)
         
         # mid line
         ax.set_ylim([90,3000])

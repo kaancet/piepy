@@ -180,17 +180,8 @@ class DetectionPsychometricBarPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
                 
-            if 'key_pairs' in kwargs:
-                key_pairs = kwargs.pop('key_pairs')
-                
-        non_opto_key = [k for k in self.data.keys() if 'opto' not in k][0]
-        opto_keys = [k for k in self.data.keys() if 'opto' in k]
-        
-        self.p_values = {}
-        for o_k in opto_keys:
-            p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k])
-            p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k],stim_side='catch')
-            self.p_values[o_k] = {**p_values_contra,**p_values_catch}
+        if 'key_pairs' in kwargs:
+            key_pairs = kwargs.pop('key_pairs')
         
         contrast_spacer = kwargs.get('contrast_spacer',0.2)
         total_bar_width = kwargs.get('total_bar_width',0.8)
@@ -225,25 +216,40 @@ class DetectionPsychometricBarPlotter(BasePlotter):
                        error_kw = {'elinewidth':2},
                        label = f"{key_pairs[k]}{self._dict2label(counts4labels)}" if j==len(sides)-1 else '_')
 
-        # put the significance starts
-        for i,k in enumerate(self.p_values.keys()):
-            for c,p in self.p_values[k].items():
-                stars = ''
-                shift = 0
-                if p < 0.001:
-                    stars = '***'
-                    shift = 0.2
-                elif 0.001 < p < 0.01:
-                    stars = '**'
-                    shift = 0.1
-                elif 0.01 < p < 0.05:
-                    stars = '*'
-                    shift = 0.08
-                    
-                ax.text(center_barpos_dict[c]-shift, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
+        has_opto = [k for k in self.hit_rate_dict.keys() if 'opto' in k]
+        if len(has_opto):
+            non_opto_keys = [k for k in self.data.keys() if 'opto' not in k]
+            opto_keys = [k for k in self.data.keys() if 'opto' in k]
+            
+            opto_nonopto_pairs = {non_opto_keys[i]:opto_keys[i] for i in range(len(non_opto_keys)) if non_opto_keys[i] in opto_keys[i]}
+            
+            self.p_values = {}
+            for non_k,opto_k in opto_nonopto_pairs.items():
+                p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k])
+                p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k],stim_side='catch')
+                self.p_values[opto_k] = {**p_values_contra,**p_values_catch}
+       
+            # put the significance starts
+            for i,k in enumerate(self.p_values.keys()):
+                for c,p in self.p_values[k].items():
+                    stars = ''
+                    shift = 0
+                    if p < 0.001:
+                        stars = '***'
+                        shift = 0.2
+                    elif 0.001 < p < 0.01:
+                        stars = '**'
+                        shift = 0.1
+                    elif 0.01 < p < 0.05:
+                        stars = '*'
+                        shift = 0.08
+                        
+                    ax.text(center_barpos_dict[c]-shift, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
         fontsize = 25
         ax.set_ylim([0,1.05]) 
-        ax.set_xticks(list(center_barpos_dict.values()),labels=list(center_barpos_dict.keys()))
+        x_labels = 100 * np.array(list(center_barpos_dict.keys()))
+        x_labels = [f'{str(np.abs(c))}' for c in x_labels]
+        ax.set_xticks(list(center_barpos_dict.values()),labels=x_labels)
         ax.tick_params(axis='both', labelsize=fontsize,length=10, width=3, which='major',color='k')
         ax.tick_params(axis='both', labelsize=fontsize,length=8, width=2, which='minor',color='k')
         
@@ -287,12 +293,13 @@ class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
     def modify_data(self,*args,**kwargs):
         pass
     
-    def plot(self,ax:plt.Axes=None,cloud_width=0.33,**kwargs):
+    def plot(self,ax:plt.Axes=None,cloud_width=0.33,plot_misses:bool=False,**kwargs):
         d = copy.deepcopy(self.plot_data)
         for k,v in d.items():
             v = v[v['answer']==1]
         self.plot_data = d
-        super().plot(ax,cloud_width,**kwargs)
+        ax = super().plot(ax,cloud_width,plot_misses,**kwargs)
+        return ax
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     """ Plots an histogram of response times, showing earlies and hits"""
@@ -337,7 +344,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins)
         #plotting the median
-        ax.axvline(np.median(resp_times),color='b',linewidth=3)
+        # ax.axvline(np.median(resp_times),color='b',linewidth=3)
         # plotting the shuffled histograms
         shuffled = self.shuffle_times(resp_times_blanked)
         shuffled_hists = np.zeros((n_shuffle,len(counts)))
