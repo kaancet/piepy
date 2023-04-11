@@ -1,12 +1,13 @@
 import time
 import tifffile as tf
 import scipy.stats as st
+from PIL import Image
 from os.path import join as pjoin
 from behavior_python.core.session import Session, SessionData, SessionMeta
 from .wheelDetectionTrial import *
 
 class WheelDetectionData(SessionData):
-    __slots__ = ['stim_data','data_paths','key_pairs','pattern_imgs']
+    __slots__ = ['stim_data','data_paths','key_pairs','pattern_imgs','patterns']
     def __init__(self,data:pd.DataFrame,data_paths,isgrating:bool=False, ) -> None:
         super().__init__(data)
         self._convert = ['wheel','lick','reward']
@@ -14,7 +15,7 @@ class WheelDetectionData(SessionData):
         self.data_paths = data_paths
         self.make_loadable()
         self.data = get_running_stats(self.data)
-        self.pattern_imgs, pattern_names = self.get_session_images()
+        self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
         
         self.stim_data = self.seperate_stim_data(self.data,pattern_names,isgrating)
     
@@ -52,7 +53,6 @@ class WheelDetectionData(SessionData):
                 key = f'{skey}cpd_{tkey}Hz'
                 if isgrating:
                     key += '_grating'
-                
                 
                 if opto:
                     for opto_pattern in pattern_ids:
@@ -94,6 +94,7 @@ class WheelDetectionData(SessionData):
         Returns a dict with images and also a dict that """
         sesh_imgs = {}
         pattern_names = {}
+        sesh_patterns = {}
         if os.path.exists(self.data_paths.patternPath):
             for im in os.listdir(self.data_paths.patternPath):
                 if im.endswith('.tif'):
@@ -102,9 +103,15 @@ class WheelDetectionData(SessionData):
                     if pattern_id == -1:
                         sesh_imgs['window'] = read_img
                     else:  
-                        pattern_names[pattern_id] = im[:-4].split('_')[-2]
-                        sesh_imgs['window'] = read_img
-        return sesh_imgs,pattern_names
+                        name = im[:-4].split('_')[-2]
+                        pattern_names[pattern_id] = name
+                        sesh_imgs[name] = read_img
+                elif im.endswith('.bmp'):
+                    pattern_id = int(im.split('_')[0])
+                    name = im.split('_')[1]
+                    read_bmp = np.array(Image.open(pjoin(self.data_paths.patternPath,im)))
+                    sesh_patterns[name] = read_bmp[::-1,::-1]
+        return sesh_imgs,sesh_patterns,pattern_names
         
 
 class WheelDetectionStats:
@@ -261,7 +268,7 @@ class WheelDetectionSession(Session):
         display('Loaded session metadata')
 
         g = 'grating' in self.data_paths.stimlog
-        self.data = WheelDetectionData(rawdata,isgrating=g)
+        self.data = WheelDetectionData(rawdata,self.data_paths,isgrating=g)
         display('Loaded session data')
 
         stats = load_json_dict(self.data_paths.statPath)
