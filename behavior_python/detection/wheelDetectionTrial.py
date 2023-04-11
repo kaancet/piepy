@@ -131,8 +131,12 @@ class WheelDetectionTrial(Trial):
                 if 'stim_start' in trial_log_data.keys():
                     # if there is no stim start, there should be no stim end
                     if 'screen' in self.data.keys():
-                        if not self.data['screen'].empty:
+                        if len(self.data['screen']) == 2:
                             trial_log_data['stim_end_rig'] = self.data['screen']['duinotime'].iloc[1]
+                        elif len(self.data['screen']) == 1:
+                            #???
+                            trial_log_data['stim_end_rig'] = self.data['screen']['duinotime'].iloc[0]
+
 
                     trial_log_data['stim_end'] = row[self.column_keys['elapsed']]
                 else:
