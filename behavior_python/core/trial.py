@@ -36,6 +36,7 @@ class Trial:
         rig_cols = ['screen','imaging','position','lick',
                     'button','reward','lap','cam1','cam2',
                     'cam3','act0','act1','opto']
+        
         states = rawdata['stateMachine']
         state_slice = states[states[self.column_keys['trialNo']] == self.trial_no]
         self.data = {'state' : state_slice}

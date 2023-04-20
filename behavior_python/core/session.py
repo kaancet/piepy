@@ -96,12 +96,12 @@ class SessionMeta:
 class SessionData:
     """ The SessionData object is to pass around the session data to plotters and analyzers"""
     __slots__ = ['data','_convert']
-    def __init__(self,data:pd.DataFrame) -> None:
+    def __init__(self,data:pl.DataFrame) -> None:
         self._convert = []
         self.data = data
     
     @staticmethod
-    def get_subset(data_in:pd.DataFrame,subset_dict:dict):
+    def get_subset(data_in:pl.DataFrame,subset_dict:dict):
         """ Gets the subset of data that satisfies the conditions in the subset_dict. Makes a copy to return """
         df = data_in.copy(deep=True)
         for k,v in subset_dict.items():
@@ -111,7 +111,7 @@ class SessionData:
                 raise ValueError(f'There is no column named {k} in session data')
         return df
 
-    def make_saveable(self) -> pd.DataFrame:
+    def make_saveable(self) -> pl.DataFrame:
         """ The columns that have numpy.ndarrays need to be saved as lists in DataFrame columns!
         A copy of the session_data is created with converted columns to be saved"""        
         save_df = self.data.copy(deep=True)

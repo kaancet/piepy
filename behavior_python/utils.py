@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 import pandas as pd
+import polars as pl
 import os
 import json
 import sys
@@ -301,42 +302,47 @@ def parseStimpyLog(fname):
               
     if fname.endswith('.riglog'):
         display('Parsing riglog...')
-        header = righeader
+        
+        q = pl.scan_csv(fname,
+                has_header=False,
+               comment_char='#')
+        col_names = {k:righeader[i] for i,k in enumerate(q.columns)}
+
+        q.with_columns(pl.col('code'))
+        q = q.rename(col_names)
+        
+        logdata = q.select([
+                            pl.col('code').apply(remove_brackets),
+                            pl.col('timereceived'),
+                            pl.col('duinotime'),
+                            pl.col('value').apply(remove_brackets)
+                            ]).collect()
+        
     elif fname.endswith('.stimlog'):
         display('Parsing stimlog...')
-        header = vlogheader
     
-    logdata = pd.read_csv(fname,
-                      names = [i for i in range(len(header))],
-                      delimiter=',',
-                      header=None,comment='#',engine='c')
-    
-    if fname.endswith('.riglog'):
-        logdata = logdata.applymap(remove_brackets)
+        q = pl.scan_csv(fname,
+                    has_header=False)
+        q = q.with_column(pl.col('*').cast(pl.Float32,strict=False))
+
+        col_names = {k:vlogheader[i] for i,k in enumerate(q.columns)}
+        logdata = q.rename(col_names).collect()
         
-    data = dict()
+    data = {}
     not_found = []
     for code_nr in tqdm(codes.keys(),desc='Reading logs '):
         code_key = codes[code_nr]
-        data[code_key] = logdata[logdata[0] == code_nr]
+        data[code_key] = logdata.filter(pl.col('code') == code_nr)
         if len(data[code_key]):
-            # get the column amount from most filled row
-            tmp_nona = data[code_key].dropna()
-            if len(tmp_nona):
-                tmp = tmp_nona.iloc[0].copy()
-            else:
-                tmp = data[code_key].iloc[0].copy()
             """
             TODO: This is semi hard coded, 
             maybe find a better way to automate this 
             so it is easier to add different loggers and their dedicated headers
             """
             if code_nr==20:
-                state_data = data[code_key].loc[:,0:len(stateheader)-1]
-                state_data.columns = stateheader
-                data[code_key] = state_data
-            else:
-                data[code_key].columns = header
+                state_data = data[code_key][:,0:len(stateheader)]
+                col_names = {data[code_key].columns[i]:k for i,k in enumerate(stateheader)}
+                data[code_key] = state_data.rename(col_names)
         else:
             not_found.append(code_key)
     if len(not_found):
@@ -353,16 +359,17 @@ def extrapolate_time(data):
         
         indkey = 'not found'
         fliploc = []
-        if 'indicatorFlag' in data['vstim'].keys():
+        if 'indicatorFlag' in data['vstim'].columns:
             indkey = 'indicatorFlag'
             fliploc = np.where(np.diff(np.hstack([0,
                                                   data['vstim']['indicatorFlag'],
                                                   0]))!=0)[0]
-        elif 'photo' in data['vstim'].keys():
+        elif 'photo' in data['vstim'].columns:
             indkey = 'photo'
             fliploc = np.where(np.diff(np.hstack([0,
                                                   data['vstim']['photo']==0,
                                                   0]))!=0)[0]
+        
         if len(data['screen'])==len(fliploc):
             data['vstim']['duinotime'] = interp1d(
                 fliploc,
