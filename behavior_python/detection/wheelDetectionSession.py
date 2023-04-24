@@ -8,30 +8,29 @@ from .wheelDetectionTrial import *
 
 class WheelDetectionData(SessionData):
     __slots__ = ['stim_data','data_paths','key_pairs','pattern_imgs','patterns']
-    def __init__(self,data:pd.DataFrame,data_paths,isgrating:bool=False, ) -> None:
+    def __init__(self,data:pl.DataFrame,data_paths,isgrating:bool=False, ) -> None:
         super().__init__(data)
         self._convert = ['wheel','lick','reward']
         self.data = data
         self.data_paths = data_paths
-        self.make_loadable()
-        self.data = get_running_stats(self.data)
+        # self.data = get_running_stats(self.data)
         self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
         
-        self.stim_data = self.seperate_stim_data(self.data,pattern_names,isgrating)
+        # self.stim_data = self.seperate_stim_data(self.data,pattern_names,isgrating)
+        self.enhance_data(self.data,pattern_names,isgrating)
+        
+    def enhance_data(self,data_in:pl.DataFrame,pattern_names:dict,isgrating:bool=False) -> None:
+        
+        # add a isgrating column
+        self.data = pl.concat([data_in,pl.DataFrame({"is_grating":[int(isgrating)]*len(data_in)})],how='horizontal')
+        
+        # add the pattern name depending on pattern id
+        self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
     
-    def get_answered_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
-        """ Correct answers and early answers """
-        answered_df = data_in[data_in['answer']!=0]
-        return answered_df
-    
-    def get_wait_trials(self,data_in:pd.DataFrame) -> pd.DataFrame:
-        wait_df = data_in[data_in['answer']!=-1]
-        return wait_df
-    
-    def seperate_stim_data(self,data_in:pd.DataFrame,pattern_names:dict,isgrating:bool=False) -> None:
+    def seperate_stim_data(self,data_in:pl.DataFrame,pattern_names:dict,isgrating:bool=False) -> None:
         """ Seperates the data into diffeerent types"""
         stim_data = {}
-        nonearly_data = data_in[data_in['answer']!=-1]
+        nonearly_data = data_in.filter(pl.col('answer')!=-1)
         sfreq = nonan_unique(nonearly_data['spatial_freq'].to_numpy())
         tfreq = nonan_unique(nonearly_data['temporal_freq'].to_numpy())
         optogenetic = np.unique(nonearly_data['opto'])
@@ -102,6 +101,7 @@ class WheelDetectionData(SessionData):
                     read_img = tf.imread(pjoin(self.data_paths.patternPath,im))
                     if pattern_id == -1:
                         sesh_imgs['window'] = read_img
+                        pattern_names[pattern_id] = 'nonopto'
                     else:  
                         name = im[:-4].split('_')[-2]
                         pattern_names[pattern_id] = name
@@ -115,11 +115,9 @@ class WheelDetectionData(SessionData):
         
 
 class WheelDetectionStats:
-    __slots__ = ['all_trials','answered_trials','stim_trials','early_trials','miss_trials',
-                 'all_correct_percent','answered_correct_percent',
-                 'easy_answered_trials','easy_hit_rate',
-                 'hit_rate','false_alarm','d_prime',
-                 'median_response_time','nogo_percent']
+    __slots__ = ['all_count','early_count','stim_count','correct_count','miss_count',
+                 'all_correct_percent','hit_rate','easy_hit_rate','false_alarm','nogo_percent',
+                 'median_response_time','d_prime']
     def __init__(self,dict_in:dict=None,data_in:WheelDetectionData=None) -> None:
         if data_in is not None:
             self.init_from_data(data_in)
@@ -134,44 +132,43 @@ class WheelDetectionStats:
     
     def init_from_data(self,data_in:WheelDetectionData):
         data = data_in.data
-        answered_data = data_in.get_answered_trials(data)
-        early_data = answered_data[answered_data['answer']==-1]
-        stim_data = data_in.get_wait_trials(data)
-        miss_data = stim_data[stim_data['answer']==0]
+        early_data = data.filter(pl.col('answer')==-1)
+        stim_data = data.filter(pl.col('answer')!=-1)
+        correct_data = data.filter(pl.col('answer')==1)
+        miss_data = data.filter(pl.col('answer')==0)
+        
         #counts
-        self.all_trials = len(data)
-        self.answered_trials =len(answered_data)
-        self.early_trials = len(early_data)
-        self.stim_trials = len(stim_data)
-        self.miss_trials = len(miss_data)
+        self.all_count = len(data)
+        self.early_count = len(early_data)
+        self.stim_count = len(stim_data)
+        self.correct_count = len(correct_data) 
+        self.miss_count = len(miss_data)
+        
         # percents
-        self.all_correct_percent = round(100 * len(data[data['answer']==1]) / self.all_trials,3)
-        self.answered_correct_percent = round(100 * len(answered_data[answered_data['answer']==1]) / self.answered_trials,3)
-        self.hit_rate = round(100 * len(stim_data[stim_data['answer']==1]) / self.stim_trials,3)
-        self.false_alarm = round(100 * len(answered_data[answered_data['answer']==-1]) / self.answered_trials,3)
+        self.all_correct_percent = round(100 * self.correct_count / self.all_count, 3)
+        self.hit_rate = round(100 * self.correct_count / self.stim_count, 3)
+        self.false_alarm = round(100 * self.early_count / (self.early_count + self.correct_count), 3)
+        self.nogo_percent = round(100 * self.miss_count / self.stim_count, 3)
         
         ## performance on easy trials
-        easy_trials = data[data['contrast'].isin([1.0,0.5])] # earlies can't be easy or hard
-        easy_answered_data = easy_trials[easy_trials['answer']==1]
-        self.easy_answered_trials = len(easy_answered_data)
-        self.easy_hit_rate = round(100 * self.easy_answered_trials / len(easy_trials),3)
+        easy_data = data.filter(pl.col('contrast').is_in([1.0,0.5])) # earlies can't be easy or hard
+        easy_correct_count = len(easy_data.filter(pl.col('answer')==1))
+        self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
         
+        # median response time
+        self.median_response_time = round(stim_data.filter(pl.col('answer')==1).median()[0,'response_latency'],3)
         
-        self.median_response_time = round(np.median(stim_data[stim_data['answer']==1]['response_latency']),3)
-        
-        #d prime
+        #d prime(?)
         self.d_prime = st.norm.ppf(self.hit_rate/100) - st.norm.ppf(self.false_alarm/100)
         
-        if self.all_trials >= 200:
-            data200 = data[:200]
-        else:
-            data200 = data
+        # if self.all_trials >= 200:
+        #     data200 = data[:200]
+        # else:
+        #     data200 = data
             
-        data200_answered = len(data200[data200['answer']!=0])
-        data200_nogo = len(data200[data200['answer']==0])
-        self.nogo_percent = round(100 * (data200_nogo / data200_answered),3)
+        # data200_answered = len(data200[data200['answer']!=0])
+        # data200_nogo = len(data200[data200['answer']==0])
         
-
     def init_from_dict(self,dict_in:dict):
         for k,v in dict_in.items():
             setattr(self,k,v)
@@ -206,7 +203,7 @@ class WheelDetectionSession(Session):
             self.stats = WheelDetectionStats(data_in=self.data)
             
             if self.meta.water_consumed is not None:
-                self.meta.water_per_reward = self.meta.water_consumed / len(self.data.data[self.data.data['answer']==1])
+                self.meta.water_per_reward = self.meta.water_consumed / self.stats.correct_count
             else:
                 display('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
                 self.meta.water_per_reward = -1
@@ -250,7 +247,7 @@ class WheelDetectionSession(Session):
     @timeit('Saving...')
     def save_session(self) -> None:
         """ Saves the session data, meta and stats"""
-        self.save_session_data(self.data.make_saveable())
+        self.save_session_data(self.data.data)
 
         save_dict_json(self.data_paths.metaPath, self.meta.__dict__)
         display("Saved session metadata")
@@ -291,11 +288,11 @@ class WheelDetectionSession(Session):
         
         return state_keys[curr_key] 
     
-    def get_session_data(self) -> pd.DataFrame:
-        session_data = pd.DataFrame()
+    def get_session_data(self) -> pl.DataFrame:
         data_to_append = []
+        self.rawdata['stateMachine'] = self.rawdata['stateMachine'].with_column(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
         self.states = self.rawdata['stateMachine']
-        self.states['transition'] = self.states.apply(lambda x: self.translate_transition(x[self.column_keys['oldState']],x[self.column_keys['newState']]),axis=1)
+        
         display('Setting global indexing keys for {0} logging'.format(self.logversion))
         
         if self.states.shape[0] == 0:
@@ -316,14 +313,18 @@ class WheelDetectionSession(Session):
             trial_row = temp_trial.trial_data_from_logs()
             pbar.update()
             if len(trial_row):
-                data_to_append.append(trial_row)
+                if t == 1:
+                    data_to_append = {k:[v] for k,v in trial_row.items()}
+                else:
+                    for k,v in trial_row.items():
+                        data_to_append[k].append(v)
             else:
                 if t == len(trials):
                     display(f'Last trial {t} is discarded')
                     
-        session_data = pd.DataFrame(data_to_append)
+        session_data = pl.DataFrame(data_to_append)
 
-        if session_data.empty:
+        if session_data.is_empty():
             print('''WARNING THIS SESSION HAS NO DATA
             Possible causes:
             - Session has only one trial with no correct answer''')
@@ -335,9 +336,12 @@ class WheelDetectionSession(Session):
 @timeit('Getting rolling averages...')
 def get_running_stats(data_in:pd.DataFrame,window_size:int=10) -> pd.DataFrame:
     """ Gets the running statistics of certain columns"""
-    data_in.reset_index(drop=True, inplace=True)
+   
     # response latency
     data_in.loc[:,'running_response_latency'] = data_in.loc[:,'response_latency'].rolling(window_size,min_periods=5).median()
+    
+    data_in.with_columns(pl.col('response_latency').rolling_median(window_size).alias('running_response_latency'))
+
     
     # answers
     answers = {'correct':1,

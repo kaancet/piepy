@@ -111,19 +111,6 @@ class SessionData:
                 raise ValueError(f'There is no column named {k} in session data')
         return df
 
-    def make_saveable(self) -> pl.DataFrame:
-        """ The columns that have numpy.ndarrays need to be saved as lists in DataFrame columns!
-        A copy of the session_data is created with converted columns to be saved"""        
-        save_df = self.data.copy(deep=True)
-        for col in self._convert:
-            save_df[col] = save_df[col].apply(lambda x: x.tolist())
-        return save_df
-
-    def make_loadable(self) -> None:
-        """ Converts the necessary columns into numpy array """
-        for col in self._convert:
-            if not isinstance(self.data[col].iloc[0], np.ndarray):
-                self.data[col] = self.data[col].apply(eval).apply(lambda x: np.array(x))
 
 
 class Session:
@@ -231,11 +218,12 @@ class Session:
             display('THIS SHOULD NOT HAPPEN')
         return loadable
 
-    def save_session_data(self, data_to_save: pd.DataFrame=None) -> None:
-        """ Saves the session data as .csv (and .mat file if desired)"""
+    def save_session_data(self, data_to_save: pl.DataFrame=None) -> None:
+        """ Saves the session data as .parquet (and .mat file if desired)"""
         if data_to_save is None:
             data_to_save = self.session_data
-        data_to_save.to_csv(self.data_paths.data,index=False)
+        # data_to_save.to_csv(self.data_paths.data,index=False)
+        data_to_save.write_parquet(self.data_paths.data)
         display("Saved session data")
         if self.save_mat:
             self.save_as_mat()
@@ -272,6 +260,7 @@ class Session:
         
     def load_session_data(self) -> pd.DataFrame:
         """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
-        data = pd.read_csv(self.data_paths.data)
+        # data = pd.read_csv(self.data_paths.data)
+        data = pl.read_parquet(self.data_paths.data)
         return data 
 

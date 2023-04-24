@@ -38,16 +38,16 @@ class Trial:
                     'cam3','act0','act1','opto']
         
         states = rawdata['stateMachine']
-        state_slice = states[states[self.column_keys['trialNo']] == self.trial_no]
+        state_slice = states.filter(pl.col(self.column_keys['trialNo'])==self.trial_no)
         self.data = {'state' : state_slice}
         
-        self.trial_start = state_slice[self.column_keys['elapsed']].iloc[0]
-        self.trial_end = state_slice[self.column_keys['elapsed']].iloc[-1]
+        self.trial_start = state_slice[self.column_keys['elapsed']][0]
+        self.trial_end = state_slice[self.column_keys['elapsed']][-1]
 
         for k,v in rawdata.items():
             if k == 'stateMachine':
                 continue
-            if not v.empty:
+            if not v.is_empty():
                 t_start = self.trial_start
                 t_end = self.trial_end
                 
@@ -57,17 +57,22 @@ class Trial:
                     time_col = 'presentTime'
                     t_start = self.trial_start / 1000
                     t_end = self.trial_end / 1000
-                  
-                temp_v = v[(v[time_col] >= t_start) & (v[time_col] <= t_end)].dropna()
+                
+                temp_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end)).drop_nulls()
+                 
                 self.data[k] = temp_v
                 
     def get_licks(self) -> np.ndarray:
         """ Extracts the lick data from slice"""
         if 'lick' in self.data.keys():
             lick_data = self.data['lick']
-            lick_arr = np.array(lick_data[['duinotime', 'value']])
+            if len(lick_data):
+            # lick_arr = np.array(lick_data[['duinotime', 'value']])
+                lick_arr = lick_data.select(['duinotime','value']).to_series().to_list()
+            else:
+                lick_arr = None
         else:
-            lick_arr = np.array([])
+            lick_arr = None
         
         return lick_arr
     
@@ -75,7 +80,8 @@ class Trial:
         """ Extracts the reward clicks from slice"""
         
         reward_data = self.data['reward']
-        reward_arr = np.array(reward_data[['duinotime', 'value']])
+        # reward_arr = np.array(reward_data[['duinotime', 'value']])
+        reward_arr = reward_data.select(['duinotime','value']).to_numpy()
         if len(reward_arr):
             try:
                 reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
@@ -83,21 +89,23 @@ class Trial:
                 reward_amount_uL = self.meta.rewardSize
             reward_arr = np.append(reward_arr,reward_arr[:,1])
             reward_arr[1] = reward_amount_uL
+            reward_arr = reward_arr.tolist() 
             # reward is a 3 element array: [time,value_il, value_ms]
         else:
-            reward_arr = np.array([])
-        return reward_arr    
+            reward_arr = None
+        return reward_arr
         
     def get_opto(self) -> np.ndarray:
         """ Extracts the opto boolean from opto slice from riglog"""
         if 'opto' in self.data.keys():
             opto_data = self.data['opto']
-            opto_arr = np.array(opto_data[['duinotime','value']])
+            # opto_arr = np.array(opto_data[['duinotime','value']])
+            opto_arr = opto_data.select(['duinotime','value']).to_numpy()
             if len(opto_arr) > 1:
                 display(f'>> WARNING << Something funky happened with opto stim, there are {len(opto_arr)} pulses')
-                opto_arr = np.array([opto_arr[0]])
+                opto_arr = np.array([opto_arr[0]]).tolist()
         else:
-            opto_arr = np.array([])
+            opto_arr = None
         return opto_arr
     
     def save_to_db(self,in_dict:dict,table_name:str=None,**kwargs):
