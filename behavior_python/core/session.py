@@ -1,5 +1,6 @@
 from .core import *
 from .mouse import Mouse
+import scipy.io as sio
 
 
 class SessionMeta:
@@ -95,22 +96,36 @@ class SessionMeta:
 
 class SessionData:
     """ The SessionData object is to pass around the session data to plotters and analyzers"""
-    __slots__ = ['data','_convert']
-    def __init__(self,data:pl.DataFrame) -> None:
-        self._convert = []
+    __slots__ = ['data','data_paths','pattern_imgs','patterns']
+    def __init__(self) -> None:
+        pass
+    
+    def set_data(self,data:pl.DataFrame) -> None:
         self.data = data
     
-    @staticmethod
-    def get_subset(data_in:pl.DataFrame,subset_dict:dict):
-        """ Gets the subset of data that satisfies the conditions in the subset_dict. Makes a copy to return """
-        df = data_in.copy(deep=True)
-        for k,v in subset_dict.items():
-            if k in data_in.columns:
-                df = df[df[k]==v]
-            else:
-                raise ValueError(f'There is no column named {k} in session data')
-        return df
+    def set_paths(self,data_paths:dict) -> None:
+        self.data_paths = data_paths
 
+    def save_data(self,save_mat:bool=False) -> None:
+        """ Saves the session data as .parquet (and .mat file if desired)"""
+        self.data.write_parquet(self.data_paths.data)
+        display("Saved session data")
+        if save_mat:
+            self.save_as_mat()
+            display('Saving .mat file')
+    
+    def load_data(self) -> pd.DataFrame:
+        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
+        # data = pd.read_csv(self.data_paths.data)
+        data = pl.read_parquet(self.data_paths.data)
+        self.set_data(data)
+        
+    def save_as_mat(self) -> None:
+        """Helper method to convert the data into a .mat file"""
+        datafile = pjoin(self.data_paths.savePath,'sessionData.mat').replace("\\","/")
+        save_dict = {name: col.values for name, col in self.data.stim_data.items()}
+        sio.savemat(datafile, save_dict)
+        display(f'Saved .mat file at {datafile}')
 
 
 class Session:
@@ -217,17 +232,6 @@ class Session:
         else:
             display('THIS SHOULD NOT HAPPEN')
         return loadable
-
-    def save_session_data(self, data_to_save: pl.DataFrame=None) -> None:
-        """ Saves the session data as .parquet (and .mat file if desired)"""
-        if data_to_save is None:
-            data_to_save = self.session_data
-        # data_to_save.to_csv(self.data_paths.data,index=False)
-        data_to_save.write_parquet(self.data_paths.data)
-        display("Saved session data")
-        if self.save_mat:
-            self.save_as_mat()
-            display('Saving .mat file')
             
     def save_to_db(self,db_dict:dict) -> None:
         """ Checks if an entry for the session already exists and saves/updates accordingly"""
@@ -249,18 +253,3 @@ class Session:
     def remove_session_db(self):
         """ """
         pass
-
-    def save_as_mat(self) -> None:
-        """Helper method to convert the data into a .mat file"""
-        import scipy.io as sio
-        datafile = pjoin(self.data_paths.savePath,'sessionData.mat').replace("\\","/")
-        save_dict = {name: col.values for name, col in self.data.stim_data.items()}
-        sio.savemat(datafile, save_dict)
-        display(f'Saved .mat file at {datafile}')
-        
-    def load_session_data(self) -> pd.DataFrame:
-        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
-        # data = pd.read_csv(self.data_paths.data)
-        data = pl.read_parquet(self.data_paths.data)
-        return data 
-

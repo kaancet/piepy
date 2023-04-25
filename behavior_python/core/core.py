@@ -17,7 +17,8 @@ class DataPaths:
         if self.sessionPath is None:
             raise FileNotFoundError('Session directory {0} does not exist!'.format(self.sessionPath))
         self.get_log_paths()
-        self.data = pjoin(self.savePath,'sessionData.csv').replace("\\",os.sep)
+        # self.data = pjoin(self.savePath,'sessionData.csv').replace("\\",os.sep)
+        self.data = pjoin(self.savePath,'sessionData.parquet').replace("\\",os.sep)
 
     def __repr__(self) -> str:
         kws = [f'{key}={value!r}' for key, value in self.__dict__.items()]

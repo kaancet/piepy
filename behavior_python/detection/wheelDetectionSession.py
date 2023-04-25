@@ -1,92 +1,30 @@
 import time
+from PIL import Image
 import tifffile as tf
 import scipy.stats as st
-from PIL import Image
 from os.path import join as pjoin
 from behavior_python.core.session import Session, SessionData, SessionMeta
 from .wheelDetectionTrial import *
 
+
 class WheelDetectionData(SessionData):
-    __slots__ = ['stim_data','data_paths','key_pairs','pattern_imgs','patterns']
-    def __init__(self,data:pl.DataFrame,data_paths,isgrating:bool=False, ) -> None:
-        super().__init__(data)
-        self._convert = ['wheel','lick','reward']
-        self.data = data
-        self.data_paths = data_paths
-        # self.data = get_running_stats(self.data)
-        self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
-        
-        # self.stim_data = self.seperate_stim_data(self.data,pattern_names,isgrating)
-        self.enhance_data(self.data,pattern_names,isgrating)
-        
-    def enhance_data(self,data_in:pl.DataFrame,pattern_names:dict,isgrating:bool=False) -> None:
-        
+    def __init__(self,data_paths,data:pl.DataFrame=None) -> None:
+        super().__init__()
+        self.set_paths(data_paths)
+        self.set_data(data)
+
+    def set_data(self,data:pl.DataFrame,isgrating:bool=False) -> None:
+        if data is not None:
+            super().set_data(data)
+            self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
+            self.enhance_data(pattern_names,isgrating)
+    
+    def enhance_data(self,pattern_names:dict,isgrating:bool=False) -> None:
         # add a isgrating column
-        self.data = pl.concat([data_in,pl.DataFrame({"is_grating":[int(isgrating)]*len(data_in)})],how='horizontal')
-        
-        # add the pattern name depending on pattern id
-        self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
-    
-    def seperate_stim_data(self,data_in:pl.DataFrame,pattern_names:dict,isgrating:bool=False) -> None:
-        """ Seperates the data into diffeerent types"""
-        stim_data = {}
-        nonearly_data = data_in.filter(pl.col('answer')!=-1)
-        sfreq = nonan_unique(nonearly_data['spatial_freq'].to_numpy())
-        tfreq = nonan_unique(nonearly_data['temporal_freq'].to_numpy())
-        optogenetic = np.unique(nonearly_data['opto'])
-        
-        if 'opto_pattern' in nonearly_data.columns:
-            pattern_ids = nonan_unique(nonearly_data['opto_pattern'])
-
-            # remove -1(no opto no pattern, thi is extra failsafe)
-            pattern_ids = pattern_ids[pattern_ids >= 0]
-        else:
-            pattern_ids = [-1]
-    
-        # analysing each stim type and opto and opto_pattern seperately
-        self.key_pairs = {}
-        for opto in optogenetic:
-            for i,_ in enumerate(sfreq):
-                skey = float(sfreq[i])
-                tkey = float(tfreq[i])
-                key = f'{skey}cpd_{tkey}Hz'
-                if isgrating:
-                    key += '_grating'
-                
-                if opto:
-                    for opto_pattern in pattern_ids:
-                        key_new = '{0}_opto_{1}'.format(key,int(opto_pattern))
-                        # make a key pair dict for better labels when plotting, i.e area names
-                        self.key_pairs[key_new] = '_'.join(key_new.split('_')[:-1]) + '_' + pattern_names[opto_pattern]
-
-                        # stimuli data
-                        try:
-                            # if opto_pattern exists, ususally it should exist
-                            stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
-                                                            'temporal_freq':tfreq[i],
-                                                            'opto':opto,
-                                                            'opto_pattern':opto_pattern})
-                            
-                        except:
-                            stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
-                                                            'temporal_freq':tfreq[i],
-                                                            'opto':opto})
-                        
-                        stim_data[key_new] = stimuli_data
-                else:
-                    key_new = key
-                    self.key_pairs[key_new] = key_new
-                    stimuli_data = self.get_subset(data_in,{'spatial_freq':sfreq[i],
-                                                    'temporal_freq':tfreq[i],
-                                                    'opto':opto})
-                    # early trials don't have any of vstim values => spatial_freq, temporal_freq and opto_pattern
-                    # a very crude fix is to get all the early data, concat and order by trial_no
-                    # early_data = self.get_subset(data_in,{'answer':-1})
-                    # stimuli_data = pd.concat([stimuli_data,early_data])
-                    # stimuli_data.sort_values('trial_no',inplace=True)
-                    
-                    stim_data[key_new] = stimuli_data
-        return stim_data
+        if 'is_grating' not in self.data.columns:
+            self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
+            # add the pattern name depending on pattern id
+            self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
     
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
@@ -111,8 +49,9 @@ class WheelDetectionData(SessionData):
                     name = im.split('_')[1]
                     read_bmp = np.array(Image.open(pjoin(self.data_paths.patternPath,im)))
                     sesh_patterns[name] = read_bmp[::-1,::-1]
-        return sesh_imgs,sesh_patterns,pattern_names
         
+        return sesh_imgs,sesh_patterns,pattern_names
+
 
 class WheelDetectionStats:
     __slots__ = ['all_count','early_count','stim_count','correct_count','miss_count',
@@ -186,6 +125,7 @@ class WheelDetectionSession(Session):
         # add specific data paths
         self.data_paths.metaPath = pjoin(self.data_paths.savePath,'sessionMeta.json')
         self.data_paths.statPath = pjoin(self.data_paths.savePath,'sessionStats.json')
+        self.data = WheelDetectionData(self.data_paths)
         
         if self.isSaved() and self.load_flag:
             display('Loading from {0}'.format(self.data_paths.savePath))
@@ -199,7 +139,8 @@ class WheelDetectionSession(Session):
             # session_data = get_running_stats(session_data)
             
             g = 'grating' in self.data_paths.stimlog
-            self.data = WheelDetectionData(session_data,self.data_paths,isgrating=g)
+            
+            self.data.set_data(session_data,g)
             self.stats = WheelDetectionStats(data_in=self.data)
             
             if self.meta.water_consumed is not None:
@@ -247,7 +188,7 @@ class WheelDetectionSession(Session):
     @timeit('Saving...')
     def save_session(self) -> None:
         """ Saves the session data, meta and stats"""
-        self.save_session_data(self.data.data)
+        self.data.save_data(self.save_mat)
 
         save_dict_json(self.data_paths.metaPath, self.meta.__dict__)
         display("Saved session metadata")
@@ -258,14 +199,11 @@ class WheelDetectionSession(Session):
     @timeit('Loaded all data')
     def load_session(self):
         """ Loads the saved session data """
-        rawdata = self.load_session_data()
-
         meta = load_json_dict(self.data_paths.metaPath)
         self.meta = SessionMeta(init_dict=meta)
         display('Loaded session metadata')
-
-        g = 'grating' in self.data_paths.stimlog
-        self.data = WheelDetectionData(rawdata,self.data_paths,isgrating=g)
+        
+        self.data.load_data()
         display('Loaded session data')
 
         stats = load_json_dict(self.data_paths.statPath)
@@ -334,15 +272,10 @@ class WheelDetectionSession(Session):
 
 
 @timeit('Getting rolling averages...')
-def get_running_stats(data_in:pd.DataFrame,window_size:int=10) -> pd.DataFrame:
+def get_running_stats(data_in:pd.DataFrame,window_size:int=20) -> pd.DataFrame:
     """ Gets the running statistics of certain columns"""
    
-    # response latency
-    data_in.loc[:,'running_response_latency'] = data_in.loc[:,'response_latency'].rolling(window_size,min_periods=5).median()
-    
-    data_in.with_columns(pl.col('response_latency').rolling_median(window_size).alias('running_response_latency'))
-
-    
+    data_in = data_in.with_columns(pl.col('response_latency').rolling_median(window_size).alias('running_response_latency'))
     # answers
     answers = {'correct':1,
                'nogo':0,
