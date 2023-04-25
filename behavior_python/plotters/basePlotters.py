@@ -14,85 +14,37 @@ class BasePlotter:
         self.fig = None
         set_style('analysis')
         self.color = Color()
-
+    
     @staticmethod
-    def select_stim_data(data_in, stimkey:str=None) -> dict:
+    def select_stim_data(data_in:pl.DataFrame, stimkey:str=None) -> dict:
         """ Returns the selected stimulus type from session data
-            data_in : Main session data object OR stim_data dictionary
+            data_in : 
             stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
-        if isinstance(data_in,dict):
-            data = data_in
-        else:
-            data = data_in.stim_data 
-            data_all = data_in.data
-        if stimkey is not None and stimkey not in data.keys() and stimkey != 'all':
-            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {list(data.keys())}')
-        elif stimkey is None and len(data.keys()) == 1:
-            # if there is only one key just take that data in the dictionary
-            key = list(data.keys())[0]
-            return data,key
-        elif stimkey == 'all':
-            stimkey = 'all'
-            all_data = {'all':data_all}
-            return all_data,stimkey
-        elif stimkey is None and len(data.keys()) > 1:
-            # select specific data
-            key = ''
-            return data,stimkey
-        else:
-            d = {stimkey:data[stimkey]}
-            return d,stimkey
-
-    @staticmethod
-    def threshold_responsetime(stim_data: pd.DataFrame, time_cutoff, cutoff_mode: str = 'low') -> pd.DataFrame:
-        """ Returns the stimulus data filtered by the given response time
-        stim_data: Stimulus data
-        time_cutoff: Response time cutoff value(s)
-        cutoff_mode: determines the filtering method, can  be low, mid, 
-        """
-        if time_cutoff is None:
-            return stim_data
+        # drop early trials
+        data = data_in.filter(pl.col('answer')!=-1)
         
-        mode_list = ['low','high','mid']
-        if cutoff_mode not in mode_list:
-            raise ValueError(f'The cutoff_mode argument needs to be one of {mode_list}, got {cutoff_mode} instead')
-        if cutoff_mode == 'mid':
-            try:
-                t_low,t_high = time_cutoff
-            except TypeError:
-                display(f'The cutoff argument needs to be a list, got {type(time_cutoff)} instead')
-            df_out = stim_data[(stim_data['response_latency'] <= t_high) & (stim_data['response_latency'] >= t_low)]
-        elif cutoff_mode == 'low':
-            df_out = stim_data[stim_data['response_latency'] <= time_cutoff]
-        elif cutoff_mode == 'high':
-            df_out = stim_data[stim_data['response_latency'] >= time_cutoff]
+        #should be no need for drop_nulls, but for extra failsafe
+        uniq_keys = data.select(pl.col('stimkey')).drop_nulls().unique().to_series().to_numpy()
         
-        if len(df_out) == 0:
-            display('>>WARNING<< The filtered data has 0 elements! Check filtering values and/or the data')
-
-        return df_out
-
-    @staticmethod
-    def threshold_trialinterval(stim_data: pd.DataFrame, trial_interval: list, interval_mode:str='count') -> pd.DataFrame:
-        """ Returns the stimulus data in the given trial number interval
-        stim_data: Stimulus data
-        trial_interval: A list that has the ranges of the interval of trials
-        interval_mode: Determines whether to use trial numbers or trial times for filtering
-        """
-        mode_list = ['count','time']
-        if interval_mode not in mode_list:
-            raise ValueError(f'The interval_mode argument needs to be one of {mode_list}, got {interval_mode} instead')
-
-        if interval_mode == 'count':
-            df_out = stim_data[(stim_data['trial_no'] >= trial_interval[0]) & (stim_data['trial_no'] <= trial_interval[1])]
-        elif interval_mode == 'time':
-            df_out = stim_data[(stim_data['openstart_absolute'] >= trial_interval[0]) & (stim_data['openstart_absolute'] <= trial_interval[1])]
-
-        if len(df_out) == 0:
-            display('>>WARNING<< The filtered data has 0 elements! Check filtering values and/or the data')
-
-        return df_out
+        if stimkey is not None and stimkey not in uniq_keys and stimkey != 'all':
+            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {uniq_keys}')
+        
+        if stimkey is None:
+            if len(uniq_keys) == 1:
+                # if there is only one key just take the data
+                key = uniq_keys[0]
+            elif len(uniq_keys) > 1:
+                # if there is more than one stimkey , take all the data
+                key = 'all'
+            else:
+                # this should not happen
+                raise ValueError('There is no stimkey in the data, this should not be the case. Check your data!')
+        else:
+            # this is the condition that is filtering the dataframe by stimkey
+            key = stimkey
+            data = data.filter(pl.col('stimkey') == stimkey)
+        return data, key, uniq_keys
 
     def save(self,saveloc,date,animalid):
         if self.fig is not None:
@@ -106,14 +58,14 @@ class BasePlotter:
 
 
 class PerformancePlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
+    __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data,self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
 
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
@@ -131,37 +83,33 @@ class PerformancePlotter(BasePlotter):
             ax = self.fig.add_subplot(1,1,1)
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
-        
-        for k,v in self.plot_data.items():
-            if seperate_by is not None:
-                if seperate_by not in v.columns:
-                    raise ValueError(f'Cannot seperate the data by {seperate_by}')
-                seperate_vals = nonan_unique(v[seperate_by])
-            else:
-                seperate_vals = [-1] # dummy value
-
-            for sep in seperate_vals:
-                if seperate_by is not None:
-                    data = v[v[seperate_by]==sep]
-                    y_axis = get_fraction(data['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
-                    color = self.color.contrast_keys[str(sep)]['color']
-                else:
-                    data = v
-                    y_axis = data['fraction_correct']
-                    color = self.color.contrast_keys[str(sep)]['color']
                 
-                if plot_in_time:
-                    x_axis_ = data['openstart_absolute'] / 60000
-                    x_label_ = 'Time (mins)'
-                else:
-                    x_axis_ = data['trial_no']
-                    x_label_ = 'Trial No'
-
-                ax = self.__plot__(ax,x_axis_,y_axis,
-                                color=color,
-                                label = f'{k}_{sep}' ,
-                                **kwargs)
+        if seperate_by is not None:
+            if seperate_by not in self.plot_data.columns:
+                raise ValueError(f'Cannot seperate the data by {seperate_by}')
+            seperate_vals = self.plot_data.select(pl.col(seperate_by)).unique().to_series().to_numpy()
+        else:
+            seperate_vals = [-1] # dummy value        
+        
+        for sep in seperate_vals:
+            if seperate_by is not None:
+                data2plot = self.plot_data.filter(pl.col(seperate_by)==sep)
+            else:
+                data2plot = self.plot_data.select(pl.col('*'))
             
+            y_axis = get_fraction(data2plot['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
+            
+            if plot_in_time:
+                x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
+                x_label_ = 'Time (mins)'
+            else:
+                x_axis_ = data2plot['trial_no']
+                x_label_ = 'Trial No'
+
+            ax = self.__plot__(ax,x_axis_.to_numpy(),y_axis,
+                                label = f'{sep}',
+                                **kwargs)
+                
         # prettify
         fontsize = kwargs.get('fontsize',20)
         ax.set_ylim([0, 100])

@@ -25,7 +25,14 @@ class WheelDetectionData(SessionData):
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
-    
+            # add 'stimkey' from sftf
+            self.data = self.data.with_columns((pl.col('spatial_freq').round(2)+'cpd_'+pl.col('temporal_freq')+'Hz_'+pl.col('opto_pattern').cast(pl.Int8,strict=False)).alias('stimkey'))
+            self.data = self.data.with_columns(
+                pl.struct(
+                    ["spatial_freq","temporal_freq","opto_pattern","answer"]).apply(lambda x: f'{round(x["spatial_freq"],2)}cpd_{x["temporal_freq"]}Hz_{pattern_names[x["opto_pattern"]]}' if x['answer']!=-1 else None).alias('stim_label')
+                )
+            
+            
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
         Returns a dict with images and also a dict that """
