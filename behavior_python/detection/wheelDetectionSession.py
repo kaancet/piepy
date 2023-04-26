@@ -268,6 +268,13 @@ class WheelDetectionSession(Session):
                     display(f'Last trial {t} is discarded')
                     
         session_data = pl.DataFrame(data_to_append)
+        session_data = session_data.rename({"stim_side":"stim_pos"})
+        
+        # add a stim_side column for ease of access
+        session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then("contra")
+                                                    .when(pl.col("stim_pos") < 0).then("ipsi")
+                                                    .when(pl.col("stim_pos") == 0).then("catch")
+                                                    .otherwise(None).alias("stim_side"))
 
         if session_data.is_empty():
             print('''WARNING THIS SESSION HAS NO DATA

@@ -103,10 +103,10 @@ class PerformancePlotter(BasePlotter):
                 x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
                 x_label_ = 'Time (mins)'
             else:
-                x_axis_ = data2plot['trial_no']
+                x_axis_ = data2plot['trial_no'].to_numpy()
                 x_label_ = 'Trial No'
 
-            ax = self.__plot__(ax,x_axis_.to_numpy(),y_axis,
+            ax = self.__plot__(ax,x_axis_,y_axis,
                                 label = f'{sep}',
                                 **kwargs)
                 
@@ -125,37 +125,39 @@ class PerformancePlotter(BasePlotter):
     
     
 class ResponseTimePlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
+    __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data,self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data,self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
         
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
         ax.plot(x, y,linewidth=kwargs.get('linewidth',5),**kwargs)
         return ax
         
-    def plot(self, ax:plt.axes=None,plot_in_time:bool=False,**kwargs) -> plt.axes:
+    def plot(self, ax:plt.axes=None,plot_in_time:bool=False,running_window:int=20,**kwargs) -> plt.axes:
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
-            
+        
+        data2plot = self.plot_data.with_columns(pl.col('response_latency').rolling_median(running_window).alias('running_response_latency'))
+        
         if plot_in_time:
-            if self.stimkey is not None:
-                x_axis_ = self.plot_data[self.stimkey]['openstart_absolute'] / 60000
+            x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
             x_label_ = 'Time (mins)'
         else:
-            if self.stimkey is not None:
-                x_axis_ = self.plot_data[self.stimkey]['trial_no']
+            x_axis_ = data2plot['trial_no'].to_numpy()
             x_label_ = 'Trial No'
         
-        ax = self.__plot__(ax,x_axis_,self.plot_data[self.stimkey]['running_response_latency'],
+        y_axis_ = data2plot['running_response_latency'].to_numpy()
+        
+        ax = self.__plot__(ax,x_axis_,y_axis_,
                            label=self.stimkey,
                            **self.color.stim_keys[self.stimkey])
 
@@ -182,12 +184,14 @@ class ResponseTimePlotter(BasePlotter):
 class ResponseTimeScatterCloudPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
+        
         self.plot_data = self.threshold_responsetime(self.plot_data,kwargs.get('cutoff')) 
+        self.plot_data = self.plot_data.filter(pl.col('response_latency') <= kwargs.get('cutoff',10_000)) # 10_000 basically include everything
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)  
     
     @staticmethod      
