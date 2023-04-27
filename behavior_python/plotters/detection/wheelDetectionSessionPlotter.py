@@ -3,10 +3,9 @@ from scipy.stats import fisher_exact, barnard_exact
 
 
 class DetectionPsychometricPlotter(BasePlotter):
-    def __init__(self, data:dict, **kwargs) -> None:
+    def __init__(self, data:pl.DataFrame, **kwargs) -> None:
         super().__init__(data,**kwargs)
         self.stat_analysis = DetectionAnalysis(data=data)
-        self.hit_rate_dict = self.stat_analysis.get_hitrates()
         
     @staticmethod
     def __plot__(ax,x,y,err,**kwargs):
@@ -40,14 +39,17 @@ class DetectionPsychometricPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
         
-        non_opto_key = [k for k in self.data.keys() if 'opto' not in k][0]
-        opto_keys = [k for k in self.data.keys() if 'opto' in k]
+        # get the p-values
+        p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
+        p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
+        p_vals = pl.concat([p_vals,p_vals_catch],how='vertical')
+
+
+        q = self.stat_analysis.agg_data.lazy()
         
-        self.p_values = {}
-        for o_k in opto_keys:
-            p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k])
-            p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_opto_key,o_k],stim_side='catch')
-            self.p_values[o_k] = {**p_values_contra,**p_values_catch}
+        
+        
+
         
         for k,v in self.hit_rate_dict.items():
             if not seperate_sides:

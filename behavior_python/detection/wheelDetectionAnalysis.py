@@ -1,8 +1,7 @@
 import polars as pl
 import numpy as np
 from scipy.stats import mannwhitneyu, wilcoxon,fisher_exact,barnard_exact,boschloo_exact
-from ..utils import nonan_unique
-from collections import defaultdict
+from ..utils import display
 
 
 class DetectionAnalysis:
@@ -66,52 +65,61 @@ class DetectionAnalysis:
 
         return filt_agg
     
-    def get_hitrate_pvalues_exact(self, stim_data_keys:list=None, stim_side:str='contra', method:str='barnard') -> dict:
+    def get_hitrate_pvalues_exact(self,side:str='contra', method:str='barnard') -> pl.DataFrame:
         """ Calculates the p-values for each contrast in different stim datasets"""
-        if stim_data_keys is None:
-            stim_data_keys = self.data.keys()
-            
-        if len(stim_data_keys) != 2:
-            raise ValueError(f'There should be 2 different sets of stimuli data to get the p value in hit rate differences')
+        q = (
+                self.agg_data.lazy()
+                .groupby(["stim_type","contrast","stim_side","opto"])
+                .agg(
+                    [        
+                        (pl.col("opto_pattern")),
+                        (pl.col("correct_count").first()),
+                        (pl.col("miss_count").first()),
+                        (pl.col("stimkey").first()),
+                        (pl.col("stim_label").first())
+                    ]
+                ).sort(["stim_type","contrast","stim_side"])
+            )
         
-        def def_value():
-            contingency_table = np.zeros((2,2))
-            contingency_table[:] = np.nan
-            return contingency_table
+        temp = q.filter((pl.col("stim_side")==side)).sort(["stim_type","contrast","opto"]).collect()
         
-        table_dict = defaultdict(def_value) # this guy gets contrast values as keys
-        for i,k in enumerate(stim_data_keys):
-            v = self.data[k]
-            if stim_side == 'contra':
-                side_data = v[v['stim_side'] > 0]
-            elif stim_side == 'ipsi':
-                side_data = v[v['stim_side'] < 0]
-            elif stim_side == 'catch':
-                side_data = v[v['stim_side'] == 0]
-            else:
-                raise ValueError(f'stim_side argument only takes [contra,ipsi,catch] values')
+        stimkey_list = temp['stim_type'].unique().to_numpy()
+        c_list = temp['contrast'].unique().to_numpy()
+        o_list = temp['opto'].unique().to_numpy()
+        # there should be 2 entries(opto-nonopto) per stim_type and contrast combination
+        # otherwise cannot create the table to do p_value analyses
+        # if len(temp) != (len(c_list)*len(stimkey_list)*2): 
+        if len(o_list) != 2: # opto and nonopto
+            display("CAN'T DO P-VALUE ANALYSIS, MISSING OPTO COMPONENTS!! RETURNING AN EMPTY DATAFRAME")
+            df = pl.DataFrame()
+        else:
+            stims = []
+            contrasts = []
+            p_values = []
+            for s in stimkey_list:
+                for c in c_list:
+                    filt = temp.filter((pl.col("contrast")==c) &
+                                    (pl.col("stim_type")==s))
+                    table = filt[:,['correct_count','miss_count']].to_numpy()
+                    if np.all(np.isnan(table)==False): # all elements are filled
+                        if method == 'barnard':
+                            res = barnard_exact(table, alternative='two-sided')
+                        elif method == 'boschloo':
+                            res = boschloo_exact(table,alternative='two-sided')
+                        elif method == 'fischer':
+                            res = fisher_exact(table,alternative='two-sided')
+                        p = res.pvalue
+                    else:
+                        p = np.nan
+                    
+                    stims.append(s)
+                    contrasts.append(c)
+                    p_values.append(p)
             
-            contrast_list = nonan_unique(side_data['contrast'],sort=True)
-            for c in contrast_list:
-                data_correct = side_data[(side_data['contrast']==c) & (side_data['answer']==1)]
-                data_incorrect = side_data[(side_data['contrast']==c) & (side_data['answer']==0)]
-
-                table_dict[c][i,:] = [len(data_correct), len(data_incorrect)]
-            
-        p_values = {}
-        for k,table in table_dict.items():
-            if np.all(np.isnan(table)==False): # all elements are filled
-                if method == 'barnard':
-                    res = barnard_exact(table, alternative='two-sided')
-                elif method == 'boschloo':
-                    res = boschloo_exact(table,alternative='two-sided')
-                elif method == 'fischer':
-                    res = fisher_exact(table,alternative='two-sided')
-                p_values[k] = res.pvalue
-            else:
-                p_values[k] = np.nan
-        
-        return p_values
+            df = pl.DataFrame({"stim_type":stims,
+                            "contrast":contrasts,
+                            "p_values":p_values})        
+        return df
 
     @staticmethod
     def get_pvalues_nonparametric(x1,x2,method:str='mannu') -> dict:

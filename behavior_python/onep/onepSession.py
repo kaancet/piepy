@@ -188,7 +188,7 @@ class OnePSession(Session):
             mean_mat[:,0,:,:] = mean_mat[:,0,:,:] - np.mean(mean_mat[:,0,:,:],axis=0)
             
         if overF: # do df/F
-            mean_mat[:,0,:,:] = mean_mat[:,0,:,:] / (np.mean(mean_mat[:extra_start_frames+1,0,:,:],axis=0)+333)
+            mean_mat[:,0,:,:] = mean_mat[:,0,:,:] / (np.mean(mean_mat[:extra_start_frames+1,0,:,:],axis=0)+3)
             
         # self.trial_average = mean_mat.astype(np.float16)
         # normalize to 16bit uint
