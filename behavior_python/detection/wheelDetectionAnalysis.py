@@ -12,19 +12,20 @@ class DetectionAnalysis:
     def make_agg_data(self) -> pl.DataFrame:
         """ Gets the hit rates, counts and confidence intervals for each contrast for each side """
         q = (
-            self.agg_data.lazy()
-            .groupby(["stimkey","contrast","stim_side"])
+            self.data.lazy()
+            .groupby(["stim_type","contrast","stim_side","opto"])
             .agg(
                 [
-                    (pl.col("stim_label").first()),
                     (pl.col("stim_pos").first()),
                     pl.count().alias("count"),
                     (pl.col("answer")==1).sum().alias("correct_count"),
                     (pl.col("answer")==0).sum().alias("miss_count"),
                     (pl.col("response_latency").median().alias("median_response_time")),
-                    (pl.col("opto").first().cast(pl.Int8))
+                    (pl.col("opto_pattern").first()),
+                    (pl.col("stimkey").first()),
+                    (pl.col("stim_label").first()),
                 ]
-            ).sort("contrast")
+            ).sort(["stim_type","contrast","stim_side","opto"])
             )
 
         q = q.with_columns((pl.col("correct_count") / pl.col("count")).alias("hit_rate"))
@@ -32,38 +33,31 @@ class DetectionAnalysis:
 
         # reorder stim_label to last column
         cols = q.columns
-        del cols[3]
-        cols.append('stim_label')
+        del cols[-3]
+        del cols [-3]
+        cols.extend(['stimkey','stim_label'])
         q = q.select(cols)
-        
+
         df = q.collect()
         return df
 
-    def get_deltahit(self,contrast:float,side:str='contra'):
+    def get_deltahits(self):
         """Return the delta between the hitrates of a given contrast """
-        
-        filt_df = self.agg_data.filter((pl.col("contrast")==contrast) & 
-                                       (pl.col("stim_side")==side)).sort('opto_pattern')
-        
         q = (
-            filt_df.lazy()
-            .groupby(["spatial_freq","temporal_freq"])
-            .agg(
-                [   
-                    (pl.col("stimkey").first()),
-                    (pl.col("stim_side").first()),
-                    (pl.col("contrast").first()),
-                    (pl.col("hit_rate").first()).alias('base_HR'),
-                    (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'),
-                    (pl.col("median_response_time").last()-pl.col("median_response_time").first()).alias('delta_resp'),
-                ]
-            )
+                self.agg_data.lazy()
+                .sort("opto_pattern")
+                .groupby(["stim_type","contrast","stim_side"])
+                .agg(
+                    [   
+                        (pl.col("hit_rate").first()).alias('base_HR'),
+                        (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'),
+                        (pl.col("median_response_time").last()-pl.col("median_response_time").first()).alias('delta_resp'),
+                    ]
+                ).sort(["stim_type","contrast","stim_side"])
             )
 
-        filt_agg = filt_agg.with_columns((pl.col('delta_HR')/pl.col('base_HR')).alias('normalized_delta_HR'))
-        filt_agg = q.collect()
-
-        return filt_agg
+        df = q.collect()
+        return df
     
     def get_hitrate_pvalues_exact(self,side:str='contra', method:str='barnard') -> pl.DataFrame:
         """ Calculates the p-values for each contrast in different stim datasets"""

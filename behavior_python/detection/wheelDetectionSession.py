@@ -23,14 +23,14 @@ class WheelDetectionData(SessionData):
         # add a isgrating column
         if 'is_grating' not in self.data.columns:
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
+            # add stim type
+            self.data = self.data.with_columns((pl.col('spatial_freq').round(2)+'cpd_'+pl.col('temporal_freq')+'Hz').alias('stim_type'))
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
             # add 'stimkey' from sftf
-            self.data = self.data.with_columns((pl.col('spatial_freq').round(2)+'cpd_'+pl.col('temporal_freq')+'Hz_'+pl.col('opto_pattern').cast(pl.Int8,strict=False)).alias('stimkey'))
-            self.data = self.data.with_columns(
-                pl.struct(
-                    ["spatial_freq","temporal_freq","opto_pattern","answer"]).apply(lambda x: f'{round(x["spatial_freq"],2)}cpd_{x["temporal_freq"]}Hz_{pattern_names[x["opto_pattern"]]}' if x['answer']!=-1 else None).alias('stim_label')
-                )
+            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False)).alias('stimkey'))
+            # add stim_label for legends and stuff
+            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
             
             
     def get_session_images(self):
