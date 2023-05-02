@@ -183,8 +183,8 @@ class ResponseTimePlotter(BasePlotter):
 
 class ResponseTimeScatterCloudPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
-        super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)
+        super().__init__(data, **kwargs)
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
         
         #check color definitions
         self.color.check_stim_colors(self.uniq_keys)

@@ -30,11 +30,13 @@ class DetectionAnalysis:
 
         q = q.with_columns((pl.col("correct_count") / pl.col("count")).alias("hit_rate"))
         q = q.with_columns((1.96 * np.sqrt((pl.col("hit_rate")*(1.0 - pl.col("hit_rate"))) / pl.col("count"))).alias("confs"))
+        q = q.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
+
 
         # reorder stim_label to last column
         cols = q.columns
-        del cols[-3]
-        del cols [-3]
+        del cols[-4]
+        del cols [-4]
         cols.extend(['stimkey','stim_label'])
         q = q.select(cols)
 
@@ -77,12 +79,12 @@ class DetectionAnalysis:
         
         temp = q.filter((pl.col("stim_side")==side)).sort(["stim_type","contrast","opto"]).collect()
         
-        stimkey_list = temp['stim_type'].unique().to_numpy()
+        stimlabel_list = temp['stim_type'].unique().to_numpy()
         c_list = temp['contrast'].unique().to_numpy()
         o_list = temp['opto'].unique().to_numpy()
         # there should be 2 entries(opto-nonopto) per stim_type and contrast combination
         # otherwise cannot create the table to do p_value analyses
-        # if len(temp) != (len(c_list)*len(stimkey_list)*2): 
+        # if len(temp) != (len(c_list)*len(stimlabel_list)*2): 
         if len(o_list) != 2: # opto and nonopto
             display("CAN'T DO P-VALUE ANALYSIS, MISSING OPTO COMPONENTS!! RETURNING AN EMPTY DATAFRAME")
             df = pl.DataFrame()
@@ -90,10 +92,11 @@ class DetectionAnalysis:
             stims = []
             contrasts = []
             p_values = []
-            for s in stimkey_list:
+            stimkeys = []
+            for s in stimlabel_list:
                 for c in c_list:
                     filt = temp.filter((pl.col("contrast")==c) &
-                                    (pl.col("stim_type")==s))
+                                       (pl.col("stim_type")==s))
                     table = filt[:,['correct_count','miss_count']].to_numpy()
                     if np.all(np.isnan(table)==False): # all elements are filled
                         if method == 'barnard':
@@ -109,10 +112,12 @@ class DetectionAnalysis:
                     stims.append(s)
                     contrasts.append(c)
                     p_values.append(p)
+                    stimkeys.append(filt[1,'stimkey'])
             
             df = pl.DataFrame({"stim_type":stims,
                             "contrast":contrasts,
-                            "p_values":p_values})        
+                            "p_values":p_values,
+                            "stimkey":stimkeys})        
         return df
 
     @staticmethod

@@ -5,6 +5,7 @@ from scipy.stats import fisher_exact, barnard_exact
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data:pl.DataFrame, **kwargs) -> None:
         super().__init__(data,**kwargs)
+        
         self.stat_analysis = DetectionAnalysis(data=data)
         
     @staticmethod
@@ -24,126 +25,108 @@ class DetectionPsychometricPlotter(BasePlotter):
         return ax
     
     @staticmethod
-    def _dict2label(d:dict) -> str:
+    def _dict2label(name:np.ndarray,count:np.ndarray) -> str:
         ret = f'''\nN=['''
-        for k,v in d.items():
-            ret += fr'''{float(k)*100}:$\bf{v}$, '''
+        for i,n in enumerate(name):
+            ret += fr'''{float(n)}:$\bf{count[i]}$, '''
+        ret = ret[:-2] # remove final space and comma
         ret += ''']'''
         return ret
                    
-    def plot(self,ax:plt.Axes=None,color=None,seperate_sides:bool=False,jitter:int=2,**kwargs):
+    def plot(self,ax:plt.Axes=None,jitter:int=2,xaxis_type:str='linear_spaced',color=None,**kwargs):
         """ Plots the hit rates with 95% confidence intervals"""
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
+
         
         # get the p-values
-        p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
+        self.p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
         p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
-        p_vals = pl.concat([p_vals,p_vals_catch],how='vertical')
+        if not p_vals_catch.is_empty():
+            self.p_vals = pl.concat([self.p_vals,p_vals_catch],how='vertical')
 
-
-        q = self.stat_analysis.agg_data.lazy()
+        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],reverse=True)
         
+        # get uniques
+        u_stimkey = q['stimkey'].unique().to_numpy()
+        u_stim_side = q['stim_side'].unique().to_numpy()
         
-        
-
-        
-        for k,v in self.hit_rate_dict.items():
-            if not seperate_sides:
-                data = v['nonsided']
-                jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in data['contrasts']])
-                jittered_offset[0] += np.random.uniform(0,jitter)/100
-                ax = self.__plot__(ax,
-                                   (100*data['contrasts'])+jittered_offset,
-                                   data['hit_rate'],
-                                   data['confs'],
-                                   label=f"{k}{self._dict2label(data['counts'])}",
-                                   marker = 'o',
-                                   markersize=18,
-                                   color = self.color.stim_keys[k]['color'] if color is None else color,
-                                   linestyle = self.color.stim_keys[k]['linestyle'],
-                                   **kwargs)
-        
-                if 'opto' not in k and 0 in data['contrasts']:
-                    # draw the baseline only on non-opto
-                    idx_0 = np.where(data['contrasts']==0)[0][0]
-                    ax.plot([0, 100], [data['hit_rate'][idx_0], data['hit_rate'][idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
+        for k in u_stimkey:
+            for s in u_stim_side:
+                filt_df = q.filter((pl.col('stimkey')==k) &
+                                   (pl.col('stim_side')==s))
                 
-            
-            else:
-                sides = [k for k in v.keys() if isinstance(k,float)]
-                for j,side in enumerate(sides):
-                    side_data = v[side]
- 
-                    label = f"{k}{self._dict2label(side_data['counts'])}"
-                    if side < 0:
-                        init_color = self.color.name2hsv(self.color.stim_keys[k]['color'])
-                        # make color lighter here
-                        color = self.color.lighten(init_color,l_coeff=0.5)
-                        marker = '<'
-                        markersize = 24
-                    elif side > 0:
-                        color = self.color.stim_keys[k]['color']
-                        marker = '>'
-                        markersize = 24
-                    else:
-                        color = self.color.stim_keys[k]['color']
-                        marker = 'o'
-                        markersize = 18
-                        
-                        if 'opto' not in k:
-                            # draw the baseline only on non-opto
-                            ax.plot([0, 100], [side_data['hit_rate'], side_data['hit_rate']], 'k', linestyle=':', linewidth=2,alpha=0.7)
-                        
-                    jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in side_data['contrasts']])
+                if not filt_df.is_empty():
+                    contrast = 100*filt_df['contrast'].to_numpy()
+                    contrast = -1*contrast if s=='ipsi' else contrast
+                    
+                    
+                    
+                    confs = 100*filt_df['confs'].to_numpy()
+                    count = filt_df['count'].to_numpy()
+                    hr = 100*filt_df['hit_rate'].to_numpy()
+                    stim_label = filt_df['stim_label'].unique().to_numpy()                    
+                    
+                    jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast])
                     jittered_offset[0] += np.random.uniform(0,jitter)/100
                     ax = self.__plot__(ax,
-                                    100*side_data['contrasts']+jittered_offset,
-                                    side_data['hit_rate'],
-                                    side_data['confs'],
-                                    label=label,
-                                    marker = marker,
-                                    markersize=markersize,
-                                    color=color,
-                                    linestyle=self.color.stim_keys[k].get('linestyle','-')) 
-                    
-                    # if 'opto' not in k and 0 in side_data['contrasts']:
-                    # # draw the baseline only on non-opto
-                    #     idx_0 = np.where(side_data['contrasts']==0)[0][0]
-                    #     ax.plot([0, 100], [side_data['hit_rate'][idx_0], side_data['hit_rate'][idx_0]], 'k', linestyle=':', linewidth=2,alpha=0.7)
-        
+                                    (contrast)+jittered_offset,
+                                    hr,
+                                    confs,
+                                    label=f"{stim_label[0]}{self._dict2label(contrast,count)}" if s=='contra' else '_',
+                                    marker = 'o',
+                                    markersize=18,
+                                    color = self.color.stim_keys[k]['color'] if color is None else color,
+                                    linestyle = self.color.stim_keys[k]['linestyle'],
+                                    **kwargs)
+                
+                    if s == 'catch' and filt_df[0,'opto'] == 0:
+                        # draw the baseline only on non-opto
+                        ax.plot([-100, 100], [hr, hr], 'k', linestyle=':', linewidth=2,alpha=0.7)
+
         # prettify
-        fontsize = kwargs.get('fontsize',15)
+        fontsize = kwargs.get('fontsize',25)
                
         # put the significance starts
-        for i,k in enumerate(self.p_values.keys()):
-            for c,p in self.p_values[k].items():
-                stars = ''
-                if p < 0.001:
-                    stars = '***'
-                elif 0.001 < p < 0.01:
-                    stars = '**'
-                elif 0.01 < p < 0.05:
-                    stars = '*'
-                    
-                ax.text(100*c, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
+        for i in range(len(self.p_vals)):
+            p = self.p_vals[i,'p_values']
+            c = 100*self.p_vals[i,'contrast']
+            s_k = self.p_vals[i,'stimkey']
+            stars = ''
+            if p < 0.001:
+                stars = '***'
+            elif 0.001 < p < 0.01:
+                stars = '**'
+            elif 0.01 < p < 0.05:
+                stars = '*'
         
-        ax.set_xscale('symlog')
-        # ax.xaxis.set_major_locator(ticker.FixedLocator([int(100*c) for c in contrast_list]))
-        # ax.xaxis.set_major_locator(ticker.LogLocator(base=10,numticks=15))
-        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
-        ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
+            ax.text(c, 104+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
         
-        ax.set_ylim([0,1.05]) 
-        
+        if xaxis_type == 'log':
+            ax.set_xscale('symlog')
+            ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
+            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
+        elif xaxis_type=='linear':
+            x_ticks = 100*self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            ax.set_xticks(x_ticks)
+            ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
+        elif xaxis_type=='linear_spaced':
+            temp = 100*self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
+            ax.set_xticks(x_ticks)
+            # ax.set_xticklabels(temp)
+    
+    
+        ax.set_ylim([0,105])
+        ax.set_yticklabels(int(i) for i in ax.get_yticks())
         ax.set_xlabel('Contrast Value (%)', fontsize=fontsize)
         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         
-        ax.spines['left'].set_bounds(0, 1) 
+        ax.spines['left'].set_bounds(0, 100) 
         # ax.spines['bottom'].set_bounds(0, 1)
         ax.spines['bottom'].set_position(('outward', 10))
         ax.spines['left'].set_position(('outward', 10))

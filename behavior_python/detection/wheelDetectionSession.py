@@ -32,7 +32,6 @@ class WheelDetectionData(SessionData):
             # add stim_label for legends and stuff
             self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
             
-            
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
         Returns a dict with images and also a dict that """
@@ -155,7 +154,12 @@ class WheelDetectionSession(Session):
             else:
                 display('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
                 self.meta.water_per_reward = -1
+                
+            # add some metadata to the dataframe
+            self.data.data = self.data.data.with_columns([pl.lit(self.meta.animalid).alias('animalid'),
+                                                          pl.lit(self.meta.baredate).alias('baredate')])
             
+            self.data.data = self.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, fmt='%y%m%d').cast(pl.Date).alias('date'))
             self.save_session()
             display('Saving data to {0}'.format(self.data_paths.savePath))
         
