@@ -61,6 +61,12 @@
         "0.0625":{"color":"indigo"},
         "0.03125":{"color":"hotpink"},
         "0.0":{"color":"black"},
-        "-1":{"color":"silver"}
+        "-1":{"color":"silver"},
+        "100.0":{"color":"teal"},
+        "50.0":{"color":"darkgoldenrod"},
+        "25.0":{"color":"turquoise"},
+        "12.5":{"color":"limegreen"},
+        "6.25":{"color":"indigo"},
+        "3.12":{"color":"hotpink"}
     }
 }
