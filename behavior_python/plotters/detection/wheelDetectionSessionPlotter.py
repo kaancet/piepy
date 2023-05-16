@@ -14,6 +14,9 @@ class DetectionPsychometricPlotter(BasePlotter):
         x,y and err values are used to plot the points and 
         x_fit and y_fit values are used to plot the fitted curve
         """
+        if 'fontsize' in kwargs.keys():
+            kwargs.pop('fontsize')
+        
         ax.errorbar(x, y, err,
                     linewidth=2,
                     markeredgecolor=kwargs.get('markeredgecolor','w'),
@@ -25,7 +28,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         return ax
     
     @staticmethod
-    def _dict2label(name:np.ndarray,count:np.ndarray) -> str:
+    def _makelabel(name:np.ndarray,count:np.ndarray) -> str:
         ret = f'''\nN=['''
         for i,n in enumerate(name):
             ret += fr'''{float(n)}:$\bf{count[i]}$, '''
@@ -41,7 +44,6 @@ class DetectionPsychometricPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
 
-        
         # get the p-values
         self.p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
         p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
@@ -60,10 +62,10 @@ class DetectionPsychometricPlotter(BasePlotter):
                                    (pl.col('stim_side')==s))
                 
                 if not filt_df.is_empty():
-                    contrast = 100*filt_df['contrast'].to_numpy()
+                    contrast = filt_df['contrast'].to_numpy()
+                    if xaxis_type == 'linear_spaced':
+                        contrast = np.arange(1,len(contrast)+1) if len(contrast)>1 else [0]  
                     contrast = -1*contrast if s=='ipsi' else contrast
-                    
-                    
                     
                     confs = 100*filt_df['confs'].to_numpy()
                     count = filt_df['count'].to_numpy()
@@ -73,10 +75,10 @@ class DetectionPsychometricPlotter(BasePlotter):
                     jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast])
                     jittered_offset[0] += np.random.uniform(0,jitter)/100
                     ax = self.__plot__(ax,
-                                    (contrast)+jittered_offset,
+                                    contrast+jittered_offset,
                                     hr,
                                     confs,
-                                    label=f"{stim_label[0]}{self._dict2label(contrast,count)}" if s=='contra' else '_',
+                                    label=f"{stim_label[0]}{self._makelabel(contrast,count)}" if s=='contra' else '_',
                                     marker = 'o',
                                     markersize=18,
                                     color = self.color.stim_keys[k]['color'] if color is None else color,
@@ -93,7 +95,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         # put the significance starts
         for i in range(len(self.p_vals)):
             p = self.p_vals[i,'p_values']
-            c = 100*self.p_vals[i,'contrast']
+            c = self.p_vals[i,'contrast']
             s_k = self.p_vals[i,'stimkey']
             stars = ''
             if p < 0.001:
@@ -103,26 +105,27 @@ class DetectionPsychometricPlotter(BasePlotter):
             elif 0.01 < p < 0.05:
                 stars = '*'
         
-            ax.text(c, 104+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
+            ax.text(c, 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
         
         if xaxis_type == 'log':
             ax.set_xscale('symlog')
             ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
             ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
         elif xaxis_type=='linear':
-            x_ticks = 100*self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
             ax.set_xticks(x_ticks)
             ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
         elif xaxis_type=='linear_spaced':
-            temp = 100*self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            temp = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
             x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
             ax.set_xticks(x_ticks)
-            # ax.set_xticklabels(temp)
+            ax.set_xticklabels(temp)
+            ax.set_xlim([x_ticks[0]-0.5,x_ticks[-1]+0.5])
     
     
-        ax.set_ylim([0,105])
+        ax.set_ylim([0,110])
         ax.set_yticklabels(int(i) for i in ax.get_yticks())
-        ax.set_xlabel('Contrast Value (%)', fontsize=fontsize)
+        ax.set_xlabel('Stimulus Contrast (%)', fontsize=fontsize)
         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         
@@ -139,123 +142,124 @@ class DetectionPsychometricPlotter(BasePlotter):
         return ax
 
 
-class DetectionPsychometricBarPlotter(BasePlotter):
-    def __init__(self, data:dict, **kwargs) -> None:
-        super().__init__(data,**kwargs)
-        self.stat_analysis = DetectionAnalysis(data=data)
-        self.hit_rate_dict = self.stat_analysis.get_hitrates()
+# class DetectionPsychometricBarPlotter(BasePlotter):
+#     def __init__(self, data:dict, **kwargs) -> None:
+#         super().__init__(data,**kwargs)
+#         self.stat_analysis = DetectionAnalysis(data=data)
+#         self.hit_rate_dict = self.stat_analysis.get_hitrates()
     
-    @staticmethod
-    def _dict2label(d:dict) -> str:
-        ret = f'''\nN=['''
-        for k,v in d.items():
-            sk = ''
-            if k<0:
-                sk = 'L'
-            elif k>0:
-                sk = 'R'
-            ret += fr'''{sk}{float(k)*100}:$\bf{v}$, '''
-        ret += ''']'''
-        return ret
+#     @staticmethod
+#     def _dict2label(d:dict) -> str:
+#         ret = f'''\nN=['''
+#         for k,v in d.items():
+#             sk = ''
+#             if k<0:
+#                 sk = 'L'
+#             elif k>0:
+#                 sk = 'R'
+#             ret += fr'''{sk}{float(k)*100}:$\bf{v}$, '''
+#         ret += ''']'''
+#         return ret
     
-    def plot(self,ax=None,**kwargs):
-        if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
-            ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
+#     def plot(self,ax=None,**kwargs):
+#         if ax is None:
+#             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+#             ax = self.fig.add_subplot(1,1,1)
+#             if 'figsize' in kwargs:
+#                 kwargs.pop('figsize')
                 
-        if 'key_pairs' in kwargs:
-            key_pairs = kwargs.pop('key_pairs')
+#         if 'key_pairs' in kwargs:
+#             key_pairs = kwargs.pop('key_pairs')
         
-        contrast_spacer = kwargs.get('contrast_spacer',0.2)
-        total_bar_width = kwargs.get('total_bar_width',0.8)
-        bar_width = total_bar_width / len(self.hit_rate_dict.keys())
-        keys_barpos = np.linspace(-(total_bar_width-bar_width)/2,(total_bar_width-bar_width)/2,len(self.hit_rate_dict.keys()))
-        center_barpos_dict = {}
-        for ki,k in enumerate(self.hit_rate_dict.keys()):
-            v = self.hit_rate_dict[k]
-            sides = [k for k in v.keys() if isinstance(k,float)]
-            counts4labels = {}
-            for j,side in enumerate(sides):
-                side_data = v[side]
-                side_counts = {np.sign(side)*k:v for k,v in side_data['counts'].items()}
-                counts4labels = {**counts4labels,**side_counts}
-                if side == 0:
-                    contrast_barpos = [0]
-                else:
-                    contrast_barpos = [np.sign(side)*(i+1)*(total_bar_width+contrast_spacer) for i in range(len(side_data['contrasts']))]
-                    if side<0:
-                        contrast_barpos = contrast_barpos[::-1]
+#         contrast_spacer = kwargs.get('contrast_spacer',0.2)
+#         total_bar_width = kwargs.get('total_bar_width',0.8)
+#         bar_width = total_bar_width / len(self.hit_rate_dict.keys())
+#         keys_barpos = np.linspace(-(total_bar_width-bar_width)/2,(total_bar_width-bar_width)/2,len(self.hit_rate_dict.keys()))
+#         center_barpos_dict = {}
+#         for ki,k in enumerate(self.hit_rate_dict.keys()):
+#             v = self.hit_rate_dict[k]
+#             sides = [k for k in v.keys() if isinstance(k,float)]
+#             counts4labels = {}
+#             for j,side in enumerate(sides):
+#                 side_data = v[side]
+#                 side_counts = {np.sign(side)*k:v for k,v in side_data['counts'].items()}
+#                 counts4labels = {**counts4labels,**side_counts}
+#                 if side == 0:
+#                     contrast_barpos = [0]
+#                 else:
+#                     contrast_barpos = [np.sign(side)*(i+1)*(total_bar_width+contrast_spacer) for i in range(len(side_data['contrasts']))]
+#                     if side<0:
+#                         contrast_barpos = contrast_barpos[::-1]
                 
-                temp_dict = {np.sign(side)*side_data['contrasts'][i]:contrast_barpos[i] for i in range(len(contrast_barpos))}
+#                 temp_dict = {np.sign(side)*side_data['contrasts'][i]:contrast_barpos[i] for i in range(len(contrast_barpos))}
                 
-                center_barpos_dict = {**center_barpos_dict,**temp_dict}
-                barpos = [p+keys_barpos[ki] for p in contrast_barpos]
+#                 center_barpos_dict = {**center_barpos_dict,**temp_dict}
+#                 barpos = [p+keys_barpos[ki] for p in contrast_barpos]
                 
-                ax.bar(barpos,
-                       height=side_data['hit_rate'],
-                       yerr=side_data['confs'],
-                       width=bar_width,
-                       color = self.color.stim_keys[k]['color'],
-                       error_kw = {'elinewidth':2},
-                       label = f"{key_pairs[k]}{self._dict2label(counts4labels)}" if j==len(sides)-1 else '_')
+#                 ax.bar(barpos,
+#                        height=side_data['hit_rate'],
+#                        yerr=side_data['confs'],
+#                        width=bar_width,
+#                        color = self.color.stim_keys[k]['color'],
+#                        error_kw = {'elinewidth':2},
+#                        label = f"{key_pairs[k]}{self._dict2label(counts4labels)}" if j==len(sides)-1 else '_')
 
-        has_opto = [k for k in self.hit_rate_dict.keys() if 'opto' in k]
-        if len(has_opto):
-            non_opto_keys = [k for k in self.data.keys() if 'opto' not in k]
-            opto_keys = [k for k in self.data.keys() if 'opto' in k]
+#         has_opto = [k for k in self.hit_rate_dict.keys() if 'opto' in k]
+#         if len(has_opto):
+#             non_opto_keys = [k for k in self.data.keys() if 'opto' not in k]
+#             opto_keys = [k for k in self.data.keys() if 'opto' in k]
             
-            opto_nonopto_pairs = {non_opto_keys[i]:opto_keys[i] for i in range(len(non_opto_keys)) if non_opto_keys[i] in opto_keys[i]}
+#             opto_nonopto_pairs = {non_opto_keys[i]:opto_keys[i] for i in range(len(non_opto_keys)) if non_opto_keys[i] in opto_keys[i]}
             
-            self.p_values = {}
-            for non_k,opto_k in opto_nonopto_pairs.items():
-                p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k])
-                p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k],stim_side='catch')
-                self.p_values[opto_k] = {**p_values_contra,**p_values_catch}
+#             self.p_values = {}
+#             for non_k,opto_k in opto_nonopto_pairs.items():
+#                 p_values_contra = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k])
+#                 p_values_catch = self.stat_analysis.get_hitrate_pvalues_exact(stim_data_keys=[non_k,opto_k],stim_side='catch')
+#                 self.p_values[opto_k] = {**p_values_contra,**p_values_catch}
        
-            # put the significance starts
-            for i,k in enumerate(self.p_values.keys()):
-                for c,p in self.p_values[k].items():
-                    stars = ''
-                    shift = 0
-                    if p < 0.001:
-                        stars = '***'
-                        shift = 0.2
-                    elif 0.001 < p < 0.01:
-                        stars = '**'
-                        shift = 0.1
-                    elif 0.01 < p < 0.05:
-                        stars = '*'
-                        shift = 0.08
+#             # put the significance starts
+#             for i,k in enumerate(self.p_values.keys()):
+#                 for c,p in self.p_values[k].items():
+#                     stars = ''
+#                     shift = 0
+#                     if p < 0.001:
+#                         stars = '***'
+#                         shift = 0.2
+#                     elif 0.001 < p < 0.01:
+#                         stars = '**'
+#                         shift = 0.1
+#                     elif 0.01 < p < 0.05:
+#                         stars = '*'
+#                         shift = 0.08
                         
-                    ax.text(center_barpos_dict[c]-shift, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
-        fontsize = 25
-        ax.set_ylim([0,1.05]) 
-        x_labels = 100 * np.array(list(center_barpos_dict.keys()))
-        x_labels = [f'{str(np.abs(c))}' for c in x_labels]
-        ax.set_xticks(list(center_barpos_dict.values()),labels=x_labels)
-        ax.tick_params(axis='both', labelsize=fontsize,length=10, width=3, which='major',color='k')
-        ax.tick_params(axis='both', labelsize=fontsize,length=8, width=2, which='minor',color='k')
+#                     ax.text(center_barpos_dict[c]-shift, 1.04+0.02*i, stars,color=self.color.stim_keys[k]['color'], fontsize=30)
         
-        ax.spines['left'].set_bounds(0, 1) 
-        # ax.spines['bottom'].set_bounds(0, 1)
-        ax.spines['bottom'].set_position(('outward', 10))
-        ax.spines['left'].set_position(('outward', 10))
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
+#         fontsize = 25
+#         ax.set_ylim([0,1.05]) 
+#         x_labels = 100 * np.array(list(center_barpos_dict.keys()))
+#         x_labels = [f'{str(np.abs(c))}' for c in x_labels]
+#         ax.set_xticks(list(center_barpos_dict.values()),labels=x_labels)
+#         ax.tick_params(axis='both', labelsize=fontsize,length=10, width=3, which='major',color='k')
+#         ax.tick_params(axis='both', labelsize=fontsize,length=8, width=2, which='minor',color='k')
         
-        ax.grid(alpha=0.4)
-        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize-5,frameon=False)
+#         ax.spines['left'].set_bounds(0, 1) 
+#         # ax.spines['bottom'].set_bounds(0, 1)
+#         ax.spines['bottom'].set_position(('outward', 10))
+#         ax.spines['left'].set_position(('outward', 10))
+#         ax.spines['right'].set_visible(False)
+#         ax.spines['top'].set_visible(False)
         
-        ax.set_xlabel('Stim Contrast',fontsize=fontsize)
-        ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
-        return ax,center_barpos_dict
+#         ax.grid(alpha=0.4)
+#         ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize-5,frameon=False)
+        
+#         ax.set_xlabel('Stim Contrast',fontsize=fontsize)
+#         ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
+#         return ax,center_barpos_dict
 
 
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
-    def __init__(self,data,stimkey:str=None,**kwargs):
+    def __init__(self,data:pl.DataFrame,stimkey:str=None,**kwargs):
         super().__init__(data, stimkey, **kwargs)
         self.modify_data()
 
@@ -271,19 +275,14 @@ class DetectionPerformancePlotter(PerformancePlotter):
 
 class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
     __slots__ = []
-    def __init__(self, data, stimkey:str=None, **kwargs):
+    def __init__(self, data:pl.DataFrame, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
-        self.modify_data()
-        
-    def modify_data(self,*args,**kwargs):
-        pass
     
-    def plot(self,ax:plt.Axes=None,cloud_width=0.33,plot_misses:bool=False,**kwargs):
-        d = copy.deepcopy(self.plot_data)
-        for k,v in d.items():
-            v = v[v['answer']==1]
-        self.plot_data = d
-        ax = super().plot(ax,cloud_width,plot_misses,**kwargs)
+    def plot(self,ax:plt.Axes=None,t_cutoff:float=10_1000,cloud_width=0.33,xaxis_type:str='linear_spaced',**kwargs):
+        ax = super().plot(ax,t_cutoff=t_cutoff,
+                          cloud_width=cloud_width,
+                          xaxis_type=xaxis_type,
+                          **kwargs)
         return ax
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):

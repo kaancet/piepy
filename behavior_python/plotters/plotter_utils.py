@@ -171,7 +171,7 @@ class Color:
         for c in contrasts:
             str_key = str(c)
             if str_key not in self.contrast_keys:
-                print(f'Stim key {str_key} not present in colors, generating random color...')
+                print(f'Contrast key {str_key} not present in colors, generating random color...')
                 colors = {**mcolors.BASE_COLORS, **mcolors.CSS4_COLORS}
                 new_colors[str_key] = {'color':np.random.choice(list(colors.keys()),replace=False,size=1)[0]}
         if len(new_colors):

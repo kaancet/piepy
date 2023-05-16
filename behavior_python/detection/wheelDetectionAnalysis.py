@@ -20,6 +20,7 @@ class DetectionAnalysis:
                     pl.count().alias("count"),
                     (pl.col("answer")==1).sum().alias("correct_count"),
                     (pl.col("answer")==0).sum().alias("miss_count"),
+                    (pl.col("response_latency").alias("response_times")),
                     (pl.col("response_latency").median().alias("median_response_time")),
                     (pl.col("opto_pattern").first()),
                     (pl.col("stimkey").first()),

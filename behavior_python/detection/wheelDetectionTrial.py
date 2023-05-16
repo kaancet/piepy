@@ -41,11 +41,16 @@ class WheelDetectionTrial(Trial):
             vstim_dict['stim_side'] = np.nan
             vstim_dict['opto_pattern'] = np.nan
         else:
-            vstim_dict['contrast'] = vstim_dict['contrast_r'] if vstim_dict['correct'] else vstim_dict['contrast_l']
+            vstim_dict['contrast'] = 100*vstim_dict['contrast_r'] if vstim_dict['correct'] else 100*vstim_dict['contrast_l']
             vstim_dict['spatial_freq'] = vstim_dict['sf_r'] if vstim_dict['correct'] else vstim_dict['sf_l']
             vstim_dict['temporal_freq'] = vstim_dict['tf_r'] if vstim_dict['correct'] else vstim_dict['tf_l']
             # vstim_dict['stim_side'] = vstim_dict['stim_pos'][0]
             vstim_dict['stim_side'] = vstim_dict['posx_r'] if vstim_dict['correct'] else vstim_dict['posx_l']
+
+            # training failsafe
+            if 'opto_pattern' not in vstim_dict.keys():
+                vstim_dict['opto_pattern'] = -1
+            
             if vstim_dict['contrast'] == 0:
                 vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
@@ -100,6 +105,14 @@ class WheelDetectionTrial(Trial):
         # trial_pl_data = trial_pl_data.join(temp_blank,how='left')
         trial_log_data['blank_time'] = temp_blank
         
+        # catch
+        if len(self.data['state'].filter(pl.col('transition') == 'catch')):
+            is_catch = 1
+        else:
+            is_catch = 0
+        # trial_pl_data = trial_pl_data.join(pl.DataFrame({"isCatch":is_catch}),how='left')
+        trial_log_data['isCatch'] = is_catch
+        
         #correct
         correct = self.data['state'].filter(pl.col('transition') == 'correct')
         if len(correct):
@@ -130,6 +143,11 @@ class WheelDetectionTrial(Trial):
             trial_log_data['answer'] = -1
             trial_log_data['response_latency'] = early[0,self.column_keys['stateElapsed']]
         
+        if 'answer' not in trial_log_data.keys():
+            # this happens when training with 0 contrast, -1 means there was no answer
+            trial_log_data['answer'] = -1
+            trial_log_data['response_latency'] = -1
+        
         # stim_start
         if trial_log_data['answer']!=-1:
             if 'screen' in self.data.keys():
@@ -138,20 +156,14 @@ class WheelDetectionTrial(Trial):
                     trial_log_data['stim_start_rig'] = self.data['screen'][0,'duinotime']
                 else:
                     trial_log_data['stim_start_rig'] = None
+            else:
+                trial_log_data['stim_start_rig'] = None
             # temp_stim_start = self.data['state'].filter(pl.col('transition') == 'stimstart').select(self.column_keys['elapsed']).alias('stim_start')
             # trial_pl_data = trial_pl_data.join(temp_stim_start,how='left')
             trial_log_data['stim_start'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,self.column_keys['elapsed']]
         else:
             trial_log_data['stim_start'] = None
             trial_log_data['stim_start_rig'] = None
-        
-        # catch
-        if len(self.data['state'].filter(pl.col('transition') == 'catch')):
-            is_catch = 1
-        else:
-            is_catch = 0
-        # trial_pl_data = trial_pl_data.join(pl.DataFrame({"isCatch":is_catch}),how='left')
-        trial_log_data['isCatch'] = is_catch
         
         # stim dissappear
         if trial_log_data['stim_start'] is not None:
@@ -167,18 +179,22 @@ class WheelDetectionTrial(Trial):
                     #???
                     stim_end_rig = self.data['screen'][0,'duinotime']
                 # trial_pl_data = trial_pl_data.join(pl.DataFrame({"stim_end_rig" : stim_end_rig}),how='left')
+                elif len(self.data['screen']) == 0:
+                    stim_end_rig = None
                 trial_log_data['stim_end_rig'] = stim_end_rig
             else:
                 trial_log_data['stim_end_rig'] = None
         else:
             trial_log_data['stim_end'] = None
             trial_log_data['stim_end_rig'] = None
+
         # correction or trial end
         # temp_trial_end = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction')).select(self.column_keys['elapsed']).alias('trial_end')
         # trial_pl_data = trial_pl_data.join(temp_trial_end,how='left')
         trial_log_data['trial_end'] = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction'))[0,self.column_keys['elapsed']]
         
         #vstim
+        
         vstim_log = self.get_vstim_props(trial_log_data['answer'])
         
         rig_log_data = {}

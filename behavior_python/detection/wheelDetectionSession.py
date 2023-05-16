@@ -25,12 +25,21 @@ class WheelDetectionData(SessionData):
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
             # add stim type
             self.data = self.data.with_columns((pl.col('spatial_freq').round(2)+'cpd_'+pl.col('temporal_freq')+'Hz').alias('stim_type'))
-            # add the pattern name depending on pattern id
-            self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
-            # add 'stimkey' from sftf
-            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False)).alias('stimkey'))
-            # add stim_label for legends and stuff
-            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
+            
+            if len(self.data['opto'].unique().to_numpy()) == 1:
+                # add the pattern name depending on pattern id
+                self.data = self.data.with_columns(pl.lit(None).alias('opto_region'))
+                # add 'stimkey' from sftf
+                self.data = self.data.with_columns((pl.col("stim_type")+'_-1').alias('stimkey'))
+                # add stim_label for legends and stuff
+                self.data = self.data.with_columns((pl.col("stim_type")).alias('stim_label'))
+            else:
+                # add the pattern name depending on pattern id
+                self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
+                # add 'stimkey' from sftf
+                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False)).alias('stimkey'))
+                # add stim_label for legends and stuff
+                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
             
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
@@ -77,8 +86,9 @@ class WheelDetectionStats:
     
     def init_from_data(self,data_in:WheelDetectionData):
         data = data_in.data
-        early_data = data.filter(pl.col('answer')==-1)
-        stim_data = data.filter(pl.col('answer')!=-1)
+        early_data = data.filter((pl.col('answer')==-1) & (pl.col('isCatch')==0))
+        stim_data = data.filter((pl.col('answer')!=-1) & (pl.col('isCatch')==0))
+        catch_data = data.filter(pl.col('isCatch')==1)
         correct_data = data.filter(pl.col('answer')==1)
         miss_data = data.filter(pl.col('answer')==0)
         
@@ -96,7 +106,7 @@ class WheelDetectionStats:
         self.nogo_percent = round(100 * self.miss_count / self.stim_count, 3)
         
         ## performance on easy trials
-        easy_data = data.filter(pl.col('contrast').is_in([1.0,0.5])) # earlies can't be easy or hard
+        easy_data = data.filter(pl.col('contrast').is_in([100,50])) # earlies can't be easy or hard
         easy_correct_count = len(easy_data.filter(pl.col('answer')==1))
         self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
         
