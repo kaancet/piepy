@@ -311,11 +311,6 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
-        
-        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
-                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
-        if seperate_stims:
-            self.plot_data = self.make_agg_data()
             
         # first plot the earlies
         early_data = self.plot_data.filter(pl.col('answer')==-1)
@@ -323,6 +318,11 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins,color='r',label='Early')
         
+        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
+                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
+        if seperate_stims:
+            self.plot_data = self.make_agg_data()
+
         uniq_type = self.plot_data['stim_type'].unique().to_numpy()
         uniq_opto = self.plot_data['opto'].unique().to_numpy()
         
@@ -345,9 +345,13 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
                                        bins,
                                        color=self.color.stim_keys[k]['color'],
                                        alpha=0.7,
-                                       label=label if 'NaN' not in t else '_')
+                                       label=label)
+                    
                     #plotting the median
-                    # ax.axvline(np.median(resp_times),color='b',linewidth=3)
+                    ax.axvline(np.median(resp_times),
+                               color=self.color.stim_keys[k]['color'],
+                               linewidth=3,
+                               label=f'{label} Median')
                     # plotting the shuffled histograms
                     # shuffled = self.shuffle_times(resp_times_blanked)
                     # shuffled_hists = np.zeros((n_shuffle,len(counts)))
@@ -366,7 +370,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
                     # ax.plot(bins[1:],shuf_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
         
         fontsize = kwargs.get('fontsize',25)
-        ax.legend(loc='center left',bbox_to_anchor=(0.05,0.8),fontsize=fontsize,frameon=False)
+        ax.legend(loc='center left',bbox_to_anchor=(0.05,0.8),fontsize=fontsize-5,frameon=False)
         ax.set_xlabel('Time from Stimulus onset (ms)', fontsize=fontsize)
         ax.set_ylabel('Counts', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
@@ -377,51 +381,63 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     
 class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
     __slots__ = []
-    def __init__(self, data, stimkey: str, **kwargs):
+    def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
-        self.modify_data()
-        
-    def modify_data(self,*args,**kwargs):
-        # change the self.plot_data here if need to plot something else
-        pass
     
-    def plot(self,ax:plt.Axes=None,padding=0.8,**kwargs):
+    def make_agg_data(self,remove_early:bool=False):
+        """ Aggregates the data"""
+        q = self.plot_data.lazy()
+        if remove_early:
+            q = q.filter(pl.col('answer')!=-1)
+        
+        q = (
+            q.groupby(["stimkey","answer"])
+            .agg(
+                [  
+                    pl.count().alias("count"),
+                    (pl.col("stim_label").first()),
+                ]
+            ).sort(["stimkey","answer"])
+            )
+        df = q.collect()
+        return df
+    
+    def plot(self,ax:plt.Axes=None,bar_width=0.4,**kwargs):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
+        # do early first
+        early_data = self.plot_data.filter(pl.col('answer')==-1)
+        ax = self.__plot__(ax,1,len(early_data),
+                           width=bar_width,
+                           color='r',linewidth=2,edgecolor='k')
         
-        for answer in [0,1]:
-            colors = ['#630726','#32a852','#333333']
-            answer_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==answer]
-            counts = [len(answer_data[answer_data['stim_side']<0]),
-                      len(answer_data[answer_data['stim_side']>0]),
-                      len(answer_data[answer_data['stim_side']==0])]
-            
-            if counts[-1] == 0:
-                counts = counts[:-1]
-                colors = colors[:-1]
-            
-            locs = self.position_bars(answer,len(counts),0.25,padding=padding)
-            
-            ax = self.__plot__(ax,locs,counts,width=0.25,
-                                 color=colors,
-                                 linewidth=2,
-                                 edgecolor='k',
-                                 **kwargs)
+        self.plot_data = self.make_agg_data(remove_early=True)
         
-        # early answers alone
-        ax = self.__plot__(ax,[-1],[len(self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==-1])],
-                           width=0.5,
-                           color='orangered',
-                           linewidth=2,
-                           edgecolor='k',
-                           **kwargs)
-                
-        fontsize = kwargs.get('fontsize',14)
+        uniq_k = self.plot_data['stimkey'].unique().to_numpy()
+        
+        label_dict = {1:'Early'}
+        for i,k in enumerate(uniq_k,start=2):
+            filt_df = self.plot_data.filter(pl.col('stimkey')==k)
+             
+            #0.5 because only 2 (correct and miss)
+            bar_locs = [i-bar_width/2,i+bar_width/2]
+            bars = filt_df['count'].to_list() #ordered by miss,correct
+            
+            label = filt_df[0,'stim_label']
+            ax = self.__plot__(ax,bar_locs,bars,width=0.4,
+                               color=['#333333','#32a852'],
+                               linewidth=2,
+                               edgecolor='k')
+
+            label_dict[i] = label
+  
+        fontsize = kwargs.get('fontsize',25)
+        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize-5,frameon=False)
         ax.set_ylabel('Counts', fontsize=fontsize)
-        ax.set_xticks([-1,0,1])
-        ax.set_xticklabels(['Early','Missed','Correct'])
+        ax.set_xticks(list(label_dict.keys()))
+        ax.set_xticklabels(list(label_dict.values()))
         ax.tick_params(labelsize=fontsize)
         ax.grid(alpha=0.5,axis='y')
         

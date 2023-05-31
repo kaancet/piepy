@@ -461,7 +461,7 @@ class ResponseTimeHistogramPlotter(BasePlotter):
     __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,drop_early=False)
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
         
         #check color definitions
         self.color.check_stim_colors(self.uniq_keys)
@@ -501,25 +501,14 @@ class ResponseTimeHistogramPlotter(BasePlotter):
     
     
 class ResponseTypeBarPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
+    __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
-        
-    @staticmethod
-    def position_bars(bar_loc,bar_count,bar_width,padding):
-        if bar_count == 1:
-            return bar_loc
-        else:
-            locs = []
-            mult = np.sign(np.linspace(-1,1,bar_count))
-            for m in mult:
-                locs.append(bar_loc + (m * bar_width * (bar_count-1)/2) + (m * padding * (bar_count-2)))
-            return locs
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
         
     @staticmethod    
     def __plot__(ax,x_locs,bar_heights,**kwargs):
