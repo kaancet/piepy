@@ -5,7 +5,6 @@ from scipy.stats import fisher_exact, barnard_exact
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data:pl.DataFrame, **kwargs) -> None:
         super().__init__(data,**kwargs)
-        
         self.stat_analysis = DetectionAnalysis(data=data)
         
     @staticmethod
@@ -261,16 +260,6 @@ class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
     def __init__(self,data:pl.DataFrame,stimkey:str=None,**kwargs):
         super().__init__(data, stimkey, **kwargs)
-        self.modify_data()
-
-    def modify_data(self,*args,**kwargs):
-        # change the self.plot_data here with methods if need to plot something else
-        pass
-
-    # def plot(self, ax:plt.axes=None,*args,**kwargs):
-    # override the plot function calling __plot__ 
-    # <your code here>
-    # self.__plot__(x,y,ax)
 
 
 class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
@@ -278,28 +267,13 @@ class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
     def __init__(self, data:pl.DataFrame, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
     
-    def plot(self,ax:plt.Axes=None,t_cutoff:float=10_1000,cloud_width=0.33,xaxis_type:str='linear_spaced',**kwargs):
-        ax = super().plot(ax,t_cutoff=t_cutoff,
-                          cloud_width=cloud_width,
-                          xaxis_type=xaxis_type,
-                          **kwargs)
-        return ax
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     """ Plots an histogram of response times, showing earlies and hits"""
     __slots__ = []
-    def __init__(self, data, stimkey: str=None, **kwargs):
+    def __init__(self, data:pl.DataFrame, stimkey: str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
-        self.modify_data()
         
-    def modify_data(self,*args,**kwargs):
-        if isinstance(self.plot_data,dict):
-            for k,v in self.plot_data.items():
-                v['blanked_response_latency'] = v[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
-        else:
-            self.plot_data['blanked_response_latency'] = self.plot_data[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
-        
-    
     @staticmethod
     def shuffle_times(x_in,n_shuffle:int=1000) -> np.ndarray:
         """ Shuffles x_in n_shuffle times """
@@ -314,43 +288,88 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
             
         return shuffled_matrix
     
-    def plot(self,bin_width=50,ax:plt.Axes=None,**kwargs):
+    def make_agg_data(self):
+        """ Aggregates the data"""
+        q = (
+            self.plot_data.lazy()
+            .groupby(["stim_type","contrast","opto"])
+            .agg(
+                [ 
+                    (pl.col("response_latency").alias("response_times")),
+                    (pl.col("response_latency").median().alias("median_response_time")),
+                    (pl.col("opto_pattern").first()),
+                    (pl.col("stimkey").first()),
+                    (pl.col("stim_label").first()),
+                ]
+            ).sort(["stim_type","contrast","opto"])
+            )
+        df = q.collect()
+        return df
+        
+    def plot(self,ax:plt.Axes=None,bin_width=50,seperate_stims:bool=False,**kwargs):
         n_shuffle = kwargs.get('n_shuffle',1000)
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
-        answered_data = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']!=0]
-        resp_times_blanked = answered_data['blanked_response_latency'].to_numpy()[:]
-        blank_times = answered_data['blank_time'].to_numpy()[:]
-        resp_times = resp_times_blanked - blank_times
-        
-        counts,bins = self.bin_times(resp_times,bin_width)
-        ax = self.__plot__(ax,counts,bins)
-        #plotting the median
-        # ax.axvline(np.median(resp_times),color='b',linewidth=3)
-        # plotting the shuffled histograms
-        shuffled = self.shuffle_times(resp_times_blanked)
-        shuffled_hists = np.zeros((n_shuffle,len(counts)))
-
-        for i,row in enumerate(shuffled):
-
-            row -= blank_times
-            counts,_ = self.bin_times(row,bin_width,bins=bins)
-            shuffled_hists[i,:] = counts.reshape(1,-1)
-        
-        #mean & std
-        shuf_mean = np.mean(shuffled_hists,axis=0)
-        shuf_std = np.std(shuffled_hists,axis=0)
-        
-        ax.fill_between(bins[1:],shuf_mean-shuf_std,shuf_mean+shuf_std,color='dimgrey',alpha=0.4,zorder=2)
-        ax.plot(bins[1:],shuf_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
+        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
+                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
+        if seperate_stims:
+            self.plot_data = self.make_agg_data()
             
-        fontsize = kwargs.get('fontsize',14)
+        # first plot the earlies
+        early_data = self.plot_data.filter(pl.col('answer')==-1)
+        resp_times = early_data['blanked_response_latency'].to_numpy()           
+        counts,bins = self.bin_times(resp_times,bin_width)
+        ax = self.__plot__(ax,counts,bins,color='r',label='Early')
+        
+        uniq_type = self.plot_data['stim_type'].unique().to_numpy()
+        uniq_opto = self.plot_data['opto'].unique().to_numpy()
+        
+        for i,t in enumerate(uniq_type):
+            for o in uniq_opto:
+                filt_df = self.plot_data.filter((pl.col('stim_type')==t) & 
+                                                (pl.col('opto')==o) & 
+                                                (pl.col('answer')==1))
+                if len(filt_df):
+                     
+                    # resp_times_blanked = filt_df['blanked_response_latency'].to_numpy()
+                    # blank_times = filt_df['blank_time'].to_numpy()
+                    resp_times = filt_df['response_latency'].to_numpy()
+                        
+                    counts,bins = self.bin_times(resp_times,bin_width)
+                    
+                    k = filt_df[0,'stimkey']
+                    label = filt_df[0,'stim_label']
+                    ax = self.__plot__(ax,counts,
+                                       bins,
+                                       color=self.color.stim_keys[k]['color'],
+                                       alpha=0.7,
+                                       label=label if 'NaN' not in t else '_')
+                    #plotting the median
+                    # ax.axvline(np.median(resp_times),color='b',linewidth=3)
+                    # plotting the shuffled histograms
+                    # shuffled = self.shuffle_times(resp_times_blanked)
+                    # shuffled_hists = np.zeros((n_shuffle,len(counts)))
+
+                    # for i,row in enumerate(shuffled):
+
+                    #     row -= blank_times
+                    #     counts,_ = self.bin_times(row,bin_width,bins=bins)
+                    #     shuffled_hists[i,:] = counts.reshape(1,-1)
+                
+                    # #mean & std
+                    # shuf_mean = np.mean(shuffled_hists,axis=0)
+                    # shuf_std = np.std(shuffled_hists,axis=0)
+                    
+                    # ax.fill_between(bins[1:],shuf_mean-shuf_std,shuf_mean+shuf_std,color='dimgrey',alpha=0.4,zorder=2)
+                    # ax.plot(bins[1:],shuf_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
+        
+        fontsize = kwargs.get('fontsize',25)
+        ax.legend(loc='center left',bbox_to_anchor=(0.05,0.8),fontsize=fontsize,frameon=False)
         ax.set_xlabel('Time from Stimulus onset (ms)', fontsize=fontsize)
         ax.set_ylabel('Counts', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
-        ax.tick_params(axis='x')
         ax.grid(alpha=0.5,axis='y')
         
         return ax

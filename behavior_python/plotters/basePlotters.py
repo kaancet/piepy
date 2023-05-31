@@ -16,13 +16,16 @@ class BasePlotter:
         self.color = Color()
         
     @staticmethod
-    def select_stim_data(data_in:pl.DataFrame, stimkey:str=None) -> dict:
+    def select_stim_data(data_in:pl.DataFrame, stimkey:str=None, drop_early:bool=True) -> dict:
         """ Returns the selected stimulus type from session data
             data_in : 
             stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
         """
         # drop early trials
-        data = data_in.filter(pl.col('answer')!=-1)
+        if drop_early:
+            data = data_in.filter(pl.col('answer')!=-1)
+        else:
+            data = data_in.select(pl.col('*'))
         
         #should be no need for drop_nulls, but for extra failsafe
         uniq_keys = data.select(pl.col('stimkey')).drop_nulls().unique().to_series().to_numpy()
@@ -190,7 +193,6 @@ class ResponseTimePlotter(BasePlotter):
         ax.grid(alpha=0.5,axis='both')
         
         return ax
-
 
 
 class ResponseTimeScatterCloudPlotter(BasePlotter):
@@ -453,18 +455,18 @@ class ResponseTimeScatterCloudPlotter(BasePlotter):
         ax.legend(loc='center left',bbox_to_anchor=(0.98,0.5),fontsize=fontsize-5,frameon=False)
         
         return ax
-        
+         
 
 class ResponseTimeHistogramPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data']
+    __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,drop_early=False)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
-        
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
+     
     @staticmethod
     def bin_times(time_arr,bin_width=50,bins:np.ndarray=None):
         """ Counts the response times in bins(ms)"""
@@ -477,10 +479,23 @@ class ResponseTimeHistogramPlotter(BasePlotter):
     def __plot__(ax,counts,bins,**kwargs):
         # adapt the bar width to the bin width
         bar_width = bins[1] - bins[0]
-        color = ['orangered' if i<=150 else 'forestgreen' for i in bins]    
         
-        ax.bar(bins[1:],counts,width=bar_width,color=color,**kwargs)
-        ax.axvline(x=0,color='k',linestyle=':',linewidth=3,**kwargs)
+        if kwargs.get('color') is not None:
+            cl = kwargs.get('color')
+            kwargs.pop('color')
+        else:
+            cl = 'forestgreen'
+        
+        color = ['orangered' if i<=150 else cl for i in bins]    
+        
+        ax.bar(bins[1:],counts,
+               width=bar_width,
+               color=color,
+               edgecolor='k',
+               **kwargs)
+        
+        # zero line
+        ax.axvline(x=0,color='k',linestyle=':',linewidth=3)
         
         return ax
     
