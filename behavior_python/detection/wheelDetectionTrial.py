@@ -124,7 +124,7 @@ class WheelDetectionTrial(Trial):
         #incorrect(noanswer)
         incorrect = self.data['state'].filter(pl.col('transition') == 'incorrect')
         if len(incorrect):
-            if incorrect[0,self.column_keys['stateElapsed']] <=150:
+            if incorrect[0,self.column_keys['stateElapsed']] < 1000:
                 # trial_pl_data = trial_pl_data.join(pl.DataFrame({"answer" : -1,
                 #                                                  "response_latency": incorrect[0,self.column_keys['stateElapsed']] + trial_pl_data[0,'blank_time']}),how='left')
                 trial_log_data['answer'] = -1
