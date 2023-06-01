@@ -87,10 +87,26 @@ class DetectionPsychometricPlotter(BasePlotter):
                     if s == 'catch' and filt_df[0,'opto'] == 0:
                         # draw the baseline only on non-opto
                         ax.plot([-100, 100], [hr, hr], 'k', linestyle=':', linewidth=2,alpha=0.7)
-
-        # prettify
-        fontsize = kwargs.get('fontsize',25)
-               
+        
+        if xaxis_type == 'log':
+            ax.set_xscale('symlog')
+            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
+            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
+            x_t = {t:t for t in x_ticks}
+        elif xaxis_type=='linear':
+            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            ax.set_xticks(x_ticks)
+            ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
+            x_t = {t:t for t in x_ticks}
+        elif xaxis_type=='linear_spaced':
+            temp = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
+            x_t = {temp[i]:t for i,t in enumerate(x_ticks)}
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels(temp)
+            ax.set_xlim([x_ticks[0]-0.5,x_ticks[-1]+0.5])
+            
         # put the significance starts
         for i in range(len(self.p_vals)):
             p = self.p_vals[i,'p_values']
@@ -104,24 +120,10 @@ class DetectionPsychometricPlotter(BasePlotter):
             elif 0.01 < p < 0.05:
                 stars = '*'
         
-            ax.text(c, 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
-        
-        if xaxis_type == 'log':
-            ax.set_xscale('symlog')
-            ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
-            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
-        elif xaxis_type=='linear':
-            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
-            ax.set_xticks(x_ticks)
-            ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
-        elif xaxis_type=='linear_spaced':
-            temp = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
-            x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
-            ax.set_xticks(x_ticks)
-            ax.set_xticklabels(temp)
-            ax.set_xlim([x_ticks[0]-0.5,x_ticks[-1]+0.5])
+            ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
     
-    
+        # prettify
+        fontsize = kwargs.get('fontsize',25)
         ax.set_ylim([0,110])
         ax.set_yticklabels(int(i) for i in ax.get_yticks())
         ax.set_xlabel('Stimulus Contrast (%)', fontsize=fontsize)
@@ -311,15 +313,17 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
-            
+        
+        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
+                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
+        
         # first plot the earlies
         early_data = self.plot_data.filter(pl.col('answer')==-1)
         resp_times = early_data['blanked_response_latency'].to_numpy()           
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins,color='r',label='Early')
         
-        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
-                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
+        
         if seperate_stims:
             self.plot_data = self.make_agg_data()
 

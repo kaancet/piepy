@@ -34,8 +34,11 @@ class WheelDetectionData(SessionData):
                 # add stim_label for legends and stuff
                 self.data = self.data.with_columns((pl.col("stim_type")).alias('stim_label'))
             else:
+                try:
                 # add the pattern name depending on pattern id
-                self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
+                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
+                except:
+                    raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
                 # add 'stimkey' from sftf
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False)).alias('stimkey'))
                 # add stim_label for legends and stuff
