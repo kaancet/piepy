@@ -55,7 +55,7 @@ class WheelDetectionTrial(Trial):
                 vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
     
-    def get_wheel_pos(self,time_anchor:float) -> np.ndarray:
+    def get_wheel_pos(self,time_anchor:float) -> list:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
         wheel_deg_per_tick = (self.meta.wheelGain * WHEEL_CIRCUM) / WHEEL_TICKS_PER_REV
         
@@ -76,7 +76,7 @@ class WheelDetectionTrial(Trial):
             wheel_pos = None
         return wheel_time,wheel_pos
     
-    def trial_data_from_logs(self) -> list:
+    def trial_data_from_logs(self) -> dict:
         """ Iterates over each state change in a DataFrame slice that belongs to one trial(and corrections for pyvstim)
             Returns a list of dictionaries that have data parsed from stimlog and riglog
         """
