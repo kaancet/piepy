@@ -13,7 +13,7 @@ class WheelDetectionExperiment:
         exp_name = exp_dir.split('\\')[-1]
         return {
                     'opto_power' : int(exp_name.split('_')[3][-3:])/100,
-                    'area' : exp_name.split('_')[3],
+                    'area' : exp_name.split('_')[4],
                     'exp_name' : exp_name
                 } 
         
@@ -39,9 +39,9 @@ class WheelDetectionExperiment:
             }
 
             non_lit = {
-                'contrastVector' : [w.meta.contrastVector] * data_len,
-                'sfValues' : [w.meta.sf_values] * data_len,
-                'tfValues' : [w.meta.tf_values] * data_len
+                'contrast_vector' : [w.meta.contrastVector] * data_len,
+                'sf_values' : [w.meta.sf_values] * data_len,
+                'tf_values' : [w.meta.tf_values] * data_len
             }
             lit_dict = {**lit,**temp}
         
@@ -72,18 +72,22 @@ class WheelDetectionExperiment:
         
         return df
     
-    # def filter_sessions(self,filter_dict:dict=None) -> pl.DataFrame:
-    #     """Filters the self.data according to filter_dict, if None returns self.data as is"""
+    def filter_sessions(self,filter_dict:dict=None) -> pl.DataFrame:
+        """Filters the self.data according to filter_dict, if None returns self.data as is"""
+        list_names = ['contrast_vector','sf_values','tf_values']
+        if filter_dict is None:
+            return self.data
         
-    #     if filter_dict is None:
-    #         return self.data
+        filt_df = self.data.select(pl.col('*'))
         
-    #     filt_df = self.data.select(pl.col('*'))
-        
-    #     for k,v in filter_dict.items():
-    #         try:
-    #             filt_df = filt_df.filter(pl.col(k) == v)
-    #         except:
-    #             raise KeyError(f'The filter key {k} is not present in the data columns, make sure you have the correct data column names')
+        for k,v in filter_dict.items():
+            try:
+                if k not in list_names:
+                    filt_df = filt_df.filter(pl.col(k) == v)
+                else:
+                    for l in v:
+                        filt_df = filt_df.filter(pl.col(k).arr.contains(l))
+            except:
+                raise KeyError(f'The filter key {k} is not present in the data columns, make sure you have the correct data column names')
             
-    #     return filt_df
+        return filt_df
