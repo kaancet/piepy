@@ -49,18 +49,22 @@ class WheelDetectionExperiment:
             if i==0:
                 # create the polars frame
                 df = w.data.data.with_columns([pl.lit(v).alias(k) for k,v in lit_dict.items()])
+                df = df.with_columns(pl.lit(i+1).cast(pl.Int32).alias('session_no'))
                 list_df = pl.DataFrame(non_lit)
                 df = pl.concat([df,list_df],how='horizontal')
                 
             else:
                 # concat to polars frame
                 temp_df = w.data.data.with_columns([pl.lit(v).alias(k) for k,v in lit_dict.items()])
+                temp_df = temp_df.with_columns(pl.lit(i+1).cast(pl.Int32).alias('session_no'))
                 list_df = pl.DataFrame(non_lit)
                 temp_df = pl.concat([temp_df,list_df],how='horizontal')
+                
                 
                 #sorting the columns
                 temp_df = temp_df.select(df.columns)
                 df = pl.concat([df,temp_df])
+                
             pbar.update()
         
         # make reorder column list
