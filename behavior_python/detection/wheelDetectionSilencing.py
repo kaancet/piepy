@@ -1,5 +1,5 @@
 from .wheelDetectionSession import *
-
+from tabulate import tabulate
 
 class WheelDetectionExperiment:
     __slots__ = ['exp_list','data']
@@ -34,17 +34,19 @@ class WheelDetectionExperiment:
                 'miss_count' : w.stats.miss_count,
                 'hit_rate' : w.stats.hit_rate,
                 'false_alarm' : w.stats.false_alarm,
-                'optoRatio' : w.meta.optoRatio,
+                'opto_ratio' : w.meta.optoRatio,
+                'opto_targets' : len(np.unique(w.data.data.drop_nulls()['opto_pattern']))-1,
+                'stimulus_types' : len(w.meta.sf_values),
                 'rig' : w.meta.rig,
             }
 
             non_lit = {
                 'contrast_vector' : [w.meta.contrastVector] * data_len,
-                'sf_values' : [w.meta.sf_values] * data_len,
-                'tf_values' : [w.meta.tf_values] * data_len
+                'sf_values' : [[float(i) for i in w.meta.sf_values]] * data_len,
+                'tf_values' : [[float(i) for i in w.meta.tf_values]] * data_len
             }
             lit_dict = {**lit,**temp}
-        
+            
             # get the actual data and add the above meta, stat and temp(name stuff) to it as columns
             if i==0:
                 # create the polars frame
@@ -95,3 +97,25 @@ class WheelDetectionExperiment:
                 raise KeyError(f'The filter key {k} is not present in the data columns, make sure you have the correct data column names')
             
         return filt_df
+
+    def print_data_summary(self) -> None:
+        """ Prints a tabulated text description of the data argument """
+        q = (
+            self.data.lazy()
+            .groupby(["animalid","area","stimulus_types","opto_targets"])
+            .agg(
+                [   (pl.col("date").unique().count().alias("experiment_count")),
+                    (pl.col("date").unique(maintain_order=True)),
+                    (pl.col("trial_count").unique(maintain_order=True)),
+                    (pl.count().alias("total_trials")),
+                    (pl.col("hit_rate").unique(maintain_order=True)),
+                    (pl.col("false_alarm").unique(maintain_order=True))
+                ]
+            ).drop_nulls()
+            .sort(["animalid","area","stimulus_types","opto_targets"])
+        )
+        df = q.collect()
+        
+        tmp = df.to_pandas()
+        print(tabulate(tmp,headers=df.columns))
+        
