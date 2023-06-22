@@ -91,9 +91,11 @@ class WheelDetectionTrial(Trial):
         # cue_start
         # temp_cue = self.data['state'].filter(pl.col('transition') == 'cuestart').select([self.column_keys['elapsed'],self.column_keys['elapsed']]).alias(['cue_start','openstart_absolute'])
         # trial_pl_data = trial_pl_data.join(temp_cue,how='left')
-        trial_log_data['cue_start'] = self.data['state'].filter(pl.col('transition') == 'cuestart')[0,self.column_keys['elapsed']]
-        trial_log_data['open_start_absolute'] = trial_log_data['cue_start']
-        
+        try:
+            trial_log_data['cue_start'] = self.data['state'].filter(pl.col('transition') == 'cuestart')[0,self.column_keys['elapsed']]
+            trial_log_data['open_start_absolute'] = trial_log_data['cue_start']
+        except:
+            return {}
         # blank_duration
         if 'blankDuration' in self.column_keys.keys(): 
             # temp_blank = self.data['state'].filter(pl.col('transition') == 'cuestart').select(self.column_keys['blankDuration']).alias('blank_time')
@@ -168,8 +170,12 @@ class WheelDetectionTrial(Trial):
         # stim dissappear
         if trial_log_data['stim_start'] is not None:
             # temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendcorrect') | (pl.col('transition') == 'stimendincorrect')).select(self.column_keys['elapsed']).alias('stim_end')
-            # trial_pl_data = trial_pl_data.join(temp_stim_end,how='left')    
-            trial_log_data['stim_end'] = self.data['state'].filter((pl.col('transition') == 'stimendcorrect') | (pl.col('transition') == 'stimendincorrect'))[0,self.column_keys['elapsed']]
+            # trial_pl_data = trial_pl_data.join(temp_stim_end,how='left')
+            try:
+                trial_log_data['stim_end'] = self.data['state'].filter((pl.col('transition') == 'stimendcorrect') | (pl.col('transition') == 'stimendincorrect'))[0,self.column_keys['elapsed']]
+            except:
+                # this means that the trial was cut short, should only happen in last trial
+                return {}
             if 'screen' in self.data.keys():
                 if len(self.data['screen']) == 2:
                     # this should be the way for stim appear and dissappear
@@ -191,8 +197,12 @@ class WheelDetectionTrial(Trial):
         # correction or trial end
         # temp_trial_end = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction')).select(self.column_keys['elapsed']).alias('trial_end')
         # trial_pl_data = trial_pl_data.join(temp_trial_end,how='left')
-        trial_log_data['trial_end'] = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction'))[0,self.column_keys['elapsed']]
-        
+        try:
+            trial_log_data['trial_end'] = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction'))[0,self.column_keys['elapsed']]
+        except:
+            # this means that the trial was cut short, should only happen in last trial
+            return {}
+            
         #vstim
         
         vstim_log = self.get_vstim_props(trial_log_data['answer'])
