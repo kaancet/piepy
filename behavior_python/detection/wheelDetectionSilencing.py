@@ -2,10 +2,11 @@ from .wheelDetectionSession import *
 from tabulate import tabulate
 
 class WheelDetectionExperiment:
-    __slots__ = ['exp_list','data']
+    __slots__ = ['exp_list','data','summary_data']
     def __init__(self,exp_list:list,load_sessions:bool=False) -> None:
         self.exp_list = exp_list
         self.data = self.parse_sessions(load_sessions=load_sessions)
+        self.summary_data = self.make_summary_data()
     
     @staticmethod
     def parse_session_name(exp_dir) -> dict:
@@ -65,8 +66,10 @@ class WheelDetectionExperiment:
                 
                 #sorting the columns
                 temp_df = temp_df.select(df.columns)
-                df = pl.concat([df,temp_df])
-                
+                try:
+                    df = pl.concat([df,temp_df])
+                except:
+                    print('wow')
             pbar.update()
         
         # make reorder column list
@@ -81,31 +84,48 @@ class WheelDetectionExperiment:
     def filter_sessions(self,filter_dict:dict=None) -> pl.DataFrame:
         """Filters the self.data according to filter_dict, if None returns self.data as is"""
         list_names = ['contrast_vector','sf_values','tf_values']
-        if filter_dict is None:
-            return self.data
         
         filt_df = self.data.select(pl.col('*'))
         
         for k,v in filter_dict.items():
-            try:
-                if k not in list_names:
-                    filt_df = filt_df.filter(pl.col(k) == v)
-                else:
-                    for l in v:
-                        filt_df = filt_df.filter(pl.col(k).arr.contains(l))
-            except:
+            
+            if k not in filt_df.columns:
                 raise KeyError(f'The filter key {k} is not present in the data columns, make sure you have the correct data column names')
+
+            if k not in list_names:
+                if isinstance(v,list):
+                    temp_df = pl.DataFrame()
+                    for v_elem in v:
+                        t = filt_df.filter(pl.col(k) == v_elem)
+                        
+                        uniq_sessions = t['session_no'].unique().to_list()
+                        if len(uniq_sessions)>1:
+                            for sesh_id in uniq_sessions:
+                                #sometimes some dates have multiple sessions
+                                # loop over dates
+                                t2 = t.filter(pl.col('session_no')==sesh_id)
+                                temp_df = pl.concat([temp_df,t2])
+                        else:
+                            temp_df = pl.concat([temp_df,t])
+                    filt_df = temp_df
+                else:
+                    filt_df = filt_df.filter(pl.col(k) == v)
+            else:
+                for l in v:
+                    filt_df = filt_df.filter(pl.col(k).arr.contains(l))
+            
             
         return filt_df
 
-    def print_data_summary(self) -> None:
-        """ Prints a tabulated text description of the data argument """
+    def make_summary_data(self) -> pl.DataFrame:
+        """ Creates a summary data and and prints a tabulated text description of it"""
         q = (
             self.data.lazy()
             .groupby(["animalid","area","stimulus_types","opto_targets"])
             .agg(
                 [   (pl.col("date").unique().count().alias("experiment_count")),
                     (pl.col("date").unique(maintain_order=True)),
+                    (pl.col("session_no").unique(maintain_order=True).alias("session_ids")),
                     (pl.col("trial_count").unique(maintain_order=True)),
                     (pl.count().alias("total_trials")),
                     (pl.col("hit_rate").unique(maintain_order=True)),
@@ -115,7 +135,27 @@ class WheelDetectionExperiment:
             .sort(["animalid","area","stimulus_types","opto_targets"])
         )
         df = q.collect()
+        return df
         
-        tmp = df.to_pandas()
-        print(tabulate(tmp,headers=df.columns))
+    def print_summary(self) -> None:
+        """Prints the summary data"""
+        tmp = self.summary_data.to_pandas()
+        print(tabulate(tmp,headers=self.summary_data.columns))
+    
+    def filter_experiments(self,area:str,stim_types:int=1,opto_targets:int=1,verbose:bool=True) -> pl.DataFrame:
+        """ Filters the summary data according to 3 arguments,
+        Then uses the dates in those filtered sessions to filter self.data"""
+        
+        filt_summ = self.summary_data.filter((pl.col('area')==area) &
+                                             (pl.col('stimulus_types')==stim_types) &
+                                             (pl.col('opto_targets')==opto_targets))
+        if verbose:
+            print(filt_summ)
+        ids = filt_summ['session_ids'].explode().unique().to_list()
+        filter_dict = {'area':area,
+                       'session_no':ids}
+        filt_df = self.filter_sessions(filter_dict)
+        return filt_df
+                
+        
         
