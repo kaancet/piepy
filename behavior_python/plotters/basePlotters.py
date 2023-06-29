@@ -690,6 +690,10 @@ class WheelTrajectoryPlotter(BasePlotter):
         
         # this could be contrast, answer 
         uniq_sep = self.plot_data[seperate_by].unique().sort().to_list()
+        if seperate_by == 'contrast':
+            color = self.color.contrast_keys
+        elif seperate_by == 'answer':
+            color = self.color.answer_keys
         
         self.fig, axes = plt.subplots(ncols=n_stim,
                                       nrows=n_opto,
@@ -725,17 +729,17 @@ class WheelTrajectoryPlotter(BasePlotter):
                                 if trace_type=='sem':
                                     ax.fill_between(wheel_interp_t,sem_plus,sem_minus,
                                                 alpha=0.2,
-                                                color=self.color.contrast_keys[str(sep)]['color'],
+                                                color=color[str(sep)]['color'],
                                                 linewidth=0)
                                 elif trace_type=='indiv':
                                     for w in wheel_stats['indiv']:
                                         ax.plot(wheel_interp_t,w+side,
-                                                color = self.color.contrast_keys[str(sep)]['color'],
+                                                color = color[str(sep)]['color'],
                                                 linewidth=0.8,
                                                 alpha=0.5)
                                 
                                 ax = self.__plot__(ax,wheel_interp_t,wheel_y,
-                                                    color=self.color.contrast_keys[str(sep)]['color'],
+                                                    color=color[str(sep)]['color'],
                                                     label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
                                                     **kwargs) 
                     
