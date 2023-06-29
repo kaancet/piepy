@@ -120,49 +120,48 @@ def isMonotonic(A):
     return (all(A[i] <= A[i + 1] for i in range(len(A) - 1)) or
             all(A[i] >= A[i + 1] for i in range(len(A) - 1)))
 
-def get_wheel_t_range(wheel_arr):
+def get_wheel_t_range(wheel_time) -> list:
     """ """
     max_t = 0
     min_t = 0
-    for wheel_trial in wheel_arr:
-        if len(wheel_trial):
-            wheel_max = np.max(wheel_trial[:,0])
-            wheel_min = np.min(wheel_trial[:,0])
+    for wheel_trial in wheel_time:
+        if wheel_trial is not None:
+            wheel_max = np.max(wheel_trial)
+            wheel_min = np.min(wheel_trial)
 
             max_t = wheel_max if wheel_max > max_t else max_t
             min_t = wheel_min if wheel_min < min_t else min_t
 
     return [min_t, max_t]
 
-def get_trajectory_avg(wheel_arr:np.ndarray) -> np.ndarray:
-    """ Averages a group of 2D wheel trajectory arrays"""
+def get_trajectory_avg(wheel_time:np.ndarray,wheel_pos:np.ndarray,n_interp:int=3000) -> np.ndarray:
+    """ Averages a group of 2D wheel trajectory arrays """
     wheel_stats = {}
     
-    wheel_t_range = get_wheel_t_range(wheel_arr)
+    wheel_t_range = get_wheel_t_range(wheel_time)
 
-    if len(wheel_arr):
-        t = np.linspace(wheel_t_range[0], wheel_t_range[1],2000).reshape(-1,1)
-        # rows = wheel data points
-        # columns = [time, wheel]
-        # depth = trials
-        wheel_traj = np.zeros((len(t), 2, len(wheel_arr)))
-        wheel_traj[:] = np.nan
+    if wheel_time is not None:
+        t = np.linspace(wheel_t_range[0], wheel_t_range[1],n_interp).reshape(1,-1)
+        # rows = trials
+        # columns = wheel_pos points(t)
+        wheel_all = np.zeros((len(wheel_time),n_interp))
+        wheel_all[:] = np.nan
 
-        for i, trial_wheel in enumerate(wheel_arr):
-            if len(trial_wheel):
-                wheel_interp = np.interp(t,trial_wheel[:,0],trial_wheel[:,1],left=np.nan,right=np.nan).reshape(-1,1)
-                wheel_put = np.hstack((t,wheel_interp))
-                wheel_traj[:, :, i] = wheel_put
+        for i, wheel_traj in enumerate(wheel_pos):
+            if wheel_traj is not None:
+                wheel_interp = np.interp(t,wheel_time[i],wheel_traj,left=np.nan,right=np.nan).reshape(1,-1)
+                wheel_all[i, :] = wheel_interp
         
         # wheel traj has time on rows, [time, wheel_pos] on columns and trials on depth
         #get the mean 
-        avg = np.nanmean(wheel_traj[:, 1, :], axis=1).reshape(-1, 1)
+        avg = np.nanmean(wheel_all, axis=0)
         
-        sems_array = stats.sem(wheel_traj[:,1,:], axis=1,nan_policy='omit').reshape(-1,1)
+        sems_array = stats.sem(wheel_all, axis=0,nan_policy='omit')
         
-        wheel_stats['avg'] = np.hstack((t, avg))
-        wheel_stats['sem'] = np.hstack((t,sems_array.data))
-        return wheel_stats
+        wheel_stats['indiv'] = wheel_all
+        wheel_stats['avg'] = np.vstack((t, avg))
+        wheel_stats['sem'] = np.vstack((t,sems_array.data))
+        return t[0,:],wheel_stats
 
     else:
         return None

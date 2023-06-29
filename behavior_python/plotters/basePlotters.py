@@ -628,16 +628,16 @@ class LickScatterPlotter(BasePlotter):
     
     
 class WheelTrajectoryPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data','side_sep_dict']
-    def __init__(self, data: dict, stimkey:str=None,**kwargs):
+    __slots__ = ['stimkey','plot_data','side_sep_dict','uniq_keys']
+    def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data,stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,
+                                                                             drop_early=kwargs.pop('drop_early',True))
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
         
-         
     @staticmethod
     def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
         ax.plot(wheel_pos, wheel_t,
@@ -666,91 +666,101 @@ class WheelTrajectoryPlotter(BasePlotter):
                 temp = row.stim_end - row.stim_start
             pooled_ends.append(temp)
         return np.array(pooled_ends)
-     
-    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',**kwargs):
+             
+    def plot(self,
+             seperate_by:str='contrast',
+             time_lims:list=None,
+             traj_lims:list=None,
+             trace_type:str='sem',
+             **kwargs):
         
-        if plot_range_time is None:
-            plot_range_time = [-200,1500]
-        if plot_range_trj is None:
-            plot_range_trj = [-75,75]
+        fontsize = kwargs.pop('fontsize',20)
+        if time_lims is None:
+            time_lims = [-200,1500]
+        if traj_lims is None:
+            traj_lims = [-75,75]
         
-        if ax is None:
-            if orientation=='vertical':
-                self.fig = plt.figure(figsize=(8,14))
-            else:
-                self.fig = plt.figure(figsize=(14,8))
-            ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
         
-        for side,side_stats in self.side_sep_dict.items():
-            
-            for i,sep in enumerate(side_stats.keys()):
-                sep_stats = side_stats[sep]
-                avg = sep_stats['avg']
-                sem = sep_stats['sem']
+        uniq_opto = self.plot_data['opto_pattern'].unique().sort().to_list()
+        n_opto = len(uniq_opto)
+        uniq_stims = self.plot_data['stim_type'].unique().sort().to_list()
+        n_stim = len(uniq_stims)
+        
+        uniq_sides  = self.plot_data['stim_pos'].unique().sort().to_list()
+        
+        # this could be contrast, answer 
+        uniq_sep = self.plot_data[seperate_by].unique().sort().to_list()
+        
+        self.fig, axes = plt.subplots(ncols=n_stim,
+                                      nrows=n_opto,
+                                      constrained_layout=True,
+                                      figsize=kwargs.pop('figsize',(15,15)))
+
+        for i,opto in enumerate(uniq_opto):
+            for j,stim in enumerate(uniq_stims):
+                for side in uniq_sides:
+                    for sep in uniq_sep:
+                        ax = axes[i][j]
+                        
+                        filt_data = self.plot_data.filter((pl.col('opto_pattern')==opto) &
+                                                          (pl.col('stim_type')==stim) &
+                                                          (pl.col('stim_pos')==side) & 
+                                                          (pl.col(seperate_by)==sep))
+                        if len(filt_data):
+                            wheel_time = filt_data['wheel_time'].to_numpy()
+                            wheel_pos = filt_data['wheel_pos'].to_numpy()
+                        
+                            
+                            wheel_interp_t,wheel_stats = get_trajectory_avg(wheel_time,wheel_pos)
+                            avg = wheel_stats['avg']
+                            sem = wheel_stats['sem']
+                            
+                            wheel_y = avg[1,:]+side
+                            sem_plus = wheel_y + sem[1,:]
+                            sem_minus = wheel_y - sem[1,:]
+                            
+                            if avg is not None:
+                                # avg = avg[find_nearest(avg[:,0],plot_range_time[0])[0]:find_nearest(avg[:,0],plot_range_time[1])[0]]
+                                # sem = sem[find_nearest(sem[:,0],plot_range_time[0])[0]:find_nearest(sem[:,0],plot_range_time[1])[0]]
+                                if trace_type=='sem':
+                                    ax.fill_between(wheel_interp_t,sem_plus,sem_minus,
+                                                alpha=0.2,
+                                                color=self.color.contrast_keys[str(sep)]['color'],
+                                                linewidth=0)
+                                elif trace_type=='indiv':
+                                    for w in wheel_stats['indiv']:
+                                        ax.plot(wheel_interp_t,w+side,
+                                                color = self.color.contrast_keys[str(sep)]['color'],
+                                                linewidth=0.8,
+                                                alpha=0.5)
+                                
+                                ax = self.__plot__(ax,wheel_interp_t,wheel_y,
+                                                    color=self.color.contrast_keys[str(sep)]['color'],
+                                                    label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
+                                                    **kwargs) 
+                    
+                        
+                        ax.set_xlim(time_lims)
+                        ax.set_ylim(traj_lims)
+                        
+                        # closed loop start line
+                        ax.axvline(0,color='k',linewidth=2,alpha=0.6)
+                        
+                        # stim end
+                        ax.axvline(1000,color='k',linestyle=':',linewidth=2,alpha=0.6)
+                        
+                        #5*((3*2*np.pi*31.2)/1024) where 5 is the tick difference to detect answer
+                        ax.axhline(side+2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
+                        ax.axhline(side-2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
+
+                        ax.set_title(f'{stim}_{opto}')
+                        ax.set_ylabel('Wheel Position (deg)', fontsize=fontsize)
+                        ax.set_xlabel('Time(ms)', fontsize=fontsize)
+                        
+                        # make it pretty
+                        ax.spines['bottom'].set_visible(False)
+                        ax.spines['left'].set_visible(False)
                 
-                if avg is not None:
-                    avg = avg[find_nearest(avg[:,0],plot_range_time[0])[0]:find_nearest(avg[:,0],plot_range_time[1])[0]]
-                    sem = sem[find_nearest(sem[:,0],plot_range_time[0])[0]:find_nearest(sem[:,0],plot_range_time[1])[0]]
-                    
-                    c = self.color.contrast_keys[str(sep)]['color']
-                    if orientation=='vertical':
-                        wheel_x = avg[:,1]+side
-                        wheel_y = avg[:,0]
-                        sem_plus = wheel_x + sem[:,1]
-                        sem_minus = wheel_x - sem[:,1]
-                        
-                        ax.fill_betweenx(sem_plus,sem_minus,sem[:,0],
-                                    alpha=0.2,
-                                    color=c,
-                                    linewidth=0)
-                    else:
-                        wheel_x = avg[:,0]
-                        wheel_y = avg[:,1]+side
-                        sem_plus = wheel_y + sem[:,1]
-                        sem_minus = wheel_y - sem[:,1]
-                        
-                        ax.fill_between(sem[:,0],sem_plus,sem_minus,
-                                    alpha=0.2,
-                                    color=c,
-                                    linewidth=0)
-                        
-                    ax = self.__plot__(ax,wheel_x,wheel_y,
-                                    color=c,
-                                    label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
-                                    **kwargs)
-                    
-
-                    
-        
-        fontsize = kwargs.get('fontsize',20)
-        if orientation=='vertical':
-            ax.set_ylim(plot_range_time)
-            ax.set_xlim(plot_range_trj)
-            # closed loop start line
-            ax.plot(ax.get_xlim(),[0,0],'k',linewidth=2, alpha=0.8)
-
-            ax.set_xlabel('Wheel Position (deg)', fontsize=fontsize)
-            ax.set_ylabel('Time(ms)', fontsize=fontsize)
-            ax.yaxis.set_label_position('right')
-            ax.yaxis.tick_right()
-        else:
-            ax.set_xlim(plot_range_time)
-            ax.set_ylim(plot_range_trj)
-            
-            # closed loop start line
-            ax.plot([0,0],ax.get_ylim(),'k',linewidth=2, alpha=0.8)
-
-            ax.set_ylabel('Wheel Position (deg)', fontsize=fontsize)
-            ax.set_xlabel('Time(ms)', fontsize=fontsize)
-        
-        # make it pretty
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
-   
-        ax.tick_params(labelsize=fontsize)
-        ax.grid(axis='y')
-        ax.legend(frameon=False,fontsize=14)
-
-        return ax
+                        ax.tick_params(labelsize=fontsize)
+                        ax.grid(axis='y')
+                        ax.legend(frameon=False,fontsize=14)

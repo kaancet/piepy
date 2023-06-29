@@ -618,55 +618,28 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
     
 class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
-    def __init__(self, data: dict, stimkey: str = None, seperate_by:str='contrast',**kwargs):
+    def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
         super().__init__(data, stimkey, **kwargs)
-        
-        
-        self.side_sep_dict = self.seperate_wheel_data(seperate_by)
-        
-    def seperate_wheel_data(self,seperate_by):
-        """ Seperates the wheel data depending on the seperate_by argument 
-        Returns a dict with sides as keys, that has dictionaries with seperator values as keys"""
-        
-        side_sep_dict = {}
-        if seperate_by not in self.plot_data[self.stimkey].columns:
-            raise ValueError(f'{seperate_by} is not a valid field for this data. try: {self.plot_data.columns}')
-        
-        seperator_list = nonan_unique(self.plot_data[self.stimkey][seperate_by],sort=True)
-        
-        sides = nonan_unique(self.plot_data[self.stimkey]['stim_side'])
-        
-        for i,side in enumerate(sides,start=1):
-            side_slice = self.plot_data[self.stimkey][self.plot_data[self.stimkey]['stim_side'] == side]
-            
-            side_sep_dict[side] = {}
-            for sep in seperator_list:
-                seperator_slice = side_slice[side_slice[seperate_by] == sep]
-            
-                if not seperator_slice.empty:
-                    # shift wheel according to side
-                    # wheel_arr = seperator_slice['wheel'].apply(lambda x: x+side)
-                    # seperator_slice.loc[:,'wheel'] = seperator_slice.loc[:,'wheel'] + s
 
-                    wheel_stats = get_trajectory_avg(seperator_slice['wheel'].to_numpy())
-                    side_sep_dict[side][sep] = {'avg': wheel_stats['avg'],
-                                                'sem':wheel_stats['sem']}
-                else:
-                    print(f'NO data in {side} and {sep}')
-                                
-        return side_sep_dict
-    
-    def plot(self,ax:plt.Axes=None,plot_range_time:list=None,plot_range_trj:list=None,orientation:str='vertical',bin_width:int=None,**kwargs):
-        ax = super().plot(ax,plot_range_time,plot_range_trj,orientation,**kwargs)
+    def plot(self,ax:plt.Axes=None,
+             time_lims:list=None,
+             traj_lims:list=None,
+             trace_type:str='sem',
+             bin_width:int=None,**kwargs):
+        
+        ax = super().plot(time_lims=time_lims,
+                          traj_lims=traj_lims,
+                          trace_type=trace_type,
+                          **kwargs)
         
         if bin_width is not None:
-            bins = np.arange(0,plot_range_time[-1],bin_width,dtype='int')
+            bins = np.arange(0,time_lims[-1],bin_width,dtype='int')
             
             ax_density = ax.inset_axes([0,0,1,0.1],frameon=False,sharex=ax)
             
             pooled_licks = self.pool_trial_ends()
             
-            hist,bins = np.histogram(pooled_licks,bins=bins,range=plot_range_time)
+            hist,bins = np.histogram(pooled_licks,bins=bins,range=time_lims)
             ax_density = self.__plot_density__(ax_density,bins,hist,zorder=2,**kwargs)
             ax_density.set_yticks([])
             ax_density.set_yticklabels([])
