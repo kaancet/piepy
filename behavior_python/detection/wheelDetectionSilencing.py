@@ -36,7 +36,7 @@ class WheelDetectionExperiment:
                 'hit_rate' : w.stats.hit_rate,
                 'false_alarm' : w.stats.false_alarm,
                 'opto_ratio' : w.meta.optoRatio,
-                'opto_targets' : len(np.unique(w.data.data.drop_nulls()['opto_pattern']))-1,
+                'opto_targets' : len(nonan_unique(w.data.data['opto_pattern'].to_numpy()))-1,
                 'stimulus_types' : len(w.meta.sf_values),
                 'rig' : w.meta.rig,
             }
