@@ -49,4 +49,12 @@ class DataPaths:
                     setattr(self, temp_key, log_path)
             else:
                 log_path = pjoin(self.sessionPath,s_file).replace("\\","/")
-                setattr(self, temp_key, log_path)
+                if hasattr(self,temp_key):
+                    # if there are multiple runs of the same session(this should be very rare)
+                    _attr = getattr(self,temp_key)
+                    if not isinstance(_attr,list):
+                        _attr = [_attr]
+                    _attr.append(log_path)
+                    setattr(self,temp_key,_attr)
+                else:
+                    setattr(self, temp_key, log_path)

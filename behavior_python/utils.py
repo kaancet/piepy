@@ -349,6 +349,36 @@ def parseStimpyLog(fname):
         display(f'No data found for log key(s) : {not_found}')        
     return data,comments
 
+def stitchLogs(data_list:list,isStimlog:bool) -> dict:
+    """ Stitches the seperate log files """
+
+    final_data = data_list[0]
+    for i in range(len(data_list)-1):
+        to_append = data_list[i+1] #skipping the first
+        for k,v in final_data.items():
+            if isStimlog:
+                #stimlog
+                if k == 'vstim':
+                    to_append[k] = to_append[k].with_columns([(pl.col('presentTime')+v[-1,'presentTime']),
+                                                              (pl.col('iTrial')+v[-1,'iTrial']+1)])
+                elif k == 'stateMachine':
+                    to_append[k] = to_append[k].with_columns([(pl.col('elapsed')+v[-1,'elapsed']),
+                                                              (pl.col('cycle')+v[-1,'cycle'])])
+            else:
+                #riglog
+                if not to_append[k].is_empty():
+                    if k not in ['reward','position','screen']:
+                        # adjust the values 
+                        to_append[k] = to_append[k].with_columns(pl.col('value')+v[-1,'value']+1)
+                    elif k == 'screen':
+                        to_append[k] = to_append[k].slice(1)
+                        to_append[k] = to_append[k].with_columns(pl.col('value')+v[-1,'value'])
+                        
+                    to_append[k] = to_append[k].with_columns([(pl.col('timereceived')+v[-1,'timereceived']),
+                                                            (pl.col('duinotime')+v[-1,'duinotime'])])
+            final_data[k] = pl.concat([v, to_append[k]])
+    return final_data        
+    
 def extrapolate_time(data):
     """ Extrapolates duinotime from screen indicator
 
@@ -371,11 +401,9 @@ def extrapolate_time(data):
                                                   0]))!=0)[0]
         
         if len(data['screen'])==len(fliploc):
-            data['vstim']['duinotime'] = interp1d(
-                fliploc,
-                data['screen']['duinotime'],
-                fill_value="extrapolate")(
-                    np.arange(len(data['vstim'])))
+            temp = interp1d(fliploc,data['screen']['duinotime'],fill_value="extrapolate")(np.arange(len(data['vstim']))).tolist()
+            temp_df = pl.Series('duinotime',temp)
+            data['vstim'] = data['vstim'].hstack([temp_df])
         else:
             
             print(

@@ -269,7 +269,7 @@ class WheelDetectionSession(Session):
             self.extract_trial_count()
             trials = np.unique(self.states[self.column_keys['trialNo']])
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
-        for t in pbar:
+        for t in pbar:           
             temp_trial = WheelDetectionTrial(t,self.column_keys,meta=self.meta)
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()

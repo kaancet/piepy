@@ -184,8 +184,26 @@ class Session:
             self.rawdata, self.comments = parseVStimLog(self.data_paths.log)
         elif self.logversion == 'stimpy':
             # because there are two different log files now, they have to be combined into a single data variable
-            stim_data, stim_comments = parseStimpyLog(self.data_paths.stimlog)
-            rig_data, rig_comments = parseStimpyLog(self.data_paths.riglog)
+            if isinstance(self.data_paths.stimlog,list) and isinstance(self.data_paths.riglog,list):
+                assert len(self.data_paths.stimlog) == len(self.data_paths.riglog), f'The number stimlog files need to be equal to amount of riglog files {len(self.data_paths.stimlog)}=/={len(self.data_paths.riglog)}'
+                
+                stim_data_all = []
+                rig_data_all = []
+                stim_comments = []
+                rig_comments = []
+                for i,s_log in enumerate(self.data_paths.stimlog):
+                    temp_slog,temp_scomm = parseStimpyLog(s_log)
+                    temp_rlog,temp_rcomm = parseStimpyLog(self.data_paths.riglog[i])
+                    stim_data_all.append(temp_slog)
+                    rig_data_all.append(temp_rlog)
+                    stim_comments.extend(temp_scomm)
+                    rig_comments.extend(temp_rcomm)
+                    
+                stim_data = stitchLogs(stim_data_all,isStimlog=True) # stimlog
+                rig_data = stitchLogs(rig_data_all,isStimlog=False)  # riglog
+            else:
+                stim_data, stim_comments = parseStimpyLog(self.data_paths.stimlog)
+                rig_data, rig_comments = parseStimpyLog(self.data_paths.riglog)
             self.rawdata = {**stim_data, **rig_data}
             self.comments = stim_comments + rig_comments
             self.rawdata = extrapolate_time(self.rawdata)
