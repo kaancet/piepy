@@ -140,7 +140,8 @@ class ComparisonLinePlotter:
                 # do p-values with mann-whitney-u
                 non_opto = stim_df.filter((pl.col('opto')==0)&(pl.col('stim_side')=="contra"))['hit_rate'].to_numpy()
                 opto = stim_df.filter((pl.col('opto')==1)&(pl.col('stim_side')=="contra"))['hit_rate'].to_numpy()
-                _,p = mannwhitneyu(non_opto,opto)
+                # _,p = mannwhitneyu(non_opto,opto)
+                _,p = wilcoxon(non_opto,opto)
                 self.p_values_hit_rate[c][k] = p
                 
                 stars = ''
@@ -336,7 +337,7 @@ class ComparisonLinePlotter:
         
         ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
         return ax
-
+    
 
 class AllAreasPlotter:
     def __init__(self,data) -> None:

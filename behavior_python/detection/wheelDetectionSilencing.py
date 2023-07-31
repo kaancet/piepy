@@ -37,7 +37,7 @@ class WheelDetectionExperiment:
                 'false_alarm' : w.stats.false_alarm,
                 'opto_ratio' : w.meta.optoRatio,
                 'opto_targets' : len(nonan_unique(w.data.data['opto_pattern'].to_numpy()))-1,
-                'stimulus_types' : len(w.meta.sf_values),
+                'stimulus_count' : len(w.meta.sf_values),
                 'rig' : w.meta.rig,
             }
 
@@ -68,8 +68,10 @@ class WheelDetectionExperiment:
                 temp_df = temp_df.select(df.columns)
                 try:
                     df = pl.concat([df,temp_df])
-                except:
-                    print('wow')
+                except Exception as err:
+                    print(f"SOMETHING WRONG WITH {temp['exp_name']}")
+                    raise err
+                    
             pbar.update()
         
         # make reorder column list
@@ -121,9 +123,10 @@ class WheelDetectionExperiment:
         """ Creates a summary data and and prints a tabulated text description of it"""
         q = (
             self.data.lazy()
-            .groupby(["animalid","area","stimulus_types","opto_targets"])
+            .groupby(["animalid","area","stimulus_count","opto_targets"])
             .agg(
-                [   (pl.col("date").unique().count().alias("experiment_count")),
+                [   (pl.col("stim_type").unique(maintain_order=True)),
+                    (pl.col("date").unique().count().alias("experiment_count")),
                     (pl.col("date").unique(maintain_order=True)),
                     (pl.col("session_no").unique(maintain_order=True).alias("session_ids")),
                     (pl.col("trial_count").unique(maintain_order=True)),
@@ -132,7 +135,7 @@ class WheelDetectionExperiment:
                     (pl.col("false_alarm").unique(maintain_order=True))
                 ]
             ).drop_nulls()
-            .sort(["animalid","area","stimulus_types","opto_targets"])
+            .sort(["animalid","area","stimulus_count","opto_targets"])
         )
         df = q.collect()
         return df
@@ -142,19 +145,26 @@ class WheelDetectionExperiment:
         tmp = self.summary_data.to_pandas()
         print(tabulate(tmp,headers=self.summary_data.columns))
     
-    def filter_experiments(self,area:str,stim_types:int=1,opto_targets:int=1,verbose:bool=True) -> pl.DataFrame:
+    def filter_experiments(self,area:str,stim_count:int=1,stim_type:str=None,opto_targets:int=1,verbose:bool=True) -> pl.DataFrame:
         """ Filters the summary data according to 3 arguments,
         Then uses the dates in those filtered sessions to filter self.data"""
         
         filt_summ = self.summary_data.filter((pl.col('area')==area) &
-                                             (pl.col('stimulus_types')==stim_types) &
-                                             (pl.col('opto_targets')==opto_targets))
+                                                (pl.col('stimulus_count')==stim_count) &
+                                                (pl.col('opto_targets')==opto_targets))
+        
         if verbose:
             print(filt_summ)
+            
         ids = filt_summ['session_ids'].explode().unique().to_list()
         filter_dict = {'area':area,
                        'session_no':ids}
+        
+        if stim_count==1 and stim_type is not None:
+            filter_dict['stim_type'] = stim_type
+            
         filt_df = self.filter_sessions(filter_dict)
+
         return filt_df
                 
         
