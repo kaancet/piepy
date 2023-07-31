@@ -264,7 +264,13 @@ class DetectionPerformancePlotter(PerformancePlotter):
         super().__init__(data, stimkey, **kwargs)
 
 
-class DetectionResponseTimeScatterCloudPlotter(ResponseTimeScatterCloudPlotter):
+class DetectionResponseTimeScatterCloudPlotter(ResponseTimeDistributionPlotter):
+    __slots__ = []
+    def __init__(self, data:pl.DataFrame, stimkey:str=None, **kwargs):
+        super().__init__(data, stimkey, **kwargs)
+   
+
+class DetectionReactionCumulativePlotter(ReactionCumulativePlotter):
     __slots__ = []
     def __init__(self, data:pl.DataFrame, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)

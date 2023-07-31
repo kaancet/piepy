@@ -1,6 +1,6 @@
 from .plotter_utils import *
 from os.path import join as pjoin
-from ..wheel.wheelUtils import get_trajectory_avg
+from ..wheelUtils import *
 from scipy import stats
 import copy
 import matplotlib.patheffects as pe
@@ -9,7 +9,7 @@ from behavior_python.detection.wheelDetectionAnalysis import DetectionAnalysis
 
 class BasePlotter:
     __slots__ = ['data','fig','color']
-    def __init__(self,data:dict,**kwargs):
+    def __init__(self,data:pl.DataFrame,**kwargs):
         self.data = data
         self.fig = None
         set_style('analysis')
@@ -195,7 +195,178 @@ class ResponseTimePlotter(BasePlotter):
         return ax
 
 
-class ResponseTimeScatterCloudPlotter(BasePlotter):
+class ReactionCumulativePlotter(BasePlotter):
+    def __init__(self, data: pl.DataFrame, stimkey:str=None, **kwargs):
+        super().__init__(data, **kwargs)
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
+        
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
+        
+        self.stat_analysis = DetectionAnalysis(data=self.plot_data)
+
+    
+    @staticmethod
+    def time_to_log(time_data_arr:np.ndarray) -> np.ndarray:
+        response_times = np.log10(time_data_arr/1000)
+        response_times = 1000 * np.power(10,response_times)
+        response_times = response_times.astype(int)
+        return response_times
+    
+    @staticmethod
+    def get_cumulative(time_data_arr:np.ndarray,bin_edges:np.ndarray) -> np.ndarray:
+        """ Gets the cumulative distribution"""
+        sorted_times = np.sort(time_data_arr)
+        counts,_ = np.histogram(sorted_times,bins=bin_edges)
+        pdf =  counts/np.sum(counts)
+        cum_sum = np.cumsum(pdf)
+        return cum_sum
+        
+    @staticmethod
+    def get_reaction_from_wheel(wheel_time:np.ndarray,wheel_pos:np.ndarray,first_move:bool=True) -> np.ndarray:
+        """ Gets the response time from wheel pass"""
+        if first_move:
+            pass
+        else:
+            #5*((3*2*np.pi*31.2)/1024) where 5 is the tick difference to detect answer
+            limit = 2.871
+            reaction_times = []
+            for i,wheel_trace in enumerate(wheel_pos):
+                #bigger than 0 for after stim onset
+                find_nearest(wheel_time[0],0)
+                
+                pos = find_nearest(wheel_trace,limit)
+                neg = find_nearest(wheel_trace,-limit)
+                idx = min(pos[0],neg[0])
+                reaction_times.append(wheel_time[idx])
+        return np.array(reaction_times)
+    
+    def plot(self,compare_by:str='stim_type',
+                  bin_width:int=50,
+                  from_wheel:bool=False,
+                  first_move:bool=False,**kwargs) -> plt.Axes:
+        
+        fontsize = kwargs.pop('fontsize',25)
+        # make the bin edges array
+        bin_edges = np.arange(0,2000,bin_width)
+                
+        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],reverse=True)
+
+        # add cut
+        data = data.with_columns(pl.col('response_times').apply(lambda x: [i for i in x if i<1000]).alias('cutoff_response_times'))
+        
+        # get uniques
+        
+        u_stimtype = data['stim_type'].unique().sort().to_numpy()
+        n_stim = len(u_stimtype)
+        
+        u_opto = self.plot_data['opto_pattern'].unique().sort().to_list()
+        n_opto = len(u_opto)
+        
+        u_contrast = data['contrast'].unique().sort().to_numpy()
+        u_contrast = u_contrast[1:] # remove 0 contrast, we dont care about it here
+        n_contrast = len(u_contrast)
+        
+        if compare_by == 'stim_type':
+            self.fig, axes = plt.subplots(ncols=n_contrast,# remove 0 contrast
+                                      nrows=n_opto,
+                                      constrained_layout=True,
+                                      figsize=kwargs.pop('figsize',(15,15)))
+            
+            for i,o in enumerate(u_opto):
+                for j,c in enumerate(u_contrast):
+                    ax = axes[i][j]
+                    
+                    for k in u_stimtype:
+                        filt_df = data.filter((pl.col('opto_pattern')==o) &
+                                            (pl.col('stim_side')=="contra") &
+                                            (pl.col('contrast')==c) &
+                                            (pl.col('stim_type')==k)
+                                            )
+                    
+                        if not filt_df.is_empty():
+                            
+                            if from_wheel:
+                                wheel_pos = filt_df['wheel_pos'].explode().to_numpy()   
+                                wheel_time = filt_df['wheel_time'].explode().to_numpy()   
+                                reaction_times = self.get_reaction_from_wheel(wheel_time,wheel_pos,first_move=first_move)
+                            else:
+                                reaction_times = filt_df['response_times'].explode().to_numpy()
+                                
+                            cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
+                            
+                            ax.step(bin_edges[:-1],
+                                    cumulative_reaction,
+                                    where='mid',
+                                    color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
+                                    linewidth=4
+                                )
+                        
+                            #line
+                            ax.axvline(1000,color='r',linewidth=2)
+                            
+                            ax.set_ylim([-0.01,1.05])
+                            ax.set_xlim([-1,1100])
+                            if o:
+                                ax.set_title(f"Opto c={c}%", fontsize=fontsize,pad=3)
+                            else:
+                                ax.set_title(f"Non-Opto c={c}%", fontsize=fontsize,pad=3)
+                            if i == n_opto-1:
+                                ax.set_xlabel('Time from Stim Onset (ms)', fontsize=fontsize)
+                            if j==0:
+                                ax.set_ylabel('Probability', fontsize=fontsize)
+                            ax.tick_params(labelsize=fontsize,which='both',axis='both')
+                            ax.grid(alpha=0.5,axis='both')
+                        
+                        # ax.legend(loc='center left',bbox_to_anchor=(0.98,0.5),fontsize=fontsize-5,frameon=False)
+        elif compare_by == 'opto':
+            self.fig, axes = plt.subplots(ncols=n_contrast,# remove 0 contrast
+                                          nrows=n_stim,
+                                          constrained_layout=True,
+                                          figsize=kwargs.pop('figsize',(15,15)))
+            for i,k in enumerate(u_stimtype):
+                for j,c in enumerate(u_contrast):
+                    ax = axes[i][j]
+                    
+                    for o in u_opto:
+                        filt_df = data.filter((pl.col('opto_pattern')==o) &
+                                              (pl.col('stim_side')=="contra") &
+                                              (pl.col('contrast')==c) &
+                                              (pl.col('stim_type')==k)
+                                            )
+                    
+                        if not filt_df.is_empty():
+                            if from_wheel:
+                                wheel_pos = filt_df['wheel_pos'].explode().to_numpy()   
+                                wheel_time = filt_df['wheel_time'].explode().to_numpy()   
+                                reaction_times = self.get_reaction_from_wheel(wheel_time,wheel_pos,first_move=first_move)
+                            else:
+                                reaction_times = filt_df['response_times'].explode().to_numpy()
+                                
+                            cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
+                            
+                            ax.step(bin_edges[:-1],
+                                    cumulative_reaction,
+                                    where='mid',
+                                    color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
+                                    linewidth=4
+                                )
+                        
+                            #line
+                            ax.axvline(1000,color='r',linewidth=2)
+                            
+                            ax.set_ylim([-0.01,1.05])
+                            ax.set_xlim([-1,1100])
+                            ax.set_title(f"{filt_df[0,'stim_label']} c={c}%", fontsize=fontsize,pad=3)
+                            if i == n_stim-1:
+                                ax.set_xlabel('Response Time (ms)', fontsize=fontsize)
+                            if j==0:
+                                ax.set_ylabel('Probability', fontsize=fontsize)
+                            ax.tick_params(labelsize=fontsize,which='both',axis='both')
+                            ax.grid(alpha=0.5,axis='both')  
+
+class ResponseTimeDistributionPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
@@ -704,8 +875,10 @@ class WheelTrajectoryPlotter(BasePlotter):
             for j,stim in enumerate(uniq_stims):
                 for side in uniq_sides:
                     for sep in uniq_sep:
-                        ax = axes[i][j]
-                        
+                        try:
+                            ax = axes[i][j] 
+                        except:
+                            ax=axes[i]
                         filt_data = self.plot_data.filter((pl.col('opto_pattern')==opto) &
                                                           (pl.col('stim_type')==stim) &
                                                           (pl.col('stim_pos')==side) & 
