@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 import matplotlib.gridspec as gridspec
 from behavior_python.utils import *
-from ...wheelUtils import *
+from ....wheelUtils import *
 from ...wheelAnalysis22 import WheelCurve
 
 DUNDER = re.compile(r'^__[^\d\W]\w*__\Z', re.UNICODE)

@@ -4,13 +4,6 @@ from ..utils import *
 from .dbinterface import DataBaseInterface
 
 
-WHEEL_CIRCUM = 2 * np.pi* 31.2
-WHEEL_TICKS_PER_REV = 1024
-
-def reset_wheel_pos(traj,reset_idx=0):
-    """ Function that resets the wheel pos"""
-    return traj - traj[reset_idx]
-
 class Trial:
     __slots__ = ['trial_no','data','trial_data','column_keys',
                  'trial_start','trial_end','meta','db_interface','total_trial_count',

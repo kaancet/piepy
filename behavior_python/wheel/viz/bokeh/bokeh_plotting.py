@@ -1,4 +1,4 @@
-from behavior_python.wheel.wheelUtils import get_trajectory_stats
+from behavior_python.wheelUtils import get_trajectory_stats
 import copy
 import os
 import sys
@@ -13,7 +13,7 @@ if module_path not in sys.path:
     sys.path.append(module_path)
 
 from behavior_python.wheel.wheelAnalysis import WheelAnalysis
-from behavior_python.wheel.wheelUtils import find_nearest
+from behavior_python.wheelUtils import find_nearest
 
 iter_stim = iter(Spectral11)
 stim_styles = defaultdict(lambda : next(iter_stim))

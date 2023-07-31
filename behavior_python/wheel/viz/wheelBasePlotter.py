@@ -10,7 +10,7 @@ import matplotlib.gridspec as gridspec
 from cycler import cycler
 from collections import defaultdict
 from behavior_python.utils import *
-from ..wheelUtils import *
+from ...wheelUtils import *
 from ..wheelAnalysis import WheelAnalysis
 
 DUNDER = re.compile(r'^__[^\d\W]\w*__\Z', re.UNICODE)

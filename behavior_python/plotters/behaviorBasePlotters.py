@@ -1,6 +1,6 @@
 from .plotter_utils import *
 from os.path import join as pjoin
-from ..wheel.wheelUtils import get_trajectory_avg
+from ..wheelUtils import get_trajectory_avg
 from ..utils import getConfig
 
 class BehaviorBasePlotter:

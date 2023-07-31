@@ -3,7 +3,7 @@ from tqdm import tqdm
 import pandas as pd
 
 from scipy.optimize import curve_fit
-from .wheelUtils import *
+from ..wheelUtils import *
 from ..fit_funcs import *
 from ..model.transformer import GLMHMMTransfromer
 from ..model.glmModel import Glm

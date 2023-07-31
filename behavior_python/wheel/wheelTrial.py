@@ -1,4 +1,4 @@
-from .wheelUtils import *
+from ..wheelUtils import *
 from ..core.trial import *
 
 
