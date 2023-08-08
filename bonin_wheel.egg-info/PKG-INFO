@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: bonin-wheel
+Version: 1.0
+Author: S. Kaan Cetindag
+Author-email: cetindag.kaan@gmail.com
+License: Creative Commons Attribution-Noncommercial-Share Alike license
+License-File: LICENSE
+
+Behavior Analysis Tool
+ Disclaimer: For now works for wheel behaviour, more to come...

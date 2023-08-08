@@ -24,7 +24,7 @@ class WheelDetectionData(SessionData):
         if 'is_grating' not in self.data.columns:
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
             # add stim type
-            self.data = self.data.with_columns((pl.col('spatial_freq').round(2)+'cpd_'+pl.col('temporal_freq')+'Hz').alias('stim_type'))
+            self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str)+'cpd_'+pl.col('temporal_freq').cast(str)+'Hz').alias('stim_type'))
             
             if len(self.data['opto'].unique().to_numpy()) == 1:
                 # add the pattern name depending on pattern id
@@ -40,7 +40,7 @@ class WheelDetectionData(SessionData):
                 except:
                     raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
                 # add 'stimkey' from sftf
-                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False)).alias('stimkey'))
+                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
                 # add stim_label for legends and stuff
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
             
@@ -252,7 +252,7 @@ class WheelDetectionSession(Session):
     
     def get_session_data(self) -> pl.DataFrame:
         data_to_append = []
-        self.rawdata['stateMachine'] = self.rawdata['stateMachine'].with_column(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
+        self.rawdata['stateMachine'] = self.rawdata['stateMachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
         self.states = self.rawdata['stateMachine']
         
         display('Setting global indexing keys for {0} logging'.format(self.logversion))

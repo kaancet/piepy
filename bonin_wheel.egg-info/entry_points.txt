@@ -1,0 +1,2 @@
+[console_scripts]
+dashboard = behavior_python.wheel.viz.bokeh.launcher:main

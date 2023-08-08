@@ -323,7 +323,7 @@ def parseStimpyLog(fname):
     
         q = pl.scan_csv(fname,
                     has_header=False)
-        q = q.with_column(pl.col('*').cast(pl.Float32,strict=False))
+        q = q.with_columns(pl.col('*').cast(pl.Float32,strict=False))
 
         col_names = {k:vlogheader[i] for i,k in enumerate(q.columns)}
         logdata = q.rename(col_names).collect()

@@ -5,7 +5,7 @@ from setuptools.command.install import install
 
 
 setup(
-    name='boninbehavior',
+    name='bonin-wheel',
     version='1.0',
     author='S. Kaan Cetindag',
     author_email='cetindag.kaan@gmail.com',
