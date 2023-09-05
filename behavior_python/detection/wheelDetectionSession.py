@@ -25,8 +25,9 @@ class WheelDetectionData(SessionData):
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
             # add stim type
             self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str)+'cpd_'+pl.col('temporal_freq').cast(str)+'Hz').alias('stim_type'))
-            
+                
             if len(self.data['opto'].unique().to_numpy()) == 1:
+                # Regular training sessions
                 # add the pattern name depending on pattern id
                 self.data = self.data.with_columns(pl.lit(None).alias('opto_region'))
                 # add 'stimkey' from sftf
@@ -43,6 +44,7 @@ class WheelDetectionData(SessionData):
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
                 # add stim_label for legends and stuff
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
+                
             
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
@@ -189,6 +191,8 @@ class WheelDetectionSession(Session):
         self.meta.set_rig(self.data_paths.prefs)
         
         self.meta.contrastVector = [float(i) for i in self.meta.contrastVector.strip('] [').strip(' ').split(',')]
+
+        
         if hasattr(self.meta,'easyContrast'):
             self.meta.easyContrast = [float(i) for i in self.meta.easyContrast.strip('] [').strip(' ').split(',')]
 

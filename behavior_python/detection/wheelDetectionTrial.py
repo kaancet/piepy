@@ -182,7 +182,6 @@ class WheelDetectionTrial(Trial):
                     # this should be the way for stim appear and dissappear
                     stim_end_rig = self.data['screen'][1,'duinotime']
                 except:
-                    print('kk')
                     stim_end_rig = None
    
                 trial_log_data['stim_end_rig'] = stim_end_rig

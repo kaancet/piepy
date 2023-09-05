@@ -141,8 +141,6 @@ class DetectionTrialPlotter:
             lick_arr = [l - self.trial_data[0,time_anchor] for l in lick_arr]
             ax.scatter(lick_arr,[0]*len(lick_arr),marker='|',c='darkblue',s=50)
         
-        
-        
         # prettify
         title = f'Trial No : {trial_no}  '
         for k,v in trial_vars.items():
