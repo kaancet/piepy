@@ -296,6 +296,27 @@ class WheelDetectionSession(Session):
                                                     .when(pl.col("stim_pos") < 0).then("ipsi")
                                                     .when(pl.col("stim_pos") == 0).then("catch")
                                                     .otherwise(None).alias("stim_side"))
+        
+        # add easy/hard contrast type groups
+        session_data = session_data.with_columns(pl.when(pl.col('contrast') >= 25)
+                                                 .then("easy")
+                                                 .when((pl.col('contrast') < 25) & (pl.col('contrast') > 0))
+                                                 .then("hard")
+                                                 .when(pl.col('contrast') == 0)
+                                                 .then("catch")
+                                                 .otherwise(None).alias("contrast_type"))
+        
+        # add contrast titration boolean
+        uniq_stims = nonan_unique(session_data['contrast'].to_numpy())
+        isTitrated = 0
+        if len(uniq_stims) >= len(self.meta.contrastVector):
+            isTitrated = 1
+        session_data = session_data.with_columns([pl.lit(isTitrated).alias('isTitrated')])
+        
+        # round sf and tf
+        session_data = session_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
+                                                  (pl.col('temporal_freq').round(1).alias('temporal_freq'))])
+        
 
         if session_data.is_empty():
             print('''WARNING THIS SESSION HAS NO DATA

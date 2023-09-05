@@ -134,6 +134,11 @@ class WheelDetectionBehavior(Behavior):
                 display(f' >>> WARNING << NO DATA FOR SESSION {sesh[0]}')
                 continue
         
+        
+        # round sf and tf
+        cumul_data = cumul_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
+                                                  (pl.col('temporal_freq').round(1).alias('temporal_freq'))])
+        
         if 'cumul_trial_no' in cumul_data.columns:
             cumul_data = cumul_data.drop('cumul_trial_no')
             
