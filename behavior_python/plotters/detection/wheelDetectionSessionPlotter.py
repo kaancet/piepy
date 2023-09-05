@@ -35,7 +35,12 @@ class DetectionPsychometricPlotter(BasePlotter):
         ret += ''']'''
         return ret
                    
-    def plot(self,ax:plt.Axes=None,jitter:int=2,xaxis_type:str='linear_spaced',color=None,**kwargs):
+    def plot(self,ax:plt.Axes=None,
+             jitter:int=2,
+             xaxis_type:str='linear_spaced',
+             doP:bool = True,
+             color=None,
+             **kwargs):
         """ Plots the hit rates with 95% confidence intervals"""
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
@@ -43,13 +48,14 @@ class DetectionPsychometricPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
 
+        if doP:
         # get the p-values
-        self.p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
-        p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
-        if not p_vals_catch.is_empty():
-            self.p_vals = pl.concat([self.p_vals,p_vals_catch],how='vertical')
+            self.p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
+            p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
+            if not p_vals_catch.is_empty():
+                self.p_vals = pl.concat([self.p_vals,p_vals_catch],how='vertical')
 
-        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],reverse=True)
+        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
         
         # get uniques
         u_stimkey = q['stimkey'].unique().to_numpy()
@@ -94,11 +100,13 @@ class DetectionPsychometricPlotter(BasePlotter):
             ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
             ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
             x_t = {t:t for t in x_ticks}
+        
         elif xaxis_type=='linear':
             x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
             ax.set_xticks(x_ticks)
             ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
             x_t = {t:t for t in x_ticks}
+        
         elif xaxis_type=='linear_spaced':
             temp = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
             x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
@@ -108,19 +116,20 @@ class DetectionPsychometricPlotter(BasePlotter):
             ax.set_xlim([x_ticks[0]-0.5,x_ticks[-1]+0.5])
             
         # put the significance starts
-        for i in range(len(self.p_vals)):
-            p = self.p_vals[i,'p_values']
-            c = self.p_vals[i,'contrast']
-            s_k = self.p_vals[i,'stimkey']
-            stars = ''
-            if p < 0.001:
-                stars = '***'
-            elif 0.001 < p < 0.01:
-                stars = '**'
-            elif 0.01 < p < 0.05:
-                stars = '*'
-        
-            ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
+        if doP:
+            for i in range(len(self.p_vals)):
+                p = self.p_vals[i,'p_values']
+                c = self.p_vals[i,'contrast']
+                s_k = self.p_vals[i,'stimkey']
+                stars = ''
+                if p < 0.001:
+                    stars = '***'
+                elif 0.001 < p < 0.01:
+                    stars = '**'
+                elif 0.01 < p < 0.05:
+                    stars = '*'
+            
+                ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
     
         # prettify
         fontsize = kwargs.get('fontsize',25)
