@@ -98,7 +98,7 @@ class Trial:
                 display(f'>> WARNING << Something funky happened with opto stim, there are {len(opto_arr)} pulses')
                 opto_arr = np.array([opto_arr[0]]).tolist()
         else:
-            opto_arr = None
+            opto_arr = []
         return opto_arr
     
     def save_to_db(self,in_dict:dict,table_name:str=None,**kwargs):
