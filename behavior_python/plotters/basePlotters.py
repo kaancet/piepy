@@ -251,7 +251,7 @@ class ReactionCumulativePlotter(BasePlotter):
         # make the bin edges array
         bin_edges = np.arange(0,2000,bin_width)
                 
-        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],reverse=True)
+        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
 
         # add cut
         data = data.with_columns(pl.col('response_times').apply(lambda x: [i for i in x if i<1000]).alias('cutoff_response_times'))
@@ -296,12 +296,16 @@ class ReactionCumulativePlotter(BasePlotter):
                                 
                             cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
                             
-                            ax.step(bin_edges[:-1],
+                            # ax.step(bin_edges[:-1],
+                            #         cumulative_reaction,
+                            #         where='mid',
+                            #         color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
+                            #         linewidth=4
+                            #     )
+                            ax.plot(bin_edges[:-1],
                                     cumulative_reaction,
-                                    where='mid',
                                     color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
-                                    linewidth=4
-                                )
+                                    linewidth=4)
                         
                             #line
                             ax.axvline(1000,color='r',linewidth=2)
@@ -346,12 +350,16 @@ class ReactionCumulativePlotter(BasePlotter):
                                 
                             cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
                             
-                            ax.step(bin_edges[:-1],
+                            # ax.step(bin_edges[:-1],
+                            #         cumulative_reaction,
+                            #         where='mid',
+                            #         color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
+                            #         linewidth=4
+                            #     )
+                            ax.plot(bin_edges[:-1],
                                     cumulative_reaction,
-                                    where='mid',
                                     color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
-                                    linewidth=4
-                                )
+                                    linewidth=4)
                         
                             #line
                             ax.axvline(1000,color='r',linewidth=2)
@@ -757,38 +765,41 @@ class LickPlotter(BasePlotter):
     
 class LickScatterPlotter(BasePlotter):
     """ Lick scatters for each trial, wrt reward or response time"""
-    __slots__ =['stimkey','plot_data']
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
+        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
         
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
+        #check color definitions
+        self.color.check_stim_colors(self.uniq_keys)
+        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
     
     @staticmethod
     def __plot_scatter__(ax,t,lick_arr,**kwargs):
         
         t_arr = [t] * len(lick_arr)
         
-        ax.scatter(lick_arr,t_arr,marker='|',c='aqua',s=kwargs.get('s',20),**kwargs)
+        ax.scatter(lick_arr,t_arr,marker='|',c='deepskyblue',
+                   s=kwargs.get('s',20),**kwargs)
         
         return ax
     
-    def pool_licks(self,wrt:str='reward'):
+    @staticmethod
+    def pool_licks(data,wrt:str='reward'):
         pooled_lick = np.array([])
         error_ctr = []
-        for row in self.plot_data[self.stimkey][self.plot_data[self.stimkey]['answer']==1].itertuples():
-            if len(row.lick):
+
+        for row in data.iter_rows(named=True):
+            if len(row['lick']):
                 if wrt=='reward':
                     try:
-                        wrt_time = row.reward[0]
+                        wrt_time = row['reward'][0]
                     except:
                         error_ctr.append(row.trial_no)
                         display(f'\n!!!!!! NO REWARD IN CORRECT TRIAL, THIS IS A VERY SERIOUS ERROR! SOLVE THIS ASAP !!!!!!\n')
                 elif wrt=='response':
-                    wrt_time = row.response_latency_absolute
-                pooled_lick = np.append(pooled_lick,row.lick[:,0] - wrt_time)
+                    wrt_time = row['response_latency_absolute']
+                
+                pooled_lick = np.append(pooled_lick,np.array(row['lick']) - wrt_time)
         print(f'Trials with reward issue: {error_ctr}')         
         return pooled_lick
     
@@ -799,7 +810,6 @@ class LickScatterPlotter(BasePlotter):
     
     
 class WheelTrajectoryPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data','side_sep_dict','uniq_keys']
     def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,

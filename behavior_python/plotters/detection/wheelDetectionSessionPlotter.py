@@ -551,52 +551,72 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
     __slots__ = []
     def __init__(self, data, stimkey: str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
-        self.modify_data()
-        
-    def modify_data(self,*args,**kwargs):
-        # change the self.plot_data here if need to plot something else
-        if isinstance(self.plot_data,dict):
-            for k,v in self.plot_data.items():
-                v['blanked_response_latency'] = v[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
-                v['response_latency_absolute'] = v['response_latency'] + v['openstart_absolute'] 
-        else:
-            self.plot_data['blanked_response_latency'] = self.plot_data[['answer','response_latency','blank_time']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']!=-1 else x['response_latency'],axis=1)
-            self.plot_data['response_latency_absolute'] = self.plot_data['response_latency'] + self.plot_data['openstart_absolute']
+
     
     def plot(self,ax:plt.Axes=None,bin_width:int=20,wrt:str='reward',plt_range:list=None,**kwargs):
         if plt_range is None:
             plt_range = [-1000,1000]
+        fontsize = kwargs.pop('fontsize',25)
+               
+        lick_data = self.plot_data.with_columns([(pl.when(pl.col('answer')!=-1)
+                                                  .then(pl.col('response_latency')+pl.col('blank_time'))
+                                                  .otherwise(pl.col('response_latency'))).alias('blanked_response_latency'),
+                                                 (pl.col('blank_time')+pl.col('response_latency')+pl.col('open_start_absolute')).alias('response_latency_absolute')])
             
         bins = int((plt_range[1]-plt_range[0]) / bin_width)
         
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,15)))
             ax = self.fig.add_subplot(1,1,1)
-            
-        for row in self.plot_data[self.stimkey].itertuples():
-            if len(row.reward):
-                if len(row.lick):
-                    if wrt == 'reward':
-                        wrt_time = row.reward[0]
-                        response_time = row.response_latency_absolute - row.reward[0]
-                        x_label = 'Time from Reward (ms)'
-                        wrt_color = 'r'
-                        ax.scatter(response_time,row.trial_no,c='k',marker='|',s=20,zorder=2)
-                    elif wrt == 'response':
-                        wrt_time = row.response_latency_absolute
-                        x_label = 'Time from Response (ms)'
-                        wrt_color = 'k'
-                        reward = row.reward[0] - row.response_latency_absolute
-                        ax.scatter(reward,row.trial_no,c='r',marker='|',s=20,zorder=2)
-                    
-                    licks = row.lick[:,0] - wrt_time
-                    ax = self.__plot_scatter__(ax,row.trial_no,licks,**kwargs)   
+        
+        if wrt == 'reward':
+            lick_data = lick_data.drop_nulls(subset=['reward','lick'])
+            x_label = 'Time from Reward (ms)'
+            wrt_color = 'r'
+            for i,row in enumerate(lick_data.iter_rows(named=True)):
+                
+                wrt_time = row['reward'][0]
+                response_time = row['response_latency_absolute'] - wrt_time
+                
+                
+                ax.scatter(response_time,row['trial_no'],
+                           c='k',marker='|',s=20,zorder=2,
+                           label='Reward*' if i==0 else '_')
+                ax.axhspan(row['trial_no']-0.5,row['trial_no']+0.5,
+                           color=self.color.stim_keys[row['stimkey']]['color'],
+                           alpha=0.3)
+                
+                licks = np.array(row['lick']) - wrt_time
+                ax = self.__plot_scatter__(ax,row['trial_no'],licks,**kwargs)   
+                
+        elif wrt == 'response':
+            lick_data = lick_data.drop_nulls(subset=['lick'])
+            x_label = 'Time from Response (ms)'
+            wrt_color = 'k'
+            for i,row in enumerate(lick_data.iter_rows(named=True)):
+                
+                wrt_time = row['response_latency_absolute']
+                
+                
+                if row['reward'] is not None:
+                    reward = row['reward'][0] - wrt_time
+                else:
+                    reward = 100 #potential reward time
+                ax.scatter(100,row['trial_no'],c='r',
+                           marker='|',s=20,zorder=2,
+                           label='Reward*' if i==0 else '_')
+                ax.axhspan(row['trial_no']-0.5,row['trial_no']+0.5,
+                           color=self.color.stim_keys[row['stimkey']]['color'],
+                           alpha=0.3)
+                
+                licks = np.array(row['lick']) - wrt_time
+                ax = self.__plot_scatter__(ax,row['trial_no'],licks,**kwargs)   
 
         ax.axvline(0,c=wrt_color,linewidth=2,zorder=1)
     
-        ax_density = ax.inset_axes([0,0,1,0.1],frameon=False,sharex=ax)
+        ax_density = ax.inset_axes([0,1,1,0.1],frameon=False,sharex=ax)
         
-        pooled_licks = self.pool_licks(wrt)
+        pooled_licks = self.pool_licks(lick_data,wrt)
         
         hist,bins = np.histogram(pooled_licks,bins=bins,range=plt_range)
         density = (hist / len(pooled_licks)) / bin_width
@@ -604,20 +624,23 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
         
         ax_density.axvline(0,c=wrt_color,linewidth=2,zorder=1)
         
-        fontsize = kwargs.get('fontsize',14)
+        
         ax.set_xlim(plt_range)
         ax.set_ylim([-30,None])
-        ax.set_yticks([i for i in range(len(self.plot_data)) if i>=0 and i%50==0])
+        # ax.set_yticks([i for i in range(len(lick_data)) if i>=0 and i%50==0])
         ax.set_xlabel(x_label, fontsize=fontsize)
         ax.set_ylabel('Trial No.', fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         ax.grid(alpha=0.3,axis='x')
+        # ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
         
-        ax.set_xlim(plt_range)
+        ax_density.set_xlim(plt_range)
         ax_density.grid(alpha=0.3,axis='x')
         ax_density.tick_params(labelsize=fontsize)
-        ax_density.set_yticks([])
-        ax_density.set_yticklabels([])
+        # ax_density.set_yticks([])
+        # ax_density.set_yticklabels([])
+        ax_density.set_xticks([])
+        ax_density.set_xticklabels([])
 
         return ax
     
