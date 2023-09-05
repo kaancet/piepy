@@ -100,22 +100,23 @@ class DetectionAnalysis:
                 for c in c_list:
                     filt = temp.filter((pl.col("contrast")==c) &
                                        (pl.col("stim_type")==s))
-                    table = filt[:,['correct_count','miss_count']].to_numpy()
-                    if np.all(np.isnan(table)==False): # all elements are filled
-                        if method == 'barnard':
-                            res = barnard_exact(table, alternative='two-sided')
-                        elif method == 'boschloo':
-                            res = boschloo_exact(table,alternative='two-sided')
-                        elif method == 'fischer':
-                            res = fisher_exact(table,alternative='two-sided')
-                        p = res.pvalue
-                    else:
-                        p = np.nan
-                    
-                    stims.append(s)
-                    contrasts.append(c)
-                    p_values.append(p)
-                    stimkeys.append(filt[1,'stimkey'])
+                    if len(filt):
+                        table = filt[:,['correct_count','miss_count']].to_numpy()
+                        if table.shape == (2,2) and np.all(np.isnan(table)==False): # all elements are filled
+                            if method == 'barnard':
+                                res = barnard_exact(table, alternative='two-sided')
+                            elif method == 'boschloo':
+                                res = boschloo_exact(table,alternative='two-sided')
+                            elif method == 'fischer':
+                                res = fisher_exact(table,alternative='two-sided')
+                            p = res.pvalue
+                        else:
+                            p = np.nan
+                        
+                        stims.append(s)
+                        contrasts.append(c)
+                        p_values.append(p)
+                        stimkeys.append(filt[1,'stimkey'])
             
             df = pl.DataFrame({"stim_type":stims,
                             "contrast":contrasts,
