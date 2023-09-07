@@ -301,8 +301,6 @@ def movements(t, pos, freq=1000, pos_thresh=8, t_thresh=.2, min_gap=.1, pos_thre
         transition that is this much bigger than the starting position is considered the onset
     min_dur : float
         The minimum duration of a valid movement.  Detected movements shorter than this are ignored
-    make_plots : boolean
-        Plot trace of position and velocity, showing detected onsets and offsets
 
     Returns
     -------

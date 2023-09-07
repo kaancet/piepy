@@ -29,8 +29,6 @@ class DetectionTrialPlotter:
             t_lim = [-500,1200]
         
         self.trial_data = self.data.filter(pl.col("trial_no")==trial_no)
-        trial_vars = self.get_trial_variables(self.trial_data)
-        
         if self.trial_data[0,'answer'] == -1:
             time_anchor = 'open_start_absolute'
         else:
@@ -72,61 +70,12 @@ class DetectionTrialPlotter:
         
         ax.plot(wheel_time,wheel_pos,'k+',
                 linewidth=3,label='Wheel Trace')
-    
-    
-        # mark movements
-        mask1 = t<1100
-        mask2 = t>-100
-        mask = mask1 & mask2
+        if self.trial_data[0,'answer'] != 0:
+            ax.axvline(self.trial_data[0,'wheel_reaction_time'],
+                    color='purple',linestyle='-.',linewidth=2,label=f"Wheel Response Time({self.trial_data[0,'wheel_reaction_time']}ms)")
 
-        pos = pos[mask]
-        t = t[mask]
-        
-        onsets,offsets,onset_samps,offset_samps,peak_amps,peak_vel_times = movements(t,pos,pos_thresh=0.03)
-        indices = np.sort(np.hstack((onset_samps, offset_samps)))  # Points to split trace
-        
-        ax.plot(onsets, pos[onset_samps], 'go')
-        ax.plot(offsets, pos[offset_samps], 'bo')
-
-        t_split = np.split(np.vstack((t, pos)).T, indices, axis=0)
-        ax.add_collection(LineCollection(t_split[1::2], colors='r'))  # Moving
-        ax.add_collection(LineCollection(t_split[0::2], colors='k'))  # Not moving
-        
-        # plot wheel reaction response time
-        thresh_cm = samples_to_cm(10) #~3.51
-        thresh_deg = cm_to_deg(thresh_cm)
-        print(thresh_deg)
-        
-        
-        if len(onsets):
-            for i,o in enumerate(onsets):
-                onset_idx = find_nearest(t,o)[0]
-                offset_idx = find_nearest(t,offsets[i])[0]
-                
-                onset_pos = pos[onset_idx]
-                offset_pos = pos[offset_idx]
-                print(np.abs(onset_pos-offset_pos))
-                if np.abs(onset_pos-offset_pos) >= thresh_deg:
-                    
-                    after_onset_pos = pos[onset_idx:offset_idx+1]
-                    after_onset_time = t[onset_idx:offset_idx+1]
-            
-                    positive_pass = find_nearest(after_onset_pos,after_onset_pos[0]+thresh_deg)[0]
-                    negative_pass = find_nearest(after_onset_pos,after_onset_pos[0]-thresh_deg)[0]
-                    temp = np.array([positive_pass,negative_pass])
-                    pass_idx = np.min(temp[np.nonzero(temp)])
-                    wheel_reaction_time = round(after_onset_time[pass_idx],1)
-                    
-
-                    display(f'Wheel reaction detected in non-Hit trial!!(t={wheel_reaction_time})')
-                    ax.axvline(wheel_reaction_time,
-                                color='purple',linestyle='-.',label=f"Wheel Reaction({wheel_reaction_time}ms)")
-
-            
-            
-        
-        ax.axvline(self.trial_data[0,'response_latency'],
-                   color='r',linestyle=':',linewidth=2,label=f"Response Time({self.trial_data[0,'response_latency']}ms)")
+            ax.axvline(self.trial_data[0,'response_latency'],
+                    color='r',linestyle=':',linewidth=2,label=f"State Response Time({self.trial_data[0,'response_latency']}ms)")
         
         # plot the reward
         reward = self.trial_data[0,'reward']
@@ -142,6 +91,7 @@ class DetectionTrialPlotter:
             ax.scatter(lick_arr,[0]*len(lick_arr),marker='|',c='darkblue',s=50)
         
         # prettify
+        trial_vars = self.get_trial_variables(self.trial_data)
         title = f'Trial No : {trial_no}  '
         for k,v in trial_vars.items():
             title += f'{k}={v}, '

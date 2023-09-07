@@ -222,25 +222,6 @@ class ReactionCumulativePlotter(BasePlotter):
         pdf =  counts/np.sum(counts)
         cum_sum = np.cumsum(pdf)
         return cum_sum
-        
-    @staticmethod
-    def get_reaction_from_wheel(wheel_time:np.ndarray,wheel_pos:np.ndarray,first_move:bool=True) -> np.ndarray:
-        """ Gets the response time from wheel pass"""
-        if first_move:
-            pass
-        else:
-            #5*((3*2*np.pi*31.2)/1024) where 5 is the tick difference to detect answer
-            limit = 2.871
-            reaction_times = []
-            for i,wheel_trace in enumerate(wheel_pos):
-                #bigger than 0 for after stim onset
-                find_nearest(wheel_time[0],0)
-                
-                pos = find_nearest(wheel_trace,limit)
-                neg = find_nearest(wheel_trace,-limit)
-                idx = min(pos[0],neg[0])
-                reaction_times.append(wheel_time[idx])
-        return np.array(reaction_times)
     
     def plot(self,compare_by:str='stim_type',
                   bin_width:int=50,
@@ -284,15 +265,10 @@ class ReactionCumulativePlotter(BasePlotter):
                                             (pl.col('contrast')==c) &
                                             (pl.col('stim_type')==k)
                                             )
-                    
+                        
                         if not filt_df.is_empty():
                             
-                            if from_wheel:
-                                wheel_pos = filt_df['wheel_pos'].explode().to_numpy()   
-                                wheel_time = filt_df['wheel_time'].explode().to_numpy()   
-                                reaction_times = self.get_reaction_from_wheel(wheel_time,wheel_pos,first_move=first_move)
-                            else:
-                                reaction_times = filt_df['response_times'].explode().to_numpy()
+                            reaction_times = filt_df['response_times'].explode().to_numpy()
                                 
                             cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
                             

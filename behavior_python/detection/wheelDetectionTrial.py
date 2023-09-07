@@ -3,6 +3,7 @@ from ..utils import *
 from ..core.trial import *
 from ..wheelUtils import *
 
+
 class WheelDetectionTrial(Trial):
     def __init__(self,trial_no:int,log_column_keys:dict,meta) -> None:
         super().__init__(trial_no,log_column_keys,meta)
@@ -55,7 +56,7 @@ class WheelDetectionTrial(Trial):
                 vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
     
-    def get_wheel_pos(self,time_anchor:float=None) -> list:
+    def get_wheel_pos(self,time_anchor:float=None,time_range=[-100,1000]) -> list:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
         
         wheel_data = self.data['position']
@@ -64,32 +65,74 @@ class WheelDetectionTrial(Trial):
         
         # resetting the wheel position so the 0 point is aligned with trialstart and converting encoder ticks into degrees
         # also resetting the time frame into the trial itself rather than the whole session
+        thresh_in_ticks = 10
+        wheel_time = None
+        wheel_pos = None
+        wheel_reaction_time = None
+        wheel_bias = None
         if len(wheel_arr):
 
-            t = wheel_arr[:,0]
-            pos = wheel_arr[:,1]
+            t_tick = wheel_arr[:,0]
+            pos_tick = wheel_arr[:,1]
             
-            # convert pos to degs
-            pos_cm = samples_to_cm(pos)
-            pos_deg = cm_to_deg(pos_cm)
+            # #threshold in degrees
+            # thresh_cm = samples_to_cm(thresh_in_ticks) #~0.190
+            # thresh_deg = cm_to_deg(thresh_cm) #~3.515
             
             if time_anchor is None:
                 # if no time anchor provided than reset the time and position 
                 # from the first recorded wheel sample in that trial
-                time_anchor = t[0]
+                time_anchor = t_tick[0]
                 
             # make the reset position 0
-            reset_pos = np.apply_along_axis(lambda x: x-pos_deg[0],0,pos_deg)
+            reset_pos = np.apply_along_axis(lambda x: x-pos_tick[0],0,pos_tick)
             wheel_pos = reset_pos.tolist()
             # zero the time
-            reset_time = np.apply_along_axis(lambda x: x-time_anchor,0,t)
+            reset_time = np.apply_along_axis(lambda x: x-time_anchor,0,t_tick)
             wheel_time = reset_time.tolist()
+            
+            # interpolate the wheels
+            pos,t = interpolate_position(wheel_time,wheel_pos,freq=20)
+            
+            # don't look at too late 
+            # mask = t < t[0] + time_range[1]
+            # pos = pos[mask]
+            # t = t[mask]
+            
+            onsets,offsets,onset_samps,offset_samps,peak_amps,peak_vel_times = movements(t,pos, freq=20, pos_thresh=0.03,t_thresh=0.5)
 
-        else:
-            wheel_time = None
-            wheel_pos = None
-        
-        return wheel_time,wheel_pos
+            if len(onsets):
+                # there are onsets 
+                try:
+                    # there are onsets after 0(stim appearance)
+                    _idx = np.where(onsets>0)[0]
+                    onsets = onsets[_idx]
+                    offsets = offsets[_idx]
+                    onset_samps = onset_samps[_idx]
+                    offset_samps = offset_samps[_idx]
+                except:
+                    _idx = None
+
+                if _idx is not None:
+                    for i,o in enumerate(onsets):
+                        
+                        tick_onset_idx,_ = find_nearest(wheel_time,o)
+                        tick_offset_idx,_ = find_nearest(wheel_time,offset_samps[i])                        
+                        tick_extent = wheel_pos[tick_offset_idx] - wheel_pos[tick_onset_idx]
+                        if np.abs(tick_extent) >= thresh_in_ticks:
+                            
+                            after_onset_abs_pos = np.abs(wheel_pos[tick_onset_idx:tick_offset_idx+1]) #abs to make thresh comparison easy
+                            after_onset_time = wheel_time[tick_onset_idx:tick_offset_idx+1]
+            
+                            wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
+                            wheel_reaction_time = after_onset_time[wheel_pass_idx]
+                            wheel_bias = np.sign(tick_extent)
+                            break
+            # convert pos to degs
+            wheel_pos_cm = samples_to_cm(np.array(wheel_pos))
+            wheel_pos_deg = cm_to_deg(wheel_pos_cm)
+
+        return wheel_time,wheel_pos_deg,wheel_reaction_time,wheel_bias
     
     def trial_data_from_logs(self) -> dict:
         """ Iterates over each state change in a DataFrame slice that belongs to one trial(and corrections for pyvstim)
@@ -206,9 +249,9 @@ class WheelDetectionTrial(Trial):
         #wheel
         if trial_log_data['answer'] == -1:
             # if early anchor the positions to cue start
-            rig_log_data['wheel_time'],rig_log_data['wheel_pos'] = self.get_wheel_pos(trial_log_data['cue_start'])
+            rig_log_data['wheel_time'],rig_log_data['wheel_pos'],rig_log_data['wheel_reaction_time'],rig_log_data['wheel_bias'] = self.get_wheel_pos(trial_log_data['cue_start'])
         else:
-            rig_log_data['wheel_time'],rig_log_data['wheel_pos'] = self.get_wheel_pos(trial_log_data['stim_start_rig'])
+           rig_log_data['wheel_time'],rig_log_data['wheel_pos'],rig_log_data['wheel_reaction_time'],rig_log_data['wheel_bias'] = self.get_wheel_pos(trial_log_data['stim_start_rig'])
 
         #lick
         rig_log_data['lick'] = self.get_licks()
