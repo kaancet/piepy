@@ -99,7 +99,7 @@ def find_nearest(array, value):
             idx = np.nanargmin(np.abs(array - value))
         except:
             idx = 0
-        return [idx, array[idx]]
+        return idx, array[idx]
     else:
         return None
 
