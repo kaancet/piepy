@@ -38,6 +38,7 @@ class WheelDetectionExperiment:
                 'opto_ratio' : w.meta.optoRatio,
                 'opto_targets' : len(nonan_unique(w.data.data['opto_pattern'].to_numpy()))-1,
                 'stimulus_count' : len(w.meta.sf_values),
+                'isTitrated' : bool(w.data.data['isTitrated'][0]), # this should only give 0 or 1
                 'rig' : w.meta.rig,
             }
 
@@ -123,7 +124,7 @@ class WheelDetectionExperiment:
         """ Creates a summary data and and prints a tabulated text description of it"""
         q = (
             self.data.lazy()
-            .groupby(["animalid","area","stimulus_count","opto_targets"])
+            .groupby(["animalid","area","stimulus_count","opto_targets","isTitrated"])
             .agg(
                 [   (pl.col("stim_type").unique(maintain_order=True)),
                     (pl.col("date").unique().count().alias("experiment_count")),
@@ -135,7 +136,7 @@ class WheelDetectionExperiment:
                     (pl.col("false_alarm").unique(maintain_order=True))
                 ]
             ).drop_nulls()
-            .sort(["animalid","area","stimulus_count","opto_targets"])
+            .sort(["animalid","area","stimulus_count","opto_targets","isTitrated"])
         )
         df = q.collect()
         return df
@@ -145,13 +146,20 @@ class WheelDetectionExperiment:
         tmp = self.summary_data.to_pandas()
         print(tabulate(tmp,headers=self.summary_data.columns))
     
-    def filter_experiments(self,area:str,stim_count:int=1,stim_type:str=None,opto_targets:int=1,verbose:bool=True) -> pl.DataFrame:
+    def filter_experiments(self,
+                           area:str,
+                           stim_count:int=1,
+                           stim_type:str=None,
+                           opto_targets:int=1,
+                           isTitrated:bool=False,
+                           verbose:bool=True) -> pl.DataFrame:
         """ Filters the summary data according to 3 arguments,
         Then uses the dates in those filtered sessions to filter self.data"""
         
         filt_summ = self.summary_data.filter((pl.col('area')==area) &
-                                                (pl.col('stimulus_count')==stim_count) &
-                                                (pl.col('opto_targets')==opto_targets))
+                                             (pl.col('stimulus_count')==stim_count) &
+                                             (pl.col('opto_targets')==opto_targets) & 
+                                             (pl.col('isTitrated')==isTitrated))
         
         if verbose:
             print(filt_summ)

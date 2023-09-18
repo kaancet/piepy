@@ -309,9 +309,9 @@ class WheelDetectionSession(Session):
         # add contrast titration boolean
         uniq_stims = nonan_unique(session_data['contrast'].to_numpy())
         isTitrated = 0
-        if len(uniq_stims) >= len(self.meta.contrastVector):
+        if len(uniq_stims) > len(self.meta.contrastVector):
             isTitrated = 1
-        session_data = session_data.with_columns([pl.lit(isTitrated).alias('isTitrated')])
+        session_data = session_data.with_columns([pl.lit(isTitrated).cast(pl.Boolean).alias('isTitrated')])
         
         # round sf and tf
         session_data = session_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
