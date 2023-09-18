@@ -88,15 +88,17 @@ class Trial:
             reward_arr = None
         return reward_arr
         
-    def get_opto(self) -> np.ndarray:
+    def get_opto(self,opto_mode:bool) -> np.ndarray:
         """ Extracts the opto boolean from opto slice from riglog"""
         if 'opto' in self.data.keys():
             opto_data = self.data['opto']
             # opto_arr = np.array(opto_data[['duinotime','value']])
             opto_arr = opto_data.select(['duinotime','value']).to_numpy()
-            if len(opto_arr) > 1:
+            if len(opto_arr) > 1 and opto_mode == 0:
                 display(f'>> WARNING << Something funky happened with opto stim, there are {len(opto_arr)} pulses')
-                opto_arr = np.array([opto_arr[0]]).tolist()
+                opto_arr = [opto_arr[0]]
+            elif len(opto_arr) > 1 and opto_mode == 1:
+                opto_arr = opto_arr
         else:
             opto_arr = []
         return opto_arr

@@ -33,6 +33,9 @@ class SessionMeta:
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
+                        
+        if self.opto:
+            self.opto_mode = int(opts.get('optoMode',0)) #0 continuous, 1 pulsed
                                
         self.sf_values = nonan_unique(params['sf'].to_numpy()).tolist()
         self.tf_values = nonan_unique(params['tf'].to_numpy()).tolist()
