@@ -13,7 +13,7 @@ class DetectionAnalysis:
         """ Gets the hit rates, counts and confidence intervals for each contrast for each side """
         q = (
             self.data.lazy()
-            .groupby(["stim_type","contrast","stim_side","opto"])
+            .groupby(["stim_type","contrast","stim_side","opto_pattern"])
             .agg(
                 [
                     (pl.col("stim_pos").first()),
@@ -26,11 +26,11 @@ class DetectionAnalysis:
                     (pl.col("response_latency").median().alias("median_response_time")),
                     (pl.col("wheel_time")),
                     (pl.col("wheel_pos")),
-                    (pl.col("opto_pattern").first()),
+                    (pl.col("opto").first()),
                     (pl.col("stimkey").first()),
                     (pl.col("stim_label").first()),
                 ]
-            ).sort(["stim_type","contrast","stim_side","opto"])
+            ).sort(["stim_type","contrast","stim_side","opto_pattern"])
             )
 
         q = q.with_columns((pl.col("correct_count") / pl.col("count")).alias("hit_rate"))
