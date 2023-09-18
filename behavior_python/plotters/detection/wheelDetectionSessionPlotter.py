@@ -50,12 +50,13 @@ class DetectionPsychometricPlotter(BasePlotter):
 
         if doP:
         # get the p-values
-            self.p_vals = self.stat_analysis.get_hitrate_pvalues_exact()
-            p_vals_catch = self.stat_analysis.get_hitrate_pvalues_exact(side='catch')
-            if not p_vals_catch.is_empty():
-                self.p_vals = pl.concat([self.p_vals,p_vals_catch],how='vertical')
+            self.p_vals = pl.DataFrame()
+            for side in ['ipsi','contra','catch']:
+                p_side = self.stat_analysis.get_hitrate_pvalues_exact(side=side)
+                if not p_side.is_empty():
+                    self.p_vals = pl.concat([self.p_vals,p_side])
 
-        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
+        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto_pattern'],descending=True)
         
         # get uniques
         u_stimkey = q['stimkey'].unique().to_numpy()
@@ -83,7 +84,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                                     contrast+jittered_offset,
                                     hr,
                                     confs,
-                                    label=f"{stim_label[0]}{self._makelabel(contrast,count)}" if s=='contra' else '_',
+                                    label=f"{stim_label[0]}{self._makelabel(contrast,count)}" if s!='catch' else '_',
                                     marker = 'o',
                                     markersize=18,
                                     color = self.color.stim_keys[k]['color'] if color is None else color,
@@ -128,6 +129,8 @@ class DetectionPsychometricPlotter(BasePlotter):
                     stars = '**'
                 elif 0.01 < p < 0.05:
                     stars = '*'
+                else:
+                    continue
             
                 ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
     

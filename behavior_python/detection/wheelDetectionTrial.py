@@ -67,10 +67,10 @@ class WheelDetectionTrial(Trial):
         # also resetting the time frame into the trial itself rather than the whole session
         thresh_in_ticks = 10
         wheel_time = None
-        wheel_pos = None
+        wheel_pos_deg = None
         wheel_reaction_time = None
         wheel_bias = None
-        if len(wheel_arr):
+        if len(wheel_arr)>=2:
 
             t_tick = wheel_arr[:,0]
             pos_tick = wheel_arr[:,1]
@@ -117,20 +117,22 @@ class WheelDetectionTrial(Trial):
                     for i,o in enumerate(onsets):
                         
                         tick_onset_idx,_ = find_nearest(wheel_time,o)
-                        tick_offset_idx,_ = find_nearest(wheel_time,offset_samps[i])                        
+                        tick_offset_idx,_ = find_nearest(wheel_time,offsets[i])                        
                         tick_extent = wheel_pos[tick_offset_idx] - wheel_pos[tick_onset_idx]
+                        
                         if np.abs(tick_extent) >= thresh_in_ticks:
-                            
                             after_onset_abs_pos = np.abs(wheel_pos[tick_onset_idx:tick_offset_idx+1]) #abs to make thresh comparison easy
                             after_onset_time = wheel_time[tick_onset_idx:tick_offset_idx+1]
-            
-                            wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
+                            try:
+                                wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
+                            except:
+                                print('kk')
                             wheel_reaction_time = after_onset_time[wheel_pass_idx]
                             wheel_bias = np.sign(tick_extent)
                             break
             # convert pos to degs
             wheel_pos_cm = samples_to_cm(np.array(wheel_pos))
-            wheel_pos_deg = cm_to_deg(wheel_pos_cm)
+            wheel_pos_deg = cm_to_deg(wheel_pos_cm).tolist()
 
         return wheel_time,wheel_pos_deg,wheel_reaction_time,wheel_bias
     

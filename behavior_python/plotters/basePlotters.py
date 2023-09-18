@@ -67,6 +67,7 @@ class BasePlotter:
                 os.mkdir(saveloc)
             savename = f'{date}_{self.__class__.__name__}_{animalid}.pdf'
             saveloc = pjoin(saveloc,savename)
+            self.fig.suptitle(f'{date}_{animalid}',fontsize=23)
             self.fig.savefig(saveloc)
             display(f'Saved {savename} plot')
 
@@ -257,8 +258,12 @@ class ReactionCumulativePlotter(BasePlotter):
             
             for i,o in enumerate(u_opto):
                 for j,c in enumerate(u_contrast):
-                    ax = axes[i][j]
                     
+                    try:
+                        ax = axes[i][j]
+                    except:
+                        ax = axes[j]
+                        
                     for k in u_stimtype:
                         filt_df = data.filter((pl.col('opto_pattern')==o) &
                                             (pl.col('stim_side')=="contra") &
@@ -268,16 +273,14 @@ class ReactionCumulativePlotter(BasePlotter):
                         
                         if not filt_df.is_empty():
                             
-                            reaction_times = filt_df['response_times'].explode().to_numpy()
+                            if from_wheel:
+                                reaction_times = filt_df['wheel_reaction_time'].explode().to_numpy()
+                            else:
+                                reaction_times = filt_df['response_times'].explode().to_numpy()
                                 
                             cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
                             
-                            # ax.step(bin_edges[:-1],
-                            #         cumulative_reaction,
-                            #         where='mid',
-                            #         color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
-                            #         linewidth=4
-                            #     )
+
                             ax.plot(bin_edges[:-1],
                                     cumulative_reaction,
                                     color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
@@ -307,8 +310,10 @@ class ReactionCumulativePlotter(BasePlotter):
                                           figsize=kwargs.pop('figsize',(15,15)))
             for i,k in enumerate(u_stimtype):
                 for j,c in enumerate(u_contrast):
-                    ax = axes[i][j]
-                    
+                    try:
+                        ax = axes[i][j]
+                    except:
+                        ax = axes[j]
                     for o in u_opto:
                         filt_df = data.filter((pl.col('opto_pattern')==o) &
                                               (pl.col('stim_side')=="contra") &
@@ -318,20 +323,12 @@ class ReactionCumulativePlotter(BasePlotter):
                     
                         if not filt_df.is_empty():
                             if from_wheel:
-                                wheel_pos = filt_df['wheel_pos'].explode().to_numpy()   
-                                wheel_time = filt_df['wheel_time'].explode().to_numpy()   
-                                reaction_times = self.get_reaction_from_wheel(wheel_time,wheel_pos,first_move=first_move)
+                                reaction_times = filt_df['wheel_reaction_time'].explode().to_numpy()
                             else:
                                 reaction_times = filt_df['response_times'].explode().to_numpy()
                                 
                             cumulative_reaction = self.get_cumulative(reaction_times,bin_edges)
-                            
-                            # ax.step(bin_edges[:-1],
-                            #         cumulative_reaction,
-                            #         where='mid',
-                            #         color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
-                            #         linewidth=4
-                            #     )
+                
                             ax.plot(bin_edges[:-1],
                                     cumulative_reaction,
                                     color=self.color.stim_keys[filt_df[0,'stimkey']]['color'],
@@ -428,6 +425,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
              t_cutoff:float=10_000,
              cloud_width:float=0.33,
              xaxis_type:str='linear_spaced',
+             wheel_time:bool = True,
              **kwargs):
         
         if ax is None:
@@ -436,10 +434,11 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             if 'figsize' in kwargs:
                 kwargs.pop('figsize')
             
-        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],reverse=True)
+        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
         
         # do cutoff
-        data = data.with_columns(pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'))
+        data = data.with_columns([pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'),
+                                  pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i<t_cutoff and i is not None]).alias('cutoff_wheel_reaction_times')])
         
         # get uniques
         u_stimkey = data['stimkey'].unique().to_numpy()
@@ -457,7 +456,10 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                                           (pl.col('signed_contrast')==c))
                     
                     if not filt_df.is_empty():
-                        resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
+                        if wheel_time:
+                            resp_times = filt_df[0,'cutoff_wheel_reaction_times'].to_numpy()
+                        else:
+                            resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
                         # do cutoff, default is 10_000 to involve everything
                         
                         response_times = self.time_to_log(resp_times)
@@ -480,8 +482,12 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                 if len(pfilt_df)<2:
                     continue
                 elif len(pfilt_df)==2:
-                    p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
-                                                                     pfilt_df[1,'cutoff_response_times'].to_numpy())            
+                    if wheel_time:
+                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_wheel_reaction_times'].to_numpy(),
+                                                                         pfilt_df[1,'cutoff_wheel_reaction_times'].to_numpy())            
+                    else:
+                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
+                                                                        pfilt_df[1,'cutoff_response_times'].to_numpy())            
                     stars = ''
                     if p < 0.001:
                         stars = '***'

@@ -21,6 +21,8 @@ class DetectionAnalysis:
                     (pl.col("answer")==1).sum().alias("correct_count"),
                     (pl.col("answer")==0).sum().alias("miss_count"),
                     (pl.col("response_latency").alias("response_times")),
+                    (pl.col("wheel_reaction_time").alias("wheel_reaction_time")),
+                    (pl.col("wheel_reaction_time").median().alias("median_wheel_reaction_time")),
                     (pl.col("response_latency").median().alias("median_response_time")),
                     (pl.col("wheel_time")),
                     (pl.col("wheel_pos")),
@@ -89,13 +91,14 @@ class DetectionAnalysis:
         # otherwise cannot create the table to do p_value analyses
         # if len(temp) != (len(c_list)*len(stimlabel_list)*2): 
         if len(o_list) != 2: # opto and nonopto
-            display("CAN'T DO P-VALUE ANALYSIS, MISSING OPTO COMPONENTS!! RETURNING AN EMPTY DATAFRAME")
+            display(f"CAN'T DO P-VALUE ANALYSIS on {side}, MISSING OPTO COMPONENTS!! RETURNING AN EMPTY DATAFRAME")
             df = pl.DataFrame()
         else:
             stims = []
             contrasts = []
             p_values = []
             stimkeys = []
+            sides = []
             for s in stimlabel_list:
                 for c in c_list:
                     filt = temp.filter((pl.col("contrast")==c) &
@@ -110,18 +113,23 @@ class DetectionAnalysis:
                             elif method == 'fischer':
                                 res = fisher_exact(table,alternative='two-sided')
                             p = res.pvalue
+                            s_k = filt[1,'stimkey']
                         else:
                             p = np.nan
+                            s_k = None
                         
                         stims.append(s)
                         contrasts.append(c)
                         p_values.append(p)
-                        stimkeys.append(filt[1,'stimkey'])
+                        stimkeys.append(s_k)
+                        sides.append(side)
+                        
             
             df = pl.DataFrame({"stim_type":stims,
-                            "contrast":contrasts,
-                            "p_values":p_values,
-                            "stimkey":stimkeys})        
+                               "stim_side":sides,
+                               "contrast":contrasts,
+                               "p_values":p_values,
+                               "stimkey":stimkeys})        
         return df
 
     @staticmethod

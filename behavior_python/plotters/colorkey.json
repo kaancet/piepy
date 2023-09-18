@@ -36,6 +36,18 @@
             "color":"mediumblue",
             "linestyle":":"
         },
+        "0.1cpd_4.0Hz_-1":{
+            "color":"tab:gray",
+            "linestyle":"-"
+        },
+        "0.1cpd_4.0Hz_0":{
+            "color":"aqua",
+            "linestyle":"--"
+        },
+        "0.1cpd_4.0Hz_1":{
+            "color":"midnightblue",
+            "linestyle":":"
+        },
         "0.1cpd_4.0Hz_grating_-1":{
             "color":"tab:gray",
             "linestyle":"-"
@@ -45,7 +57,7 @@
             "linestyle":"--"
         },
         "0.1cpd_4.0Hz_grating_1":{
-            "color":"aqua",
+            "color":"midnightblue",
             "linestyle":":"
         },
         "all":{
