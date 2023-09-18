@@ -263,7 +263,7 @@ class WheelDetectionTrial(Trial):
         
         #opto
         if self.meta.opto:
-            opto_pulse = self.get_opto()
+            opto_pulse = self.get_opto(self.meta.opto_mode)
             is_opto = int(bool(vstim_log.get('opto',0)) or bool(len(opto_pulse)))
         else:
             is_opto = 0
