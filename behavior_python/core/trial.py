@@ -45,13 +45,16 @@ class Trial:
                 t_end = self.trial_end
                 
                 if k in rig_cols:
-                    time_col = 'duinotime'
+                     temp_v = v.filter((pl.col('duinotime') >= self.trial_start) & (pl.col('duinotime') <= self.trial_end))
+                    
                 if k == 'vstim':
-                    time_col = 'presentTime'
-                    t_start = self.trial_start / 1000
-                    t_end = self.trial_end / 1000
-                
-                temp_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end)).drop_nulls()
+                    # since we don't need any time info from vstim, just get trial no
+                    temp_v = v.filter(pl.col('iTrial')==self.trial_no)
+                    
+                    # time_col = 'presentTime'
+                    # t_start = self.trial_start / 1000
+                    # t_end = self.trial_end / 1000
+                    # temp_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end)).drop_nulls()
                  
                 self.data[k] = temp_v
                 

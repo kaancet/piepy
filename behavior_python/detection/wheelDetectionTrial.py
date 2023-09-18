@@ -13,7 +13,7 @@ class WheelDetectionTrial(Trial):
         ignore = ['iTrial','photo','code','presentTime']
         vstim_dict = {}
         vstim = self.data['vstim']
-        
+        vstim = vstim.drop_nulls()
         # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
         vstim = vstim[:-1]
         
@@ -36,11 +36,11 @@ class WheelDetectionTrial(Trial):
                 vstim_dict[col] = None
                 
         if early_flag==-1:
-            vstim_dict['contrast'] = np.nan
-            vstim_dict['spatial_freq'] = np.nan
-            vstim_dict['temporal_freq'] = np.nan
-            vstim_dict['stim_side'] = np.nan
-            vstim_dict['opto_pattern'] = np.nan
+            vstim_dict['contrast'] = None
+            vstim_dict['spatial_freq'] = None
+            vstim_dict['temporal_freq'] = None
+            vstim_dict['stim_side'] = None
+            vstim_dict['opto_pattern'] = None
         else:
             vstim_dict['contrast'] = 100*vstim_dict['contrast_r'] if vstim_dict['correct'] else 100*vstim_dict['contrast_l']
             vstim_dict['spatial_freq'] = vstim_dict['sf_r'] if vstim_dict['correct'] else vstim_dict['sf_l']
