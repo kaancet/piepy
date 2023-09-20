@@ -1,6 +1,10 @@
-from .core import *
-from .mouse import Mouse
+import os
+from os.path import join as pjoin
 import scipy.io as sio
+from .core import DataPaths, Logger
+from .dbinterface import DataBaseInterface
+from ..utils import *
+from ..gsheet_functions import GSheet
 
 
 class SessionMeta:
@@ -157,6 +161,8 @@ class Session:
         # initialize relevant data paths, the log version and the database interface
         self.init_data_paths(runno)
         
+        self.logger = Logger(log_path=self.data_paths.analysisPath)
+        
         self.db_interface = DataBaseInterface(self.data_paths.config['databasePath'])
         
     def overall_session_no(self):
@@ -189,6 +195,7 @@ class Session:
             # because there are two different log files now, they have to be combined into a single data variable
             if isinstance(self.data_paths.stimlog,list) and isinstance(self.data_paths.riglog,list):
                 assert len(self.data_paths.stimlog) == len(self.data_paths.riglog), f'The number stimlog files need to be equal to amount of riglog files {len(self.data_paths.stimlog)}=/={len(self.data_paths.riglog)}'
+                self.logger.error(' UNEQUAL LOG FILE COUNT! ')
                 
                 stim_data_all = []
                 rig_data_all = []
@@ -210,6 +217,7 @@ class Session:
             self.rawdata = {**stim_data, **rig_data}
             self.comments = stim_comments + rig_comments
             self.rawdata = extrapolate_time(self.rawdata)
+        self.logger.info('Read rawdata')
 
     def set_statelog_column_keys(self) -> None:
         """ Setting log column keys, this is hardcoded for pyvstim but just reads the column keys for stimpy"""
@@ -247,9 +255,9 @@ class Session:
         if os.path.exists(self.data_paths.savePath):
             if os.path.exists(self.data_paths.data):
                 loadable = True
-                display('Found saved data: {0}'.format(self.data_paths.data))
+                self.logger.info('Found saved data: {0}'.format(self.data_paths.data),cml=True)
             else:
-                display('{0} exists but no data file is present...'.format(self.data_paths.savePath))
+                self.logger.info(f'{self.data_paths.savePath} exists but no data file is present...',cml=True)
         else:
             display('THIS SHOULD NOT HAPPEN')
         return loadable

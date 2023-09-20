@@ -1,10 +1,7 @@
 import os
-from tqdm import tqdm
+import logging
 from os.path import join as pjoin
-from datetime import datetime as dt
 from ..utils import *
-from .dbinterface import DataBaseInterface
-from ..gsheet_functions import GSheet
 
 
 class DataPaths:
@@ -58,3 +55,49 @@ class DataPaths:
                     setattr(self,temp_key,_attr)
                 else:
                     setattr(self, temp_key, log_path)
+                    
+
+class Logger:
+    def __init__(self,
+                 log_path:str) -> None:
+        self.log_path = pjoin(log_path,'analysis_log.log') 
+        
+        logging.basicConfig(level=logging.INFO,
+                            filename=self.log_path,
+                            filemode='w',
+                            encoding='utf-8',
+                            format="%(asctime)s : %(levelname)s : %(message)s")
+        
+        session_dir = log_path.split(sep=os.sep)[-1]
+        init_msg = f"Started analysis of {session_dir}"
+        self.info(init_msg,cml=True)
+    
+    @staticmethod
+    def debug(msg:str,cml:bool=False) -> None:
+        if cml:
+            display(msg)
+        logging.debug(msg)
+    
+    @staticmethod 
+    def info(msg:str,cml:bool=False) -> None:
+        if cml:
+            display(msg)
+        logging.info(msg)
+    
+    @staticmethod
+    def warning(msg:str,cml:bool=False) -> None:
+        if cml:
+            display(msg)
+        logging.warning(msg)
+    
+    @staticmethod
+    def error(msg:str,cml:bool=False) -> None:
+        if cml:
+            display(msg)
+        logging.error(msg)
+        
+    @staticmethod
+    def critical(msg:str,cml:bool=False) -> None:
+        if cml:
+            display(msg)
+        logging.critical(msg)

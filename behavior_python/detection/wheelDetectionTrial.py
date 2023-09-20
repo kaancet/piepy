@@ -5,8 +5,8 @@ from ..wheelUtils import *
 
 
 class WheelDetectionTrial(Trial):
-    def __init__(self,trial_no:int,log_column_keys:dict,meta) -> None:
-        super().__init__(trial_no,log_column_keys,meta)
+    def __init__(self,trial_no:int,log_column_keys:dict,meta,logger:Logger) -> None:
+        super().__init__(trial_no,log_column_keys,meta,logger)
         
     def get_vstim_props(self,early_flag:bool) -> dict:
         """ Extracts the necessary properties from vstim data"""
@@ -51,14 +51,15 @@ class WheelDetectionTrial(Trial):
             # training failsafe
             if 'opto_pattern' not in vstim_dict.keys():
                 vstim_dict['opto_pattern'] = -1
+                self.logger.warning(f'No opto_pattern found in vstim log, setting to -1(nonopto) - [{self.trial_no}]')
             
             if vstim_dict['contrast'] == 0:
                 vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
         return vstim_dict
     
-    def get_wheel_pos(self,time_anchor:float=None,time_range=[-100,1000]) -> list:
+    def get_wheel_pos(self,time_anchor:float=None,time_range=[-100,1000],**kwargs) -> list:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
-        
+        outcome =  kwargs.get('answer', None)
         wheel_data = self.data['position']
         # wheel_arr = np.array(wheel_data[['duinotime', 'value']])
         wheel_arr = wheel_data.select(['duinotime','value']).to_numpy()
@@ -111,6 +112,8 @@ class WheelDetectionTrial(Trial):
                     onset_samps = onset_samps[_idx]
                     offset_samps = offset_samps[_idx]
                 except:
+                    if outcome == 1:
+                        self.logger.warning(f'No detected wheel in correct trial affter stimulus presentation! - [{self.trial_no}]')
                     _idx = None
 
                 if _idx is not None:
@@ -123,16 +126,19 @@ class WheelDetectionTrial(Trial):
                         if np.abs(tick_extent) >= thresh_in_ticks:
                             after_onset_abs_pos = np.abs(wheel_pos[tick_onset_idx:tick_offset_idx+1]) #abs to make thresh comparison easy
                             after_onset_time = wheel_time[tick_onset_idx:tick_offset_idx+1]
-                            try:
-                                wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
-                            except:
-                                print('kk')
+                            wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
+
                             wheel_reaction_time = after_onset_time[wheel_pass_idx]
                             wheel_bias = np.sign(tick_extent)
                             break
+                    if outcome == 1 and wheel_reaction_time is None:
+                        self.logger.error(f"Can't calculate wheel reaction time in correct trial!! - [{self.trial_no}]")
+                        
             # convert pos to degs
             wheel_pos_cm = samples_to_cm(np.array(wheel_pos))
             wheel_pos_deg = cm_to_deg(wheel_pos_cm).tolist()
+        else:
+            self.logger.info(f'Less than 2 sample points for wheel data - [{self.trial_no}]')
 
         return wheel_time,wheel_pos_deg,wheel_reaction_time,wheel_bias
     
@@ -245,7 +251,7 @@ class WheelDetectionTrial(Trial):
             return {}
             
         #vstim
-        vstim_log = self.get_vstim_props(trial_log_data['answer'])
+        vstim_log = self.get_vstim_props(early_flag=trial_log_data['answer'])
         
         rig_log_data = {}
         #wheel
@@ -256,10 +262,10 @@ class WheelDetectionTrial(Trial):
            rig_log_data['wheel_time'],rig_log_data['wheel_pos'],rig_log_data['wheel_reaction_time'],rig_log_data['wheel_bias'] = self.get_wheel_pos(trial_log_data['stim_start_rig'])
 
         #lick
-        rig_log_data['lick'] = self.get_licks()
+        rig_log_data['lick'] = self.get_licks(answer=trial_log_data['answer'])
         
         #reward
-        rig_log_data['reward'] = self.get_reward()
+        rig_log_data['reward'] = self.get_reward(answer=trial_log_data['answer'])
         
         #opto
         if self.meta.opto:

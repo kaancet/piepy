@@ -1,19 +1,20 @@
 from numpy import ndarray
 import pandas as pd
 from ..utils import *
+from .core import Logger
 from .dbinterface import DataBaseInterface
 
 
 class Trial:
-    __slots__ = ['trial_no','data','trial_data','column_keys',
+    __slots__ = ['trial_no','data','column_keys',
                  'trial_start','trial_end','meta','db_interface','total_trial_count',
                  'reward_ms_per_ul']
-    def __init__(self,trial_no:int,column_keys:dict,meta) -> None:
+    def __init__(self,trial_no:int,column_keys:dict,meta,logger:Logger) -> None:
         
         self.trial_no = trial_no
         self.column_keys = column_keys
-        self.trial_data = {}
         self.meta = meta
+        self.logger = logger
         self.reward_ms_per_ul = 0
         
         config = getConfig()
@@ -51,14 +52,18 @@ class Trial:
                     # since we don't need any time info from vstim, just get trial no
                     temp_v = v.filter(pl.col('iTrial')==self.trial_no)
                     
-                    # time_col = 'presentTime'
-                    # t_start = self.trial_start / 1000
-                    # t_end = self.trial_end / 1000
-                    # temp_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end)).drop_nulls()
-                 
+                    # to check timing is good in vstim log
+                    time_col = 'presentTime'
+                    t_start = self.trial_start / 1000
+                    t_end = self.trial_end / 1000
+                    fake_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end))
+                    if len(fake_v['iTrial'].unique())>1:
+                        msg = str(fake_v['iTrial'].unique().to_list())
+                        self.logger.warning(f"The timing of vstim is funky, has multiple trial no's {msg}")
+            
                 self.data[k] = temp_v
                 
-    def get_licks(self) -> np.ndarray:
+    def get_licks(self,**kwargs) -> np.ndarray:
         """ Extracts the lick data from slice"""
         if 'lick' in self.data.keys():
             lick_data = self.data['lick']
@@ -66,13 +71,18 @@ class Trial:
             # lick_arr = np.array(lick_data[['duinotime', 'value']])
                 lick_arr = lick_data.select(['duinotime','value']).to_series().to_list()
             else:
+                outcome = kwargs.get('answer',None)
+                if outcome is 1:
+                    self.logger.error(f'Empty lick data in correct trial - [{self.trial_no}]')
                 lick_arr = None
         else:
+            self.logger.warning(f'No lick data in trial - [{self.trial_no}]')
             lick_arr = None
+            
         
         return lick_arr
     
-    def get_reward(self) -> np.ndarray:
+    def get_reward(self,**kwargs) -> np.ndarray:
         """ Extracts the reward clicks from slice"""
         
         reward_data = self.data['reward']
@@ -83,6 +93,7 @@ class Trial:
                 reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
             except:
                 reward_amount_uL = self.meta.rewardSize
+                self.logger.warning(f'No reward logged from vstim, using rewardSize from prot file  - [{self.trial_no}]')
             reward_arr = np.append(reward_arr,reward_arr[:,1])
             reward_arr[1] = reward_amount_uL
             reward_arr = reward_arr.tolist() 
@@ -98,7 +109,7 @@ class Trial:
             # opto_arr = np.array(opto_data[['duinotime','value']])
             opto_arr = opto_data.select(['duinotime','value']).to_numpy()
             if len(opto_arr) > 1 and opto_mode == 0:
-                display(f'>> WARNING << Something funky happened with opto stim, there are {len(opto_arr)} pulses')
+                self.logger.warning(f'Something funky happened with opto stim, there are {len(opto_arr)} pulses - [{self.trial_no}]')
                 opto_arr = [opto_arr[0]]
             elif len(opto_arr) > 1 and opto_mode == 1:
                 opto_arr = opto_arr

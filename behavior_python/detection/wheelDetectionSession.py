@@ -149,7 +149,7 @@ class WheelDetectionSession(Session):
         self.data = WheelDetectionData(self.data_paths)
         
         if self.isSaved() and self.load_flag:
-            display('Loading from {0}'.format(self.data_paths.savePath))
+            self.logger.info(f'Loading from {self.data_paths.savePath}',cml=True)
             self.load_session()
         else:
             self.set_meta()
@@ -167,7 +167,7 @@ class WheelDetectionSession(Session):
             if self.meta.water_consumed is not None:
                 self.meta.water_per_reward = self.meta.water_consumed / self.stats.correct_count
             else:
-                display('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
+                self.logger.warning('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
                 self.meta.water_per_reward = -1
                 
             # add some metadata to the dataframe
@@ -176,10 +176,10 @@ class WheelDetectionSession(Session):
             
             self.data.data = self.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, fmt='%y%m%d').cast(pl.Date).alias('date'))
             self.save_session()
-            display('Saving data to {0}'.format(self.data_paths.savePath))
+            self.logger.info(f'Saving data to {self.data_paths.savePath}',cml=True)
         
         end = time.time()
-        display('Done! t={0:.2f} s'.format(end-start))
+        self.logger.info(f'Done! t={(end-start):.2f} s',cml=True)
         
     def __repr__(self):
         r = f'Detection Session {self.sessiondir}'
@@ -219,24 +219,24 @@ class WheelDetectionSession(Session):
         self.data.save_data(self.save_mat)
 
         save_dict_json(self.data_paths.metaPath, self.meta.__dict__)
-        display("Saved session metadata")
+        self.logger.info('Saved session metadata')
 
         save_dict_json(self.data_paths.statPath, self.stats.get_dict())
-        display("Saved session stats")
+        self.logger.info("Saved session stats")
     
     @timeit('Loaded all data')
     def load_session(self):
         """ Loads the saved session data """
         meta = load_json_dict(self.data_paths.metaPath)
         self.meta = SessionMeta(init_dict=meta)
-        display('Loaded session metadata')
+        self.logger.info('Loaded session metadata')
         
         self.data.load_data()
-        display('Loaded session data')
+        self.logger.info('Loaded session data')
 
         stats = load_json_dict(self.data_paths.statPath)
         self.stats = WheelDetectionStats(dict_in=stats)
-        display('Loaded Session stats')
+        self.logger.info('Loaded Session stats')
         
     def translate_transition(self,oldState,newState):
         """ A function to be called that add the meaning of state transitions into the state DataFrame"""
@@ -259,12 +259,10 @@ class WheelDetectionSession(Session):
         self.rawdata['stateMachine'] = self.rawdata['stateMachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
         self.states = self.rawdata['stateMachine']
         
-        display('Setting global indexing keys for {0} logging'.format(self.logversion))
+        self.logger.info(f'Setting global indexing keys for {self.logversion} logging')
         
         if self.states.shape[0] == 0:
-            display("""NO STATE MACHINE TO ANALYZE
-                    LOGGING PROBLEMATIC.
-                    SOLVE THIS ISSUE FAST""")
+            self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
             return None
         
         trials = np.unique(self.states[self.column_keys['trialNo']])
@@ -274,7 +272,7 @@ class WheelDetectionSession(Session):
             trials = np.unique(self.states[self.column_keys['trialNo']])
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
         for t in pbar:           
-            temp_trial = WheelDetectionTrial(t,self.column_keys,meta=self.meta)
+            temp_trial = WheelDetectionTrial(t,self.column_keys,meta=self.meta,logger=self.logger)
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
             pbar.update()
@@ -319,9 +317,7 @@ class WheelDetectionSession(Session):
         
 
         if session_data.is_empty():
-            print('''WARNING THIS SESSION HAS NO DATA
-            Possible causes:
-            - Session has only one trial with no correct answer''')
+            self.lopgger.critical("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
             return session_data
