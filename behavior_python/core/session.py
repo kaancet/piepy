@@ -218,25 +218,6 @@ class Session:
             self.comments = stim_comments + rig_comments
             self.rawdata = extrapolate_time(self.rawdata)
         self.logger.info('Read rawdata')
-
-    def set_statelog_column_keys(self) -> None:
-        """ Setting log column keys, this is hardcoded for pyvstim but just reads the column keys for stimpy"""
-        if self.logversion == 'pyvstim':
-            self.column_keys = {'code':'code',
-                                'elapsed':'presentTime',
-                                'trialNo':'iStim',
-                                'newState':'iTrial',
-                                'oldState':'iFrame',
-                                'trialType':'contrast',
-                                'stateElapsed':'blank'}
-        elif self.logversion == 'stimpy':
-            self.column_keys = {}
-            for c in self.rawdata['stateMachine'].columns:
-                # only changes the cyce column with trialNo for ease of understanding
-                if c == 'cycle':
-                    self.column_keys['trialNo'] = c
-                else:
-                    self.column_keys[c] = c
                     
     def extract_trial_count(self):
         """ Extracts the trial no from state changes, this works for stimpy for now"""

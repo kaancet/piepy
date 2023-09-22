@@ -154,7 +154,6 @@ class WheelDetectionSession(Session):
         else:
             self.set_meta()
             self.read_data()
-            self.set_statelog_column_keys()
 
             session_data = self.get_session_data()
             # session_data = get_running_stats(session_data)
@@ -238,15 +237,17 @@ class WheelDetectionSession(Session):
         self.stats = WheelDetectionStats(dict_in=stats)
         self.logger.info('Loaded Session stats')
         
-    def translate_transition(self,oldState,newState):
-        """ A function to be called that add the meaning of state transitions into the state DataFrame"""
+    def translate_transition(self,oldState,newState) -> dict:
+        """ 
+        A function to be called that add the meaning of state transitions into the state DataFrame
+        """
         curr_key = '{0}->{1}'.format(int(oldState), int(newState))
         state_keys = {'0->1' : 'trialstart',
                       '1->2' : 'cuestart',
                       '2->3' : 'stimstart',
-                      '2->5' : 'earlyanswer',
-                      '3->4' : 'correct',
-                      '3->5' : 'incorrect',
+                      '2->5' : 'early',
+                      '3->4' : 'hit',
+                      '3->5' : 'miss',
                       '3->6' : 'catch',
                       '6->0' : 'trialend',
                       '4->6' : 'stimendcorrect',
@@ -265,17 +266,17 @@ class WheelDetectionSession(Session):
             self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
             return None
         
-        trials = np.unique(self.states[self.column_keys['trialNo']])
-        # this is a failsafe for some early stimpy data where trial count has not been incremented
+        trials = np.unique(self.states['cycle'])
         if len(trials) == 1 and len(self.states) > 6 and self.logversion=='stimpy':
+            # this is a failsafe for some early stimpy data where trial count has not been incremented
             self.extract_trial_count()
             trials = np.unique(self.states[self.column_keys['trialNo']])
+            
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
-        for t in pbar:           
-            temp_trial = WheelDetectionTrial(t,self.column_keys,meta=self.meta,logger=self.logger)
+        for t in pbar:         
+            temp_trial = WheelDetectionTrial(t,meta=self.meta,logger=self.logger)
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
-            pbar.update()
             if len(trial_row):
                 if t == 1:
                     data_to_append = {k:[v] for k,v in trial_row.items()}

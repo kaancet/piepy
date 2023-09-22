@@ -1,5 +1,4 @@
 from numpy import ndarray
-import pandas as pd
 from ..utils import *
 from .core import Logger
 from .dbinterface import DataBaseInterface
@@ -7,12 +6,11 @@ from .dbinterface import DataBaseInterface
 
 class Trial:
     __slots__ = ['trial_no','data','column_keys',
-                 'trial_start','trial_end','meta','db_interface','total_trial_count',
-                 'reward_ms_per_ul']
-    def __init__(self,trial_no:int,column_keys:dict,meta,logger:Logger) -> None:
+                 't_trialstart','t_trialend','db_interface','total_trial_count',
+                 'reward_ms_per_ul','meta','logger']
+    def __init__(self,trial_no:int,meta,logger:Logger) -> None:
         
         self.trial_no = trial_no
-        self.column_keys = column_keys
         self.meta = meta
         self.logger = logger
         self.reward_ms_per_ul = 0
@@ -26,28 +24,43 @@ class Trial:
         {self.data['state']}"""
         return rep
     
-    def get_data_slices(self,rawdata) -> pd.DataFrame:
-        """ Extracts the relevant portion from each data """
+    def _attrs_from_dict(self,log_data:dict) -> None:
+        """
+        Creates class attributes from a dictionary
+        :param log_data: any dictionary  to set class attributes
+        """
+        for k,v in log_data.items():
+            setattr(self,k,v)
+    
+    def get_data_slices(self,rawdata:dict) -> pl.DataFrame:
+        """
+        Extracts the relevant portion from each data 
+        
+        :param rawdata: Rawdata dictionary
+        :return: DataFrame slice of corresponding trial no
+        """
         rig_cols = ['screen','imaging','position','lick',
                     'button','reward','lap','cam1','cam2',
                     'cam3','act0','act1','opto']
         
         states = rawdata['stateMachine']
-        state_slice = states.filter(pl.col(self.column_keys['trialNo'])==self.trial_no)
+        states = states.rename({"cycle":"trialNo"})
+        
+        state_slice = states.filter(pl.col('trialNo')==self.trial_no)
         self.data = {'state' : state_slice}
         
-        self.trial_start = state_slice[self.column_keys['elapsed']][0]
-        self.trial_end = state_slice[self.column_keys['elapsed']][-1]
+        self.t_trialstart = state_slice['elapsed'][0]
+        self.t_trialend = state_slice['elapsed'][-1]
 
         for k,v in rawdata.items():
             if k == 'stateMachine':
                 continue
             if not v.is_empty():
-                t_start = self.trial_start
-                t_end = self.trial_end
+                t_start = self.t_trialstart
+                t_end = self.t_trialend
                 
                 if k in rig_cols:
-                     temp_v = v.filter((pl.col('duinotime') >= self.trial_start) & (pl.col('duinotime') <= self.trial_end))
+                     temp_v = v.filter((pl.col('duinotime') >= self.t_trialstart) & (pl.col('duinotime') <= self.t_trialend))
                     
                 if k == 'vstim':
                     # since we don't need any time info from vstim, just get trial no
@@ -55,8 +68,8 @@ class Trial:
                     
                     # to check timing is good in vstim log
                     time_col = 'presentTime'
-                    t_start = self.trial_start / 1000
-                    t_end = self.trial_end / 1000
+                    t_start = self.t_trialstart / 1000
+                    t_end = self.t_trialend / 1000
                     fake_v = v.filter((pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end))
                     if len(fake_v['iTrial'].unique())>1:
                         msg = str(fake_v['iTrial'].unique().to_list())
@@ -64,7 +77,7 @@ class Trial:
             
                 self.data[k] = temp_v
                 
-    def get_licks(self,**kwargs) -> np.ndarray:
+    def get_licks(self) -> dict:
         """ Extracts the lick data from slice"""
         if 'lick' in self.data.keys():
             lick_data = self.data['lick']
@@ -78,11 +91,12 @@ class Trial:
         else:
             self.logger.warning(f'No lick data in trial')
             lick_arr = None
-            
         
-        return lick_arr
+        lick_dict = {'lick':lick_arr}
+        self._attrs_from_dict(lick_dict)
+        return lick_dict
     
-    def get_reward(self,**kwargs) -> np.ndarray:
+    def get_reward(self) -> dict:
         """ Extracts the reward clicks from slice"""
         
         reward_data = self.data['reward']
@@ -100,22 +114,29 @@ class Trial:
             # reward is a 3 element array: [time,value_il, value_ms]
         else:
             reward_arr = None
-        return reward_arr
         
-    def get_opto(self,opto_mode:bool) -> np.ndarray:
+        reward_dict = {'reward':reward_arr}
+        self._attrs_from_dict(reward_dict)
+        return reward_dict
+        
+    def get_opto(self) -> dict:
         """ Extracts the opto boolean from opto slice from riglog"""
-        if 'opto' in self.data.keys():
-            opto_data = self.data['opto']
-            # opto_arr = np.array(opto_data[['duinotime','value']])
-            opto_arr = opto_data.select(['duinotime','value']).to_numpy()
-            if len(opto_arr) > 1 and opto_mode == 0:
-                self.logger.warning(f'Something funky happened with opto stim, there are {len(opto_arr)} pulses - [{self.trial_no}]')
-                opto_arr = [opto_arr[0]]
-            elif len(opto_arr) > 1 and opto_mode == 1:
-                opto_arr = opto_arr
-        else:
-            opto_arr = []
-        return opto_arr
+        if self.meta.opto:
+            if 'opto' in self.data.keys():
+                opto_data = self.data['opto']
+                opto_arr = opto_data.select(['duinotime','value']).to_numpy()
+                if len(opto_arr) > 1 and self.meta.opto_mode == 0:
+                    self.logger.warning(f'Something funky happened with opto stim, there are {len(opto_arr)} pulses')
+                    opto_arr = [opto_arr[0]]
+                elif len(opto_arr) > 1 and self.meta.opto_mode == 1:
+                    opto_arr = opto_arr
+            else:
+                opto_arr = []
+        
+        opto_dict = {'opto':self.meta.opto,
+                     'opto_pulse':opto_arr}
+        self._attrs_from_dict(opto_dict)
+        return opto_dict
     
     def save_to_db(self,in_dict:dict,table_name:str=None,**kwargs):
         """ Checks if an entry exists and saves/updates accordingly"""
