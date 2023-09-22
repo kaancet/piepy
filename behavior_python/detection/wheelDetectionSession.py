@@ -285,9 +285,10 @@ class WheelDetectionSession(Session):
             else:
                 if t == len(trials):
                     display(f'Last trial {t} is discarded')
-                    
+            pbar.update()        
+        
+        self.logger.set_msg_prefix('session')
         session_data = pl.DataFrame(data_to_append)
-        session_data = session_data.rename({"stim_side":"stim_pos"})
         
         # add a stim_side column for ease of access
         session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then("contra")
@@ -317,7 +318,7 @@ class WheelDetectionSession(Session):
         
 
         if session_data.is_empty():
-            self.lopgger.critical("THERE IS NO SESSION DATA !!!", cml=True)
+            self.logger.critical("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
             return session_data

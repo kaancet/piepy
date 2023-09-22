@@ -16,6 +16,7 @@ class Trial:
         self.meta = meta
         self.logger = logger
         self.reward_ms_per_ul = 0
+        self.logger.set_msg_prefix(f'trial-[{self.trial_no}]')
         
         config = getConfig()
         self.db_interface = DataBaseInterface(config['databasePath'])
@@ -71,12 +72,11 @@ class Trial:
             # lick_arr = np.array(lick_data[['duinotime', 'value']])
                 lick_arr = lick_data.select(['duinotime','value']).to_series().to_list()
             else:
-                outcome = kwargs.get('answer',None)
-                if outcome is 1:
-                    self.logger.error(f'Empty lick data in correct trial - [{self.trial_no}]')
+                if self.answer == 1:
+                    self.logger.error(f'Empty lick data in correct trial')
                 lick_arr = None
         else:
-            self.logger.warning(f'No lick data in trial - [{self.trial_no}]')
+            self.logger.warning(f'No lick data in trial')
             lick_arr = None
             
         
@@ -93,7 +93,7 @@ class Trial:
                 reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
             except:
                 reward_amount_uL = self.meta.rewardSize
-                self.logger.warning(f'No reward logged from vstim, using rewardSize from prot file  - [{self.trial_no}]')
+                self.logger.warning(f'No reward logged from vstim, using rewardSize from prot file')
             reward_arr = np.append(reward_arr,reward_arr[:,1])
             reward_arr[1] = reward_amount_uL
             reward_arr = reward_arr.tolist() 
