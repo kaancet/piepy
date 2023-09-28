@@ -85,7 +85,7 @@ class Trial:
             # lick_arr = np.array(lick_data[['duinotime', 'value']])
                 lick_arr = lick_data.select(['duinotime','value']).to_series().to_list()
             else:
-                if self.answer == 1:
+                if self.state_outcome == 1:
                     self.logger.error(f'Empty lick data in correct trial')
                 lick_arr = None
         else:
@@ -130,11 +130,18 @@ class Trial:
                     opto_arr = [opto_arr[0]]
                 elif len(opto_arr) > 1 and self.meta.opto_mode == 1:
                     opto_arr = opto_arr
+                is_opto = True
             else:
+                # is_opto = int(bool(vstim_dict.get('opto',0)) or bool(len(opto_pulse)))
+                is_opto = False
                 opto_arr = []
+                if self.opto_pattern is not None and self.opto_pattern >= 0:
+                    self.logger.warning('stimlog says opto, but no opto logged in riglog, using screen event as time!!')
+                    is_opto = True
+                    opto_arr = [self.t_stimstart_rig,1]
         
-        opto_dict = {'opto':self.meta.opto,
-                     'opto_pulse':opto_arr}
+        opto_dict = {'opto' : is_opto,
+                     'opto_pulse' : opto_arr}
         self._attrs_from_dict(opto_dict)
         return opto_dict
     

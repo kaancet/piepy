@@ -332,11 +332,11 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
-        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('answer')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
+        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('outcome')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
                                                      .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
         
         # first plot the earlies
-        early_data = self.plot_data.filter(pl.col('answer')==-1)
+        early_data = self.plot_data.filter(pl.col('outcome')==-1)
         resp_times = early_data['blanked_response_latency'].to_numpy()           
         counts,bins = self.bin_times(resp_times,bin_width)
         ax = self.__plot__(ax,counts,bins,color='r',label='Early')
@@ -352,7 +352,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
             for o in uniq_opto:
                 filt_df = self.plot_data.filter((pl.col('stim_type')==t) & 
                                                 (pl.col('opto')==o) & 
-                                                (pl.col('answer')==1))
+                                                (pl.col('outcome')==1))
                 if len(filt_df):
                      
                     # resp_times_blanked = filt_df['blanked_response_latency'].to_numpy()
@@ -410,16 +410,16 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
         """ Aggregates the data"""
         q = self.plot_data.lazy()
         if remove_early:
-            q = q.filter(pl.col('answer')!=-1)
+            q = q.filter(pl.col('outcome')!=-1)
         
         q = (
-            q.groupby(["stimkey","answer"])
+            q.groupby(["stimkey","outcome"])
             .agg(
                 [  
                     pl.count().alias("count"),
                     (pl.col("stim_label").first()),
                 ]
-            ).sort(["stimkey","answer"])
+            ).sort(["stimkey","outcome"])
             )
         df = q.collect()
         return df
@@ -430,7 +430,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
             ax = self.fig.add_subplot(1,1,1)
         
         # do early first
-        early_data = self.plot_data.filter(pl.col('answer')==-1)
+        early_data = self.plot_data.filter(pl.col('outcome')==-1)
         ax = self.__plot__(ax,1,len(early_data),
                            width=bar_width,
                            color='r',linewidth=2,edgecolor='k')
@@ -500,13 +500,13 @@ class DetectionResponseScatterPlotter(BasePlotter):
         d = self.plot_data[self.stimkey]
         if wrt=='sorted':
             # add blank_time to correct answers 
-            d['wrt_response_latency'] = d[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']+x['blank_time'] if x['answer']==1 else x['response_latency'],axis=1)
+            d['wrt_response_latency'] = d[['outcome','blank_time','response_latency']].apply(lambda x: x['response_latency']+x['blank_time'] if x['outcome']==1 else x['response_latency'],axis=1)
             
         elif wrt=='onset':
-            d['wrt_response_latency'] = d[['answer','blank_time','response_latency']].apply(lambda x: x['response_latency']-x['blank_time'],axis=1)
+            d['wrt_response_latency'] = d[['outcome','blank_time','response_latency']].apply(lambda x: x['response_latency']-x['blank_time'],axis=1)
         else:
             raise ValueError(f'{wrt} is not a valid wrt value for response times')
-        self.plot_data[self.stimkey] = d[d['answer']!=0]
+        self.plot_data[self.stimkey] = d[d['outcome']!=0]
             
        
     def plot(self,ax:plt.Axes=None,bin_width:int=20,blanks:str='sorted',plt_range:list=None,**kwargs):
@@ -570,7 +570,7 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
             plt_range = [-1000,1000]
         fontsize = kwargs.pop('fontsize',25)
                
-        lick_data = self.plot_data.with_columns([(pl.when(pl.col('answer')!=-1)
+        lick_data = self.plot_data.with_columns([(pl.when(pl.col('outcome')!=-1)
                                                   .then(pl.col('response_latency')+pl.col('blank_time'))
                                                   .otherwise(pl.col('response_latency'))).alias('blanked_response_latency'),
                                                  (pl.col('blank_time')+pl.col('response_latency')+pl.col('open_start_absolute')).alias('response_latency_absolute')])

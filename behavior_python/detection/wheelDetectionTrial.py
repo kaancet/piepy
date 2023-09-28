@@ -19,8 +19,8 @@ class WheelDetectionTrial(Trial):
         # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
         vstim = vstim[:-1]
         
-        early_flag = self.answer
-        if self.answer!=-1 and vstim.is_empty():
+        early_flag = self.state_outcome
+        if self.state_outcome!=-1 and vstim.is_empty():
             self.logger.warning(f'Empty vstim data for non-early trial!!')
             early_flag = -1
         
@@ -44,7 +44,6 @@ class WheelDetectionTrial(Trial):
                       'temporal_freq' : None,
                       'stim_pos' : None,
                       'opto_pattern' : None,
-                      'opto' : None,
                       'prob': None}
         
         if early_flag!=-1:
@@ -53,7 +52,6 @@ class WheelDetectionTrial(Trial):
             vstim_dict['temporal_freq'] = round(temp_dict['tf_r'],2) if temp_dict['correct'] else round(temp_dict['tf_l'],2)
             vstim_dict['stim_pos'] = temp_dict['posx_r'] if temp_dict['correct'] else temp_dict['posx_l']
             vstim_dict['opto_pattern'] = temp_dict['opto_pattern']
-            vstim_dict['opto'] = bool(temp_dict['opto'])
             vstim_dict['prob'] = temp_dict['prob']
 
             # training failsafe
@@ -77,6 +75,7 @@ class WheelDetectionTrial(Trial):
                       'wheel_pos' : None,
                       'wheel_reaction_time' : None,
                       'wheel_bias' : None,
+                      'wheel_outcome' : self.state_outcome,
                       'onsets' : None,
                       'offsets': None}
        
@@ -88,7 +87,7 @@ class WheelDetectionTrial(Trial):
         pos_tick = wheel_arr[:,1]
         
         if self.t_stimstart_rig is None:
-            if self.answer!=-1:
+            if self.state_outcome!=-1:
                 self.logger.warning(f'No stimulus start based on photodiode in a stimulus trial, using stateMachine time!')
                 time_anchor = self.t_stimstart
             else:
@@ -128,10 +127,10 @@ class WheelDetectionTrial(Trial):
                                            pos_thresh=kwargs.get('pos_thresh',0.03),
                                            t_thresh=kwargs.get('t_thresh',0.5))
         
-        wheel_dict['onsets'] = onsets
-        wheel_dict['offsets'] = offsets
+        wheel_dict['wheel_onsets'] = onsets
+        wheel_dict['wheel_offsets'] = offsets
 
-        if len(onsets) == 0 and self.answer == 1:
+        if len(onsets) == 0 and self.state_outcome == 1:
             self.logger.error('No movement onset detected in a correct trial!')
             return wheel_dict
         
@@ -144,7 +143,7 @@ class WheelDetectionTrial(Trial):
             # offset_samps = offset_samps[_idx]
         except:
             _idx = None
-            if self.answer == 1:
+            if self.state_outcome == 1:
                 self.logger.warning(f'No detected wheel movement in correct trial after stimulus presentation!')
 
         if _idx is not None:
@@ -161,9 +160,14 @@ class WheelDetectionTrial(Trial):
                     wheel_dict['wheel_bias'] = np.sign(move_extent)
                     break
             
-            if self.answer == 1 and wheel_dict['wheel_reaction_time'] is None:
+            if self.state_outcome == 1 and wheel_dict['wheel_reaction_time'] is None:
                 self.logger.error(f"Can't calculate wheel reaction time in correct trial!! Using stateMachine time")
-                wheel_dict['wheel_reaction_time'] = self.response_latency  
+                wheel_dict['wheel_reaction_time'] = self.response_latency
+                
+        if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] < 1000:
+            if self.state_outcome == 0:
+                self.logger.critical(f"The trial was classified as a MISS, but wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
+                wheel_dict['wheel_outcome'] = 1
 
         self._attrs_from_dict(wheel_dict)
         return wheel_dict
@@ -176,7 +180,7 @@ class WheelDetectionTrial(Trial):
                           't_stimstart' : None,
                           't_stimstart_absolute' : None,
                           't_stimend': None,
-                          'answer' : None}
+                          'state_outcome' : None}
         
         # iscatch?
         if len(self.data['state'].filter(pl.col('transition') == 'catch')):
@@ -187,30 +191,30 @@ class WheelDetectionTrial(Trial):
         # trial start and blank duration
         cue  = self.data['state'].filter(pl.col('transition') == 'cuestart')
         if len(cue):
-            state_log_data['quiescence_dur'] = cue[0,'stateElapsed']
+            state_log_data['t_quiescence_dur'] = cue[0,'stateElapsed']
             try:
                 temp_blank = cue[0,'blankDuration']
             except:
                 temp_blank = cue[0,'trialType'] # old logging for some sessions
-            state_log_data['blank_dur'] = temp_blank 
+            state_log_data['t_blank_dur'] = temp_blank 
         else:
             self.logger.warning('No cuestart after trialstart')
         
         # early
         early = self.data['state'].filter(pl.col('transition') == 'early')
         if len(early):
-            state_log_data['answer'] = -1
+            state_log_data['state_outcome'] = -1
             state_log_data['response_latency'] = early[0,'stateElapsed']
         
         # stimulus start
-        if state_log_data['answer']!=-1:
+        if state_log_data['state_outcome']!=-1:
             state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'stateElapsed'] 
             state_log_data['t_stimstart_absolute'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'elapsed']
             
         #hit
         hit = self.data['state'].filter(pl.col('transition') == 'hit')
         if len(hit):
-            state_log_data['answer'] = 1
+            state_log_data['state_outcome'] = 1
             state_log_data['response_latency'] = hit[0,'stateElapsed']
             
         #miss
@@ -219,24 +223,24 @@ class WheelDetectionTrial(Trial):
             temp_resp = miss[0,'stateElapsed']
             if temp_resp <= 150:
                 # this is actually early
-                state_log_data['answer'] = -1
-                state_log_data['response_latency'] = temp_resp + state_log_data['blank_dur']
-            elif 150 < temp_resp <1000:
+                state_log_data['state_outcome'] = -1
+                state_log_data['response_latency'] = temp_resp + state_log_data['t_blank_dur']
+            elif 200 < temp_resp <1000:
                 # This should not happen
                 self.logger.critical(f'Trial categorized as MISS with {temp_resp}s response time!!')
             else:
-                state_log_data['answer'] = 0
+                state_log_data['state_outcome'] = 0
                 state_log_data['response_latency'] = miss[0,'stateElapsed']
         
-        if state_log_data['answer'] is None:
+        if state_log_data['state_outcome'] is None:
             # this happens when training with 0 contrast, -1 means there was no answer
-            state_log_data['answer'] = -1
+            state_log_data['state_outcome'] = -1
             state_log_data['response_latency'] = -1
         
         # stimulus end
         if state_log_data['t_stimstart'] is not None:
             try:
-                if state_log_data['answer'] != 1:
+                if state_log_data['state_outcome'] != 1:
                     temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendincorrect'))[0,'elapsed']
                 else:
                     temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendcorrect'))[0,'elapsed']
@@ -261,7 +265,7 @@ class WheelDetectionTrial(Trial):
                        't_stimend_rig' : None}
         
         #TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION
-        if self.answer != -1:
+        if self.state_outcome != -1:
             if len(screen_arr) == 1:
                 self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
                 screen_dict['t_stimstart_rig'] = screen_arr[0,0]
@@ -294,7 +298,7 @@ class WheelDetectionTrial(Trial):
         reward_dict = self.get_reward()
         # opto
         opto_dict = self.get_opto()
-        # is_opto = int(bool(vstim_dict.get('opto',0)) or bool(len(opto_pulse)))
+        
         trial_log_data = {'trial_no':self.trial_no,
                           **state_dict,
                           **screen_dict,
@@ -303,11 +307,5 @@ class WheelDetectionTrial(Trial):
                           **lick_dict,
                           **reward_dict,
                           **opto_dict}
-        
-        if self.wheel_reaction_time is not None and self.wheel_reaction_time < 1000:
-            if self.answer == 0:
-                self.logger.critical(f"The trial was classified as a MISS, but wheel reaction time is {wheel_dict['wheel_reaction_time']}!, changing to HIT")
-                self.answer = 1
-                trial_log_data['answer'] = 1
         
         return trial_log_data

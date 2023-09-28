@@ -137,7 +137,7 @@ def dates_to_deltadays(date_arr:list,start_date=dt.date):
 
 
 class Color:
-    __slots__ = ['colorkey_path','stim_keys','contrast_keys','answer_keys']
+    __slots__ = ['colorkey_path','stim_keys','contrast_keys','outcome_keys']
     def __init__(self):
          # this is hardcoded for now, fix this
         cfg = getConfig()
@@ -151,7 +151,7 @@ class Color:
             keys = json.load(f)
             self.stim_keys = keys['spatiotemporal']
             self.contrast_keys = keys['contrast']
-            self.answer_keys = keys['answer']
+            self.outcome_keys = keys['outcome']
             
     def check_stim_colors(self,keys):
         """ Checks if the stim key has a corresponding color value, if not adds a randomly selected color the key"""
