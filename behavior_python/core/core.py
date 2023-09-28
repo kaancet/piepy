@@ -59,12 +59,13 @@ class DataPaths:
 
 class Logger:
     def __init__(self,
-                 log_path:str) -> None:
+                 log_path:str,
+                 append:bool) -> None:
         self.log_path = pjoin(log_path,'analysis_log.log') 
         
         logging.basicConfig(level=logging.INFO,
                             filename=self.log_path,
-                            filemode='w',
+                            filemode='a' if append else 'w',
                             encoding='utf-8',
                             format="%(asctime)s : %(levelname)s : %(message)s")
         

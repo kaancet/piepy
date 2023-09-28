@@ -13,7 +13,7 @@ class DetectionTrialPlotter:
         return {'stim_side'     : trial_data[0,"stim_side"],
                 'contrast'      : trial_data[0,"contrast"],
                 'state_outcome' : trial_data[0,"state_outcome"],
-                'wheel_outcome' : trial_data[0,"wheel__outcome"],
+                'wheel_outcome' : trial_data[0,"wheel_outcome"],
                 'sf'            : trial_data[0,"spatial_freq"],
                 'tf'            : trial_data[0,"temporal_freq"]
                 }

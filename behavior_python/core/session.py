@@ -161,7 +161,7 @@ class Session:
         # initialize relevant data paths, the log version and the database interface
         self.init_data_paths(runno)
         
-        self.logger = Logger(log_path=self.data_paths.analysisPath)
+        self.logger = Logger(log_path=self.data_paths.analysisPath, append=self.load_flag)
         
         self.db_interface = DataBaseInterface(self.data_paths.config['databasePath'])
         
