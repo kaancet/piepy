@@ -355,6 +355,8 @@ def get_running_stats(data_in:pd.DataFrame,window_size:int=20) -> pd.DataFrame:
 
 def main():
     from argparse import ArgumentParser
+    import cProfile, pstats
+    from io import StringIO
     parser = ArgumentParser(description='Wheel Detection Session Analysis')
 
     parser.add_argument('expname',metavar='expname',
@@ -365,8 +367,19 @@ def main():
     opts = parser.parse_args()
     expname = opts.expname
     load_flag = opts.load
-
-    w = WheelDetectionSession(sessiondir=expname, load_flag=load_flag)
+    
+    profiler = cProfile.Profile()
+    profiler.enable()
+    print(load_flag)
+    w = WheelDetectionSession(sessiondir=expname, load_flag=False)
+    
+    profiler.disable()
+    s = StringIO
+    stats = pstats.Stats(profiler,stream=s)
+    stats.strip_dirs()
+    stats.sort_stats('cumtime')
+    stats.dump_stats(w.data_paths.analysisPath+os.sep+'profile.prof')
+    # stats.print_stats()
 
 if __name__ == '__main__':
     main()
