@@ -124,7 +124,7 @@ class WheelDetectionStats:
         self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
         
         # median response time
-        self.median_response_time = round(stim_data.filter(pl.col('outcome')==1).median()[0,'response_latency'],3)
+        self.median_response_time = round(stim_data.filter(pl.col('outcome')==1)['response_latency'].median(),3)
         
         #d prime(?)
         self.d_prime = st.norm.ppf(self.hit_rate/100) - st.norm.ppf(self.false_alarm/100)
