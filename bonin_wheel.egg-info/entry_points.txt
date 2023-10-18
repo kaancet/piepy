@@ -1,2 +1,0 @@
-[console_scripts]
-detectionSession = behavior_python.detection.wheelDetectionSession:main
