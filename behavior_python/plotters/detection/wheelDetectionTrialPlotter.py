@@ -86,7 +86,11 @@ class DetectionTrialPlotter:
         if self.trial_data[0,'wheel_reaction_time'] is not None:
             ax.axvline(self.trial_data[0,'wheel_reaction_time'],
                     color='purple',linestyle='-.',linewidth=2,label=f"Wheel Response Time({round(self.trial_data[0,'wheel_reaction_time'],1)}ms)")
-
+            
+            past_thresh_idx,_ = find_nearest(t,self.trial_data[0,'wheel_reaction_time'])
+            ax.axhline(pos[past_thresh_idx],
+                       color='purple',linestyle=':',linewidth=2,label=f"Threshold ({pos[past_thresh_idx]})")
+                        
         ax.axvline(self.trial_data[0,'response_latency'],
                 color='r',linestyle=':',linewidth=2,label=f"State Response Time({self.trial_data[0,'response_latency']}ms)")
         

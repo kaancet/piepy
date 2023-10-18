@@ -109,7 +109,7 @@ class WheelDetectionTrial(Trial):
         wheel_pos = pos_tick - pos_at0
    
         # interpolate the sample points
-        pos,t = interpolate_position(wheel_time,wheel_pos,freq=kwargs.get('freq',20))
+        pos,t = interpolate_position(wheel_time,wheel_pos,freq=kwargs.get('freq',10))
         
         wheel_dict['wheel_time'] = wheel_time.tolist()
         # convert pos to degs
@@ -123,7 +123,7 @@ class WheelDetectionTrial(Trial):
         
         
         onsets,offsets,_,_,_,_ = movements(t,pos, 
-                                           freq=kwargs.get('freq',20),
+                                           freq=kwargs.get('freq',10),
                                            pos_thresh=kwargs.get('pos_thresh',0.03),
                                            t_thresh=kwargs.get('t_thresh',0.5))
         
@@ -136,7 +136,7 @@ class WheelDetectionTrial(Trial):
         
         try:
             # there are onsets after 0(stim appearance)
-            _idx = np.where(onsets>0)[0]
+            _idx = np.where(onsets>-75)[0]
             onsets = onsets[_idx]
             offsets = offsets[_idx]
             # onset_samps = onset_samps[_idx]
@@ -168,7 +168,12 @@ class WheelDetectionTrial(Trial):
             if self.state_outcome == 0:
                 self.logger.critical(f"The trial was classified as a MISS, but wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
                 wheel_dict['wheel_outcome'] = 1
-
+                
+        if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] <= 150:
+            if self.state_outcome != -1:
+                self.logger.critical(f"Too fast response, but was not classified as EARLY. wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
+                wheel_dict['wheel_outcome'] = -1
+                
         self._attrs_from_dict(wheel_dict)
         return wheel_dict
 
@@ -221,7 +226,7 @@ class WheelDetectionTrial(Trial):
         miss = self.data['state'].filter(pl.col('transition') == 'miss')
         if len(miss):
             temp_resp = miss[0,'stateElapsed']
-            if temp_resp <= 150:
+            if temp_resp <= 200:
                 # this is actually early
                 state_log_data['state_outcome'] = -1
                 state_log_data['response_latency'] = temp_resp + state_log_data['t_blank_dur']
