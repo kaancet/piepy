@@ -122,15 +122,15 @@ class Trial:
     def get_opto(self) -> dict:
         """ Extracts the opto boolean from opto slice from riglog"""
         if self.meta.opto:
-            if 'opto' in self.data.keys():
-                opto_data = self.data['opto']
-                opto_arr = opto_data.select(['duinotime','value']).to_numpy()
+            if 'opto' in self.data.keys() and len(self.data['opto']):
+                opto_arr = self.data['opto'].select(['duinotime']).to_numpy()
                 if len(opto_arr) > 1 and self.meta.opto_mode == 0:
                     self.logger.warning(f'Something funky happened with opto stim, there are {len(opto_arr)} pulses')
-                    opto_arr = [opto_arr[0]]
+                    opto_arr = opto_arr[0]
                 elif len(opto_arr) > 1 and self.meta.opto_mode == 1:
-                    opto_arr = opto_arr
+                    opto_arr = opto_arr[:,0]
                 is_opto = True
+                opto_arr = opto_arr.tolist()
             else:
                 # is_opto = int(bool(vstim_dict.get('opto',0)) or bool(len(opto_pulse)))
                 is_opto = False
