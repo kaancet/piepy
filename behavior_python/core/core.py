@@ -59,45 +59,68 @@ class DataPaths:
 
 class Logger:
     def __init__(self,
-                 log_path:str) -> None:
+                 log_path:str,
+                 append:bool) -> None:
         self.log_path = pjoin(log_path,'analysis_log.log') 
         
         logging.basicConfig(level=logging.INFO,
                             filename=self.log_path,
-                            filemode='w',
+                            filemode='a' if append else 'w',
                             encoding='utf-8',
                             format="%(asctime)s : %(levelname)s : %(message)s")
         
         session_dir = log_path.split(sep=os.sep)[-1]
         init_msg = f"Started analysis of {session_dir}"
+        self.prefix = ''
         self.info(init_msg,cml=True)
     
-    @staticmethod
-    def debug(msg:str,cml:bool=False) -> None:
+    def set_msg_prefix(self,prefix:str) -> None:
+        self.prefix = prefix
+        
+    def reset_prefix(self) -> None:
+        self.prefix = ''
+
+    def debug(self,msg:str,prefix:str=None,cml:bool=False) -> None:
+        if prefix is None:
+            prefix = self.prefix
+        msg = f'{prefix.upper()} : {msg}'
+        
         if cml:
             display(msg)
         logging.debug(msg)
     
-    @staticmethod 
-    def info(msg:str,cml:bool=False) -> None:
+    def info(self,msg:str,prefix:str=None,cml:bool=False) -> None:
+        if prefix is None:
+            prefix = self.prefix
+        msg = f'{prefix.upper()} : {msg}'
+            
         if cml:
             display(msg)
         logging.info(msg)
     
-    @staticmethod
-    def warning(msg:str,cml:bool=False) -> None:
+    def warning(self,msg:str,prefix:str=None,cml:bool=False) -> None:
+        if prefix is None:
+            prefix = self.prefix
+        msg = f'{prefix.upper()} : {msg}'
+            
         if cml:
             display(msg)
         logging.warning(msg)
     
-    @staticmethod
-    def error(msg:str,cml:bool=False) -> None:
+    def error(self,msg:str,prefix:str=None,cml:bool=False) -> None:
+        if prefix is None:
+            prefix = self.prefix
+        msg = f'{prefix.upper()} : {msg}'
+            
         if cml:
             display(msg)
         logging.error(msg)
         
-    @staticmethod
-    def critical(msg:str,cml:bool=False) -> None:
+    def critical(self,msg:str,prefix:str=None,cml:bool=False) -> None:
+        if prefix is None:
+            prefix = self.prefix
+        msg = f'{prefix.upper()} : {msg}'
+            
         if cml:
             display(msg)
         logging.critical(msg)

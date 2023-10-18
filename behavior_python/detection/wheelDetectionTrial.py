@@ -5,277 +5,312 @@ from ..wheelUtils import *
 
 
 class WheelDetectionTrial(Trial):
-    def __init__(self,trial_no:int,log_column_keys:dict,meta,logger:Logger) -> None:
-        super().__init__(trial_no,log_column_keys,meta,logger)
-        
-    def get_vstim_props(self,early_flag:bool) -> dict:
-        """ Extracts the necessary properties from vstim data"""
+    def __init__(self,trial_no:int,meta,logger:Logger) -> None:
+        super().__init__(trial_no,meta,logger)
+    
+    def get_vstim_props(self) -> dict:
+        """ 
+        Extracts the necessary properties from vstim data
+        """
         ignore = ['iTrial','photo','code','presentTime']
-        vstim_dict = {}
+        
         vstim = self.data['vstim']
         vstim = vstim.drop_nulls()
         # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
         vstim = vstim[:-1]
         
-        if vstim.is_empty():
+        early_flag = self.state_outcome
+        if self.state_outcome!=-1 and vstim.is_empty():
+            self.logger.warning(f'Empty vstim data for non-early trial!!')
             early_flag = -1
+        
+        temp_dict = {}
         for col in vstim.columns:
             if col in ignore:
                 continue
-            
-            # if a column has all the same values, take the first entry of the column as the value
-            # sf, tf, contrast, stim_side, correct, opto, opto_pattern should run through here
-    
-            # failsafe for animal not moving the wheel
-            # TODO: maybe not do this to save memory and time, and keep non-moved trials' values as a single value?
-            if len(vstim.select(col).unique()) >= 1:
-                vstim_dict[col] = vstim[0,col]
-            # if different values exist in the column, take it as a list
-            # stim_pos runs through here 
+            if len(vstim.select(col).unique()) == 1:
+                # if a column has all the same values, take the first entry of the column as the value
+                # sf, tf, contrast, stim_side, correct, opto, opto_pattern should run through here
+                temp_dict[col] = vstim[0,col]
+            elif len(vstim.select(col).unique()) > 1 and col not in ['reward']:
+                # if different values exist in the column, take it as a list, this should not happen in detection task
+                self.logger.error(f"{col} has multiple unique entries ({len(vstim.select(col).unique())}). This shouldn't be the case")
+                temp_dict[col] = vstim[col].to_list()
             else:
-                vstim_dict[col] = None
-                
-        if early_flag==-1:
-            vstim_dict['contrast'] = None
-            vstim_dict['spatial_freq'] = None
-            vstim_dict['temporal_freq'] = None
-            vstim_dict['stim_side'] = None
-            vstim_dict['opto_pattern'] = None
-        else:
-            vstim_dict['contrast'] = 100*vstim_dict['contrast_r'] if vstim_dict['correct'] else 100*vstim_dict['contrast_l']
-            vstim_dict['spatial_freq'] = vstim_dict['sf_r'] if vstim_dict['correct'] else vstim_dict['sf_l']
-            vstim_dict['temporal_freq'] = vstim_dict['tf_r'] if vstim_dict['correct'] else vstim_dict['tf_l']
-            # vstim_dict['stim_side'] = vstim_dict['stim_pos'][0]
-            vstim_dict['stim_side'] = vstim_dict['posx_r'] if vstim_dict['correct'] else vstim_dict['posx_l']
+                temp_dict[col] = None
+                        
+        vstim_dict = {'contrast' : None,
+                      'spatial_freq': None,
+                      'temporal_freq' : None,
+                      'stim_pos' : None,
+                      'opto_pattern' : None,
+                      'prob': None}
+        
+        if early_flag!=-1:
+            vstim_dict['contrast'] = 100*temp_dict['contrast_r'] if temp_dict['correct'] else 100*temp_dict['contrast_l']
+            vstim_dict['spatial_freq'] = round(temp_dict['sf_r'],2) if temp_dict['correct'] else round(temp_dict['sf_l'],2)
+            vstim_dict['temporal_freq'] = round(temp_dict['tf_r'],2) if temp_dict['correct'] else round(temp_dict['tf_l'],2)
+            vstim_dict['stim_pos'] = temp_dict['posx_r'] if temp_dict['correct'] else temp_dict['posx_l']
+            vstim_dict['opto_pattern'] = temp_dict['opto_pattern']
+            vstim_dict['prob'] = temp_dict['prob']
 
             # training failsafe
-            if 'opto_pattern' not in vstim_dict.keys():
+            if 'opto_pattern' not in temp_dict.keys():
                 vstim_dict['opto_pattern'] = -1
-                self.logger.warning(f'No opto_pattern found in vstim log, setting to -1(nonopto) - [{self.trial_no}]')
-            
+                self.logger.warning(f'No opto_pattern found in vstim log, setting to -1(nonopto)')
+
             if vstim_dict['contrast'] == 0:
-                vstim_dict['stim_side'] = 0 # no meaningful side when 0 contrast
+                vstim_dict['stim_pos'] = 0 # no meaningful side when 0 contrast
+                
+        self._attrs_from_dict(vstim_dict)      
         return vstim_dict
     
-    def get_wheel_pos(self,time_anchor:float=None,time_range=[-100,1000],**kwargs) -> list:
+    def get_wheel_pos(self,**kwargs) -> list:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
-        outcome =  kwargs.get('answer', None)
-        wheel_data = self.data['position']
-        # wheel_arr = np.array(wheel_data[['duinotime', 'value']])
-        wheel_arr = wheel_data.select(['duinotime','value']).to_numpy()
-        
-        # resetting the wheel position so the 0 point is aligned with trialstart and converting encoder ticks into degrees
-        # also resetting the time frame into the trial itself rather than the whole session
         thresh_in_ticks = 10
-        wheel_time = None
-        wheel_pos_deg = None
-        wheel_reaction_time = None
-        wheel_bias = None
-        if len(wheel_arr)>=2:
+        wheel_data = self.data['position']
+        wheel_arr = wheel_data.select(['duinotime','value']).to_numpy()
 
-            t_tick = wheel_arr[:,0]
-            pos_tick = wheel_arr[:,1]
-            
-            # #threshold in degrees
-            # thresh_cm = samples_to_cm(thresh_in_ticks) #~0.190
-            # thresh_deg = cm_to_deg(thresh_cm) #~3.515
-            
-            if time_anchor is None:
-                # if no time anchor provided than reset the time and position 
-                # from the first recorded wheel sample in that trial
+        wheel_dict = {'wheel_time' : None,
+                      'wheel_pos' : None,
+                      'wheel_reaction_time' : None,
+                      'wheel_bias' : None,
+                      'wheel_outcome' : self.state_outcome,
+                      'onsets' : None,
+                      'offsets': None}
+       
+        if len(wheel_arr)<=2:
+            self.logger.warning(f'Less than 2 sample points for wheel data')
+            return wheel_dict
+
+        t_tick = wheel_arr[:,0]
+        pos_tick = wheel_arr[:,1]
+        
+        if self.t_stimstart_rig is None:
+            if self.state_outcome!=-1:
+                self.logger.warning(f'No stimulus start based on photodiode in a stimulus trial, using stateMachine time!')
+                time_anchor = self.t_stimstart
+            else:
+                #early trial, use first sample point in trial
                 time_anchor = t_tick[0]
-                
-            # make the reset position 0
-            reset_pos = np.apply_along_axis(lambda x: x-pos_tick[0],0,pos_tick)
-            wheel_pos = reset_pos.tolist()
-            # zero the time
-            reset_time = np.apply_along_axis(lambda x: x-time_anchor,0,t_tick)
-            wheel_time = reset_time.tolist()
-            
-            # interpolate the wheels
-            pos,t = interpolate_position(wheel_time,wheel_pos,freq=20)
-            
-            # don't look at too late 
-            # mask = t < t[0] + time_range[1]
-            # pos = pos[mask]
-            # t = t[mask]
-            
-            onsets,offsets,onset_samps,offset_samps,peak_amps,peak_vel_times = movements(t,pos, freq=20, pos_thresh=0.03,t_thresh=0.5)
-
-            if len(onsets):
-                # there are onsets 
-                try:
-                    # there are onsets after 0(stim appearance)
-                    _idx = np.where(onsets>0)[0]
-                    onsets = onsets[_idx]
-                    offsets = offsets[_idx]
-                    onset_samps = onset_samps[_idx]
-                    offset_samps = offset_samps[_idx]
-                except:
-                    if outcome == 1:
-                        self.logger.warning(f'No detected wheel in correct trial affter stimulus presentation! - [{self.trial_no}]')
-                    _idx = None
-
-                if _idx is not None:
-                    for i,o in enumerate(onsets):
-                        
-                        tick_onset_idx,_ = find_nearest(wheel_time,o)
-                        tick_offset_idx,_ = find_nearest(wheel_time,offsets[i])                        
-                        tick_extent = wheel_pos[tick_offset_idx] - wheel_pos[tick_onset_idx]
-                        
-                        if np.abs(tick_extent) >= thresh_in_ticks:
-                            after_onset_abs_pos = np.abs(wheel_pos[tick_onset_idx:tick_offset_idx+1]) #abs to make thresh comparison easy
-                            after_onset_time = wheel_time[tick_onset_idx:tick_offset_idx+1]
-                            wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
-
-                            wheel_reaction_time = after_onset_time[wheel_pass_idx]
-                            wheel_bias = np.sign(tick_extent)
-                            break
-                    if outcome == 1 and wheel_reaction_time is None:
-                        self.logger.error(f"Can't calculate wheel reaction time in correct trial!! - [{self.trial_no}]")
-                        
-            # convert pos to degs
-            wheel_pos_cm = samples_to_cm(np.array(wheel_pos))
-            wheel_pos_deg = cm_to_deg(wheel_pos_cm).tolist()
         else:
-            self.logger.info(f'Less than 2 sample points for wheel data - [{self.trial_no}]')
+            time_anchor = self.t_stimstart_rig
+        
+        # zero the time and position
+        wheel_time = t_tick - time_anchor
+        t_idx, t_val= find_nearest(wheel_time,0)
+        if t_val != 0:
+            idx_region = [t_idx-1, t_idx] if t_val>0 else [t_idx,t_idx+1]
+            t_region = [wheel_time[i] for i in idx_region]
+            p_region = [pos_tick[i] for i in idx_region]
+            pos_at0 = int(np.interp(0,t_region,p_region))
+        else:
+            pos_at0 = pos_tick[t_idx]
+        wheel_pos = pos_tick - pos_at0
+   
+        # interpolate the sample points
+        pos,t = interpolate_position(wheel_time,wheel_pos,freq=kwargs.get('freq',10))
+        
+        wheel_dict['wheel_time'] = wheel_time.tolist()
+        # convert pos to degs
+        wheel_dict['wheel_pos'] = cm_to_deg(samples_to_cm(wheel_pos)).tolist()
+        
+        # look at a certain time window
+        time_window = kwargs.get('time_window',[-100,1500])
+        mask = np.where((time_window[0]<t) & (t<time_window[1]))
+        t = t[mask]
+        pos = pos[mask]
+        
+        
+        onsets,offsets,_,_,_,_ = movements(t,pos, 
+                                           freq=kwargs.get('freq',10),
+                                           pos_thresh=kwargs.get('pos_thresh',0.03),
+                                           t_thresh=kwargs.get('t_thresh',0.5))
+        
+        wheel_dict['wheel_onsets'] = onsets
+        wheel_dict['wheel_offsets'] = offsets
 
-        return wheel_time,wheel_pos_deg,wheel_reaction_time,wheel_bias
-    
-    def trial_data_from_logs(self) -> dict:
-        """ Iterates over each state change in a DataFrame slice that belongs to one trial(and corrections for pyvstim)
-            Returns a list of dictionaries that have data parsed from stimlog and riglog
-        """
-        #trial_no
-        trial_log_data = {'trial_no':int(self.trial_no)}
+        if len(onsets) == 0 and self.state_outcome == 1:
+            self.logger.error('No movement onset detected in a correct trial!')
+            return wheel_dict
         
-        # trial_start
-        trial_log_data['trial_start'] = self.data['state'].filter(pl.col('transition') == 'trialstart')[0,self.column_keys['elapsed']]
-        
-        # cue_start
         try:
-            trial_log_data['cue_start'] = self.data['state'].filter(pl.col('transition') == 'cuestart')[0,self.column_keys['elapsed']]
-            trial_log_data['open_start_absolute'] = trial_log_data['cue_start']
+            # there are onsets after 0(stim appearance)
+            _idx = np.where(onsets>-75)[0]
+            onsets = onsets[_idx]
+            offsets = offsets[_idx]
+            # onset_samps = onset_samps[_idx]
+            # offset_samps = offset_samps[_idx]
         except:
-            return {}
-        # blank_duration
-        if 'blankDuration' in self.column_keys.keys(): 
-            temp_blank = self.data['state'].filter(pl.col('transition') == 'cuestart')[0,self.column_keys['blankDuration']]
-        else:
-            #old logging for some sessions
-            temp_blank = self.data['state'].filter(pl.col('transition') == 'cuestart')[0,self.column_keys['trialType']]
-        trial_log_data['blank_time'] = temp_blank
-        
-        # catch
-        if len(self.data['state'].filter(pl.col('transition') == 'catch')):
-            is_catch = 1
-        else:
-            is_catch = 0
-        trial_log_data['isCatch'] = is_catch
-        
-        #correct
-        correct = self.data['state'].filter(pl.col('transition') == 'correct')
-        if len(correct):
-            trial_log_data['answer'] = 1
-            trial_log_data['response_latency'] = correct[0,self.column_keys['stateElapsed']]
+            _idx = None
+            if self.state_outcome == 1:
+                self.logger.warning(f'No detected wheel movement in correct trial after stimulus presentation!')
+
+        if _idx is not None:
+            for i,o in enumerate(onsets):
+                t_onset_idx,_ = find_nearest(t,o)
+                t_offset_idx,_ = find_nearest(t,offsets[i])                        
+                move_extent = pos[t_offset_idx] - pos[t_onset_idx]
+                if np.abs(move_extent) >= thresh_in_ticks:
+                    after_onset_abs_pos = np.abs(pos[t_onset_idx:t_offset_idx+1]) #abs to make thresh comparison easy
+                    after_onset_time = t[t_onset_idx:t_offset_idx+1]
+                    wheel_pass_idx,_ = find_nearest(after_onset_abs_pos,after_onset_abs_pos[0]+thresh_in_ticks)
+
+                    wheel_dict['wheel_reaction_time'] = after_onset_time[wheel_pass_idx]
+                    wheel_dict['wheel_bias'] = np.sign(move_extent)
+                    break
             
-        #incorrect(noanswer)
-        incorrect = self.data['state'].filter(pl.col('transition') == 'incorrect')
-        if len(incorrect):
-            if incorrect[0,self.column_keys['stateElapsed']] < 1000:
-                trial_log_data['answer'] = -1
-                trial_log_data['response_latency'] = incorrect[0,self.column_keys['stateElapsed']] + trial_log_data['blank_time']
-            else:
-                trial_log_data['answer'] = 0
-                trial_log_data['response_latency'] = incorrect[0,self.column_keys['stateElapsed']]
+            if self.state_outcome == 1 and wheel_dict['wheel_reaction_time'] is None:
+                self.logger.error(f"Can't calculate wheel reaction time in correct trial!! Using stateMachine time")
+                wheel_dict['wheel_reaction_time'] = self.response_latency
                 
-        # early
-        early = self.data['state'].filter(pl.col('transition') == 'earlyanswer')
-        if len(early):
-            trial_log_data['answer'] = -1
-            trial_log_data['response_latency'] = early[0,self.column_keys['stateElapsed']]
+        if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] < 1000:
+            if self.state_outcome == 0:
+                self.logger.critical(f"The trial was classified as a MISS, but wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
+                wheel_dict['wheel_outcome'] = 1
+                
+        if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] <= 150:
+            if self.state_outcome != -1:
+                self.logger.critical(f"Too fast response, but was not classified as EARLY. wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
+                wheel_dict['wheel_outcome'] = -1
+                
+        self._attrs_from_dict(wheel_dict)
+        return wheel_dict
+
+    def get_state_changes(self) -> dict:
+        """ 
+        Looks at state changes in a given data slice and set class attributes according to them
+        """
+        state_log_data = {'t_trialstart' : self.t_trialstart,
+                          't_stimstart' : None,
+                          't_stimstart_absolute' : None,
+                          't_stimend': None,
+                          'state_outcome' : None}
         
-        if 'answer' not in trial_log_data.keys():
-            # this happens when training with 0 contrast, -1 means there was no answer
-            trial_log_data['answer'] = -1
-            trial_log_data['response_latency'] = -1
-        
-        # stim_start
-        if trial_log_data['answer']!=-1:
-            trial_log_data['stim_start'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,self.column_keys['elapsed']]
-            if 'screen' in self.data.keys():
-                if not self.data['screen'].is_empty():
-                    trial_log_data['stim_start_rig'] = self.data['screen'][0,'duinotime']
-                else:
-                    # this should't happen
-                    trial_log_data['stim_start_rig'] = None
-            else:
-                # this is an approximation from loooking into the data and time diff between state log and screen log
-                trial_log_data['stim_start_rig'] = trial_log_data['stim_start'] + 45
+        # iscatch?
+        if len(self.data['state'].filter(pl.col('transition') == 'catch')):
+            state_log_data['isCatch'] = True
         else:
-            trial_log_data['stim_start'] = None
-            trial_log_data['stim_start_rig'] = None
+            state_log_data['isCatch'] = False
         
-        
-        # stim dissappear
-        if trial_log_data['stim_start'] is not None:
+        # trial start and blank duration
+        cue  = self.data['state'].filter(pl.col('transition') == 'cuestart')
+        if len(cue):
+            state_log_data['t_quiescence_dur'] = cue[0,'stateElapsed']
             try:
-                if trial_log_data['answer'] != 1:
-                    trial_log_data['stim_end'] = self.data['state'].filter((pl.col('transition') == 'incorrect'))[0,self.column_keys['elapsed']]
+                temp_blank = cue[0,'blankDuration']
+            except:
+                temp_blank = cue[0,'trialType'] # old logging for some sessions
+            state_log_data['t_blank_dur'] = temp_blank 
+        else:
+            self.logger.warning('No cuestart after trialstart')
+        
+        # early
+        early = self.data['state'].filter(pl.col('transition') == 'early')
+        if len(early):
+            state_log_data['state_outcome'] = -1
+            state_log_data['response_latency'] = early[0,'stateElapsed']
+        
+        # stimulus start
+        if state_log_data['state_outcome']!=-1:
+            state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'stateElapsed'] 
+            state_log_data['t_stimstart_absolute'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'elapsed']
+            
+        #hit
+        hit = self.data['state'].filter(pl.col('transition') == 'hit')
+        if len(hit):
+            state_log_data['state_outcome'] = 1
+            state_log_data['response_latency'] = hit[0,'stateElapsed']
+            
+        #miss
+        miss = self.data['state'].filter(pl.col('transition') == 'miss')
+        if len(miss):
+            temp_resp = miss[0,'stateElapsed']
+            if temp_resp <= 200:
+                # this is actually early
+                state_log_data['state_outcome'] = -1
+                state_log_data['response_latency'] = temp_resp + state_log_data['t_blank_dur']
+            elif 200 < temp_resp <1000:
+                # This should not happen
+                self.logger.critical(f'Trial categorized as MISS with {temp_resp}s response time!!')
+            else:
+                state_log_data['state_outcome'] = 0
+                state_log_data['response_latency'] = miss[0,'stateElapsed']
+        
+        if state_log_data['state_outcome'] is None:
+            # this happens when training with 0 contrast, -1 means there was no answer
+            state_log_data['state_outcome'] = -1
+            state_log_data['response_latency'] = -1
+        
+        # stimulus end
+        if state_log_data['t_stimstart'] is not None:
+            try:
+                if state_log_data['state_outcome'] != 1:
+                    temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendincorrect'))[0,'elapsed']
                 else:
-                    trial_log_data['stim_end'] = self.data['state'].filter((pl.col('transition') == 'stimendcorrect'))[0,self.column_keys['elapsed']]
+                    temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendcorrect'))[0,'elapsed']
+                    
+                state_log_data['t_stimend'] = temp_stim_end - state_log_data['t_stimstart_absolute']
             except:
                 # this means that the trial was cut short, should only happen in last trial
-                return {}
-            
-            if 'screen' in self.data.keys():
-                try:
-                    # this should be the way for stim appear and dissappear
-                    stim_end_rig = self.data['screen'][1,'duinotime']
-                except:
-                    stim_end_rig = None
-   
-                trial_log_data['stim_end_rig'] = stim_end_rig
+                self.logger.warning('Stimulus appeared but not disappeared, is this expected??')
+
+        state_log_data['t_trialend'] = self.t_trialend
+        self._attrs_from_dict(state_log_data)
+        return state_log_data
+    
+    def get_screen_events(self) -> dict:
+        """
+        Gets the screen pulses from rig data
+        """
+        screen_data = self.data['screen']
+        screen_arr = screen_data.select(['duinotime','value']).to_numpy()
+        
+        screen_dict = {'t_stimstart_rig' : None,
+                       't_stimend_rig' : None}
+        
+        #TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION
+        if self.state_outcome != -1:
+            if len(screen_arr) == 1:
+                self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
+                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+            elif len(screen_arr) > 2:
+                self.logger.error('More than 2 screen events per trial, this is not possible')
+            elif len(screen_arr) == 0:
+                self.logger.critical('NO SCREEN EVENT FOR STIMULUS TRIAL!')
             else:
-                # this is an approximation from loooking into the data and time diff between state log and screen log
-                trial_log_data['stim_end_rig'] = trial_log_data['stim_end'] + 45
-        else:
-            trial_log_data['stim_end'] = None
-            trial_log_data['stim_end_rig'] = None
-
-        # correction or trial end
-        try:
-            trial_log_data['trial_end'] = self.data['state'].filter((pl.col('transition') == 'trialend') | (pl.col('transition') == 'correction'))[0,self.column_keys['elapsed']]
-        except:
-            # this means that the trial was cut short, should only happen in last trial
-            return {}
-            
-        #vstim
-        vstim_log = self.get_vstim_props(early_flag=trial_log_data['answer'])
+                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+                screen_dict['t_stimend_rig'] = screen_arr[1,0]
         
-        rig_log_data = {}
-        #wheel
-        if trial_log_data['answer'] == -1:
-            # if early anchor the positions to cue start
-            rig_log_data['wheel_time'],rig_log_data['wheel_pos'],rig_log_data['wheel_reaction_time'],rig_log_data['wheel_bias'] = self.get_wheel_pos(trial_log_data['cue_start'])
-        else:
-           rig_log_data['wheel_time'],rig_log_data['wheel_pos'],rig_log_data['wheel_reaction_time'],rig_log_data['wheel_bias'] = self.get_wheel_pos(trial_log_data['stim_start_rig'])
-
-        #lick
-        rig_log_data['lick'] = self.get_licks(answer=trial_log_data['answer'])
+        self._attrs_from_dict(screen_dict)
+        return screen_dict
+    
+    def trial_data_from_logs(self) -> dict:
+        """ 
+        :return: A dictionary to be appended in the session dataframe
+        """
+        # state machine
+        state_dict = self.get_state_changes()
+        # screen
+        screen_dict = self.get_screen_events()
+        # vstim
+        vstim_dict = self.get_vstim_props()
+        # wheel
+        wheel_dict = self.get_wheel_pos()
+        # lick
+        lick_dict = self.get_licks()
+        # reward
+        reward_dict = self.get_reward()
+        # opto
+        opto_dict = self.get_opto()
         
-        #reward
-        rig_log_data['reward'] = self.get_reward(answer=trial_log_data['answer'])
+        trial_log_data = {'trial_no':self.trial_no,
+                          **state_dict,
+                          **screen_dict,
+                          **vstim_dict, 
+                          **wheel_dict, 
+                          **lick_dict,
+                          **reward_dict,
+                          **opto_dict}
         
-        #opto
-        if self.meta.opto:
-            opto_pulse = self.get_opto(self.meta.opto_mode)
-            is_opto = int(bool(vstim_log.get('opto',0)) or bool(len(opto_pulse)))
-        else:
-            is_opto = 0
-        trial_log_data['opto'] = is_opto
-        
-        trial_log_data = {**trial_log_data, **vstim_log, **rig_log_data}
-        self.trial_data = trial_log_data
-
-        return self.trial_data
+        return trial_log_data

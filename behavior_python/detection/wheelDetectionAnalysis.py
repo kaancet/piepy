@@ -18,8 +18,8 @@ class DetectionAnalysis:
                 [
                     (pl.col("stim_pos").first()),
                     pl.count().alias("count"),
-                    (pl.col("answer")==1).sum().alias("correct_count"),
-                    (pl.col("answer")==0).sum().alias("miss_count"),
+                    (pl.col("outcome")==1).sum().alias("correct_count"),
+                    (pl.col("outcome")==0).sum().alias("miss_count"),
                     (pl.col("response_latency").alias("response_times")),
                     (pl.col("wheel_reaction_time").alias("wheel_reaction_time")),
                     (pl.col("wheel_reaction_time").median().alias("median_wheel_reaction_time")),

@@ -23,7 +23,7 @@ class BasePlotter:
         """
         # drop early trials
         if drop_early:
-            data = data_in.filter(pl.col('answer')!=-1)
+            data = data_in.filter(pl.col('outcome')!=-1)
         else:
             data = data_in.select(pl.col('*'))
         
@@ -112,7 +112,7 @@ class PerformancePlotter(BasePlotter):
             else:
                 data2plot = self.plot_data.select(pl.col('*'))
             
-            y_axis = get_fraction(data2plot['answer'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
+            y_axis = get_fraction(data2plot['outcome'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
             
             if plot_in_time:
                 x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
@@ -438,7 +438,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         
         # do cutoff
         data = data.with_columns([pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'),
-                                  pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i<t_cutoff and i is not None]).alias('cutoff_wheel_reaction_times')])
+                                  pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_wheel_reaction_times')])
         
         # get uniques
         u_stimkey = data['stimkey'].unique().to_numpy()
@@ -843,7 +843,6 @@ class WheelTrajectoryPlotter(BasePlotter):
         if traj_lims is None:
             traj_lims = [-75,75]
         
-        
         uniq_opto = self.plot_data['opto_pattern'].unique().sort().to_list()
         n_opto = len(uniq_opto)
         uniq_stims = self.plot_data['stim_type'].unique().sort().to_list()
@@ -855,8 +854,8 @@ class WheelTrajectoryPlotter(BasePlotter):
         uniq_sep = self.plot_data[seperate_by].unique().sort().to_list()
         if seperate_by == 'contrast':
             color = self.color.contrast_keys
-        elif seperate_by == 'answer':
-            color = self.color.answer_keys
+        elif seperate_by == 'outcome':
+            color = self.color.outcome_keys
         
         self.fig, axes = plt.subplots(ncols=n_stim,
                                       nrows=n_opto,

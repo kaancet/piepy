@@ -18,7 +18,16 @@ class WheelDetectionData(SessionData):
             super().set_data(data)
             self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
             self.enhance_data(pattern_names,isgrating)
-    
+            
+    def set_outcome(self,outcome_type:str='state') -> None:
+        display(f'Setting outcome to {outcome_type}')
+        col_name = f'{outcome_type}_outcome'
+        if 'outcome' not in self.data.columns:
+            self.data = self.data.with_columns(pl.col(col_name).alias('outcome'))
+        else:
+            tmp = self.data[col_name]
+            self.data.replace('outcome', tmp)
+            
     def enhance_data(self,pattern_names:dict,isgrating:bool=False) -> None:
         # add a isgrating column
         if 'is_grating' not in self.data.columns:
@@ -37,15 +46,14 @@ class WheelDetectionData(SessionData):
             else:
                 try:
                 # add the pattern name depending on pattern id
-                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "answer"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['answer']!=-1 else None).alias('opto_region'))        
+                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['state_outcome']!=-1 else None).alias('opto_region'))        
                 except:
                     raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
                 # add 'stimkey' from sftf
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
                 # add stim_label for legends and stuff
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
-                
-            
+                       
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
         Returns a dict with images and also a dict that """
@@ -91,11 +99,11 @@ class WheelDetectionStats:
     
     def init_from_data(self,data_in:WheelDetectionData):
         data = data_in.data
-        early_data = data.filter((pl.col('answer')==-1) & (pl.col('isCatch')==0))
-        stim_data = data.filter((pl.col('answer')!=-1) & (pl.col('isCatch')==0))
+        early_data = data.filter((pl.col('outcome')==-1) & (pl.col('isCatch')==0))
+        stim_data = data.filter((pl.col('outcome')!=-1) & (pl.col('isCatch')==0))
         catch_data = data.filter(pl.col('isCatch')==1)
-        correct_data = data.filter(pl.col('answer')==1)
-        miss_data = data.filter(pl.col('answer')==0)
+        correct_data = data.filter(pl.col('outcome')==1)
+        miss_data = data.filter(pl.col('outcome')==0)
         
         #counts
         self.all_count = len(data)
@@ -112,11 +120,11 @@ class WheelDetectionStats:
         
         ## performance on easy trials
         easy_data = data.filter(pl.col('contrast').is_in([100,50])) # earlies can't be easy or hard
-        easy_correct_count = len(easy_data.filter(pl.col('answer')==1))
+        easy_correct_count = len(easy_data.filter(pl.col('outcome')==1))
         self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
         
         # median response time
-        self.median_response_time = round(stim_data.filter(pl.col('answer')==1).median()[0,'response_latency'],3)
+        self.median_response_time = round(stim_data.filter(pl.col('outcome')==1).median()[0,'response_latency'],3)
         
         #d prime(?)
         self.d_prime = st.norm.ppf(self.hit_rate/100) - st.norm.ppf(self.false_alarm/100)
@@ -151,10 +159,11 @@ class WheelDetectionSession(Session):
         if self.isSaved() and self.load_flag:
             self.logger.info(f'Loading from {self.data_paths.savePath}',cml=True)
             self.load_session()
+            self.data.set_outcome(kwargs.get('outcome_type','state'))
+            
         else:
             self.set_meta()
             self.read_data()
-            self.set_statelog_column_keys()
 
             session_data = self.get_session_data()
             # session_data = get_running_stats(session_data)
@@ -162,6 +171,7 @@ class WheelDetectionSession(Session):
             g = 'grating' in self.data_paths.stimlog
             
             self.data.set_data(session_data,g)
+            self.data.set_outcome(kwargs.get('outcome_type','state'))
             self.stats = WheelDetectionStats(data_in=self.data)
             
             if self.meta.water_consumed is not None:
@@ -238,15 +248,17 @@ class WheelDetectionSession(Session):
         self.stats = WheelDetectionStats(dict_in=stats)
         self.logger.info('Loaded Session stats')
         
-    def translate_transition(self,oldState,newState):
-        """ A function to be called that add the meaning of state transitions into the state DataFrame"""
+    def translate_transition(self,oldState,newState) -> dict:
+        """ 
+        A function to be called that add the meaning of state transitions into the state DataFrame
+        """
         curr_key = '{0}->{1}'.format(int(oldState), int(newState))
         state_keys = {'0->1' : 'trialstart',
                       '1->2' : 'cuestart',
                       '2->3' : 'stimstart',
-                      '2->5' : 'earlyanswer',
-                      '3->4' : 'correct',
-                      '3->5' : 'incorrect',
+                      '2->5' : 'early',
+                      '3->4' : 'hit',
+                      '3->5' : 'miss',
                       '3->6' : 'catch',
                       '6->0' : 'trialend',
                       '4->6' : 'stimendcorrect',
@@ -265,17 +277,17 @@ class WheelDetectionSession(Session):
             self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
             return None
         
-        trials = np.unique(self.states[self.column_keys['trialNo']])
-        # this is a failsafe for some early stimpy data where trial count has not been incremented
+        trials = np.unique(self.states['cycle'])
         if len(trials) == 1 and len(self.states) > 6 and self.logversion=='stimpy':
+            # this is a failsafe for some early stimpy data where trial count has not been incremented
             self.extract_trial_count()
             trials = np.unique(self.states[self.column_keys['trialNo']])
+            
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
-        for t in pbar:           
-            temp_trial = WheelDetectionTrial(t,self.column_keys,meta=self.meta,logger=self.logger)
+        for t in pbar:         
+            temp_trial = WheelDetectionTrial(t,meta=self.meta,logger=self.logger)
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
-            pbar.update()
             if len(trial_row):
                 if t == 1:
                     data_to_append = {k:[v] for k,v in trial_row.items()}
@@ -285,9 +297,10 @@ class WheelDetectionSession(Session):
             else:
                 if t == len(trials):
                     display(f'Last trial {t} is discarded')
-                    
+            pbar.update()        
+        
+        self.logger.set_msg_prefix('session')
         session_data = pl.DataFrame(data_to_append)
-        session_data = session_data.rename({"stim_side":"stim_pos"})
         
         # add a stim_side column for ease of access
         session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then("contra")
@@ -317,7 +330,7 @@ class WheelDetectionSession(Session):
         
 
         if session_data.is_empty():
-            self.lopgger.critical("THERE IS NO SESSION DATA !!!", cml=True)
+            self.logger.critical("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
             return session_data
@@ -329,19 +342,21 @@ def get_running_stats(data_in:pd.DataFrame,window_size:int=20) -> pd.DataFrame:
    
     data_in = data_in.with_columns(pl.col('response_latency').rolling_median(window_size).alias('running_response_latency'))
     # answers
-    answers = {'correct':1,
-               'nogo':0,
-               'early':-1}
+    outcomes = {'correct':1,
+                'nogo':0,
+                'early':-1}
     
-    for k,v in answers.items():
+    for k,v in outcomes.items():
         key = 'fraction_' + k
-        data_arr = data_in['answer'].to_numpy()
+        data_arr = data_in['state_outcome'].to_numpy()
         data_in[key] = get_fraction(data_arr, fraction_of=v)
         
     return data_in
 
 def main():
     from argparse import ArgumentParser
+    import cProfile, pstats
+    from io import StringIO
     parser = ArgumentParser(description='Wheel Detection Session Analysis')
 
     parser.add_argument('expname',metavar='expname',
@@ -352,8 +367,19 @@ def main():
     opts = parser.parse_args()
     expname = opts.expname
     load_flag = opts.load
-
-    w = WheelDetectionSession(sessiondir=expname, load_flag=load_flag)
+    
+    profiler = cProfile.Profile()
+    profiler.enable()
+    print(load_flag)
+    w = WheelDetectionSession(sessiondir=expname, load_flag=False)
+    
+    profiler.disable()
+    s = StringIO
+    stats = pstats.Stats(profiler,stream=s)
+    stats.strip_dirs()
+    stats.sort_stats('cumtime')
+    stats.dump_stats(w.data_paths.analysisPath+os.sep+'profile.prof')
+    # stats.print_stats()
 
 if __name__ == '__main__':
     main()

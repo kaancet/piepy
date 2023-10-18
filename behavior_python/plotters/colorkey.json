@@ -81,7 +81,7 @@
         "6.25":{"color":"indigo"},
         "3.12":{"color":"hotpink"}
     },
-    "answer":{
+    "outcome":{
         "1":{"color":"#009714"},
         "0":{"color":"#ca0000"},
         "-1":{"color":"k"}
