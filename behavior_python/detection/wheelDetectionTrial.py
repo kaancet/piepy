@@ -76,8 +76,8 @@ class WheelDetectionTrial(Trial):
                       'wheel_reaction_time' : None,
                       'wheel_bias' : None,
                       'wheel_outcome' : self.state_outcome,
-                      'onsets' : None,
-                      'offsets': None}
+                      'wheel_onsets' : None,
+                      'wheel_offsets': None}
        
         if len(wheel_arr)<=2:
             self.logger.warning(f'Less than 2 sample points for wheel data')
@@ -91,8 +91,8 @@ class WheelDetectionTrial(Trial):
                 self.logger.warning(f'No stimulus start based on photodiode in a stimulus trial, using stateMachine time!')
                 time_anchor = self.t_stimstart
             else:
-                #early trial, use first sample point in trial
-                time_anchor = t_tick[0]
+                #early trial, use "would be" stim start from blank time
+                time_anchor = self.t_trialstart + self.t_quiescence_dur + self.t_blank_dur
         else:
             time_anchor = self.t_stimstart_rig
         
@@ -116,19 +116,24 @@ class WheelDetectionTrial(Trial):
         wheel_dict['wheel_pos'] = cm_to_deg(samples_to_cm(wheel_pos)).tolist()
         
         # look at a certain time window
-        time_window = kwargs.get('time_window',[-100,1500])
+        time_window = kwargs.get('time_window',[-200,1500])
         mask = np.where((time_window[0]<t) & (t<time_window[1]))
+        
+        if not len(mask[0]):
+            if self.state_outcome != 0:
+                self.logger.error('Animal moved the wheel very late but the outcome is not a miss!!')
+            return wheel_dict
+        
         t = t[mask]
         pos = pos[mask]
-        
-        
+            
         onsets,offsets,_,_,_,_ = movements(t,pos, 
                                            freq=kwargs.get('freq',10),
                                            pos_thresh=kwargs.get('pos_thresh',0.03),
                                            t_thresh=kwargs.get('t_thresh',0.5))
         
-        wheel_dict['wheel_onsets'] = onsets
-        wheel_dict['wheel_offsets'] = offsets
+        wheel_dict['wheel_onsets'] = onsets.tolist()
+        wheel_dict['wheel_offsets'] = offsets.tolist()
 
         if len(onsets) == 0 and self.state_outcome == 1:
             self.logger.error('No movement onset detected in a correct trial!')
