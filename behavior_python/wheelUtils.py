@@ -145,11 +145,14 @@ def get_wheel_t_range(wheel_time) -> list:
 
     return [min_t, max_t]
 
-def get_trajectory_avg(wheel_time:np.ndarray,wheel_pos:np.ndarray,n_interp:int=3000) -> np.ndarray:
+def get_trajectory_avg(wheel_time:np.ndarray,wheel_pos:np.ndarray,n_interp:int=3000,time_range:list=None) -> np.ndarray:
     """ Averages a group of 2D wheel trajectory arrays """
     wheel_stats = {}
     
-    wheel_t_range = get_wheel_t_range(wheel_time)
+    if time_range is None:
+        wheel_t_range = get_wheel_t_range(wheel_time)
+    else:
+        wheel_t_range = time_range
 
     if wheel_time is not None:
         t = np.linspace(wheel_t_range[0], wheel_t_range[1],n_interp).reshape(1,-1)

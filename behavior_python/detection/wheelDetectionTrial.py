@@ -51,7 +51,8 @@ class WheelDetectionTrial(Trial):
             vstim_dict['spatial_freq'] = round(temp_dict['sf_r'],2) if temp_dict['correct'] else round(temp_dict['sf_l'],2)
             vstim_dict['temporal_freq'] = round(temp_dict['tf_r'],2) if temp_dict['correct'] else round(temp_dict['tf_l'],2)
             vstim_dict['stim_pos'] = temp_dict['posx_r'] if temp_dict['correct'] else temp_dict['posx_l']
-            vstim_dict['opto_pattern'] = temp_dict['opto_pattern']
+            
+            vstim_dict['opto_pattern'] = temp_dict.get('opto_pattern',None)
             vstim_dict['prob'] = temp_dict['prob']
 
             # training failsafe
@@ -67,17 +68,22 @@ class WheelDetectionTrial(Trial):
     
     def get_wheel_pos(self,**kwargs) -> list:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
-        thresh_in_ticks = 10
+        thresh_in_ticks = kwargs.get('tick_thresh',10)
+        speed_thresh = thresh_in_ticks/kwargs.get('time_thresh',17)
         wheel_data = self.data['position']
         wheel_arr = wheel_data.select(['duinotime','value']).to_numpy()
 
-        wheel_dict = {'wheel_time' : None,
-                      'wheel_pos' : None,
+        wheel_dict = {'wheel_time' : [],
+                      'wheel_pos' : [],
+                      'wheel_speed' : [],
                       'wheel_reaction_time' : None,
                       'wheel_bias' : None,
                       'wheel_outcome' : self.state_outcome,
-                      'wheel_onsets' : None,
-                      'wheel_offsets': None}
+                      'wheel_speed_reaction_time' : None,
+                      'wheel_speed_bias' : None,
+                      'wheel_speed_outcome' : self.state_outcome,
+                      'wheel_onsets' : [],
+                      'wheel_offsets': []}
        
         if len(wheel_arr)<=2:
             self.logger.warning(f'Less than 2 sample points for wheel data')
@@ -89,7 +95,7 @@ class WheelDetectionTrial(Trial):
         if self.t_stimstart_rig is None:
             if self.state_outcome!=-1:
                 self.logger.warning(f'No stimulus start based on photodiode in a stimulus trial, using stateMachine time!')
-                time_anchor = self.t_stimstart
+                time_anchor = self.t_trialstart + self.t_stimstart
             else:
                 #early trial, use "would be" stim start from blank time
                 time_anchor = self.t_trialstart + self.t_quiescence_dur + self.t_blank_dur
@@ -100,10 +106,19 @@ class WheelDetectionTrial(Trial):
         wheel_time = t_tick - time_anchor
         t_idx, t_val= find_nearest(wheel_time,0)
         if t_val != 0:
-            idx_region = [t_idx-1, t_idx] if t_val>0 else [t_idx,t_idx+1]
-            t_region = [wheel_time[i] for i in idx_region]
-            p_region = [pos_tick[i] for i in idx_region]
-            pos_at0 = int(np.interp(0,t_region,p_region))
+            if t_idx == len(wheel_time) -1:
+                pos_at0 = interp1d(wheel_time,pos_tick,fill_value='extrapolate')(0)
+                if self.state_outcome == -1:
+                    self.logger.warning('No wheel ticks at "would be" stim start, extrapolating...')
+                elif self.state_outcome == 0:
+                    self.logger.info('No wheel ticks recorded during stim presentation, possible in miss trials, but beware')
+                else:
+                    raise RuntimeError("NO WHEEL MOVEMENT FOR CORRECT TRIAL! THIS SHOULD NOT HAPPEN!!!")
+            else:
+                idx_region = [t_idx-1, t_idx] if t_val>0 else [t_idx,t_idx+1]
+                t_region = [wheel_time[i] for i in idx_region]
+                p_region = [pos_tick[i] for i in idx_region]
+                pos_at0 = np.interp(0,t_region,p_region)
         else:
             pos_at0 = pos_tick[t_idx]
         wheel_pos = pos_tick - pos_at0
@@ -113,7 +128,11 @@ class WheelDetectionTrial(Trial):
         
         wheel_dict['wheel_time'] = wheel_time.tolist()
         # convert pos to degs
-        wheel_dict['wheel_pos'] = cm_to_deg(samples_to_cm(wheel_pos)).tolist()
+        wheel_dict['wheel_pos'] = samples_to_cm(wheel_pos).tolist()
+        
+        wheel_velo = np.diff(wheel_pos) / np.diff(wheel_time)
+        wheel_speed = np.abs(wheel_velo)
+        wheel_dict['wheel_speed'] = samples_to_cm(wheel_speed).tolist()
         
         # look at a certain time window
         time_window = kwargs.get('time_window',[-200,1500])
@@ -139,19 +158,28 @@ class WheelDetectionTrial(Trial):
             self.logger.error('No movement onset detected in a correct trial!')
             return wheel_dict
         
-        try:
-            # there are onsets after 0(stim appearance)
-            _idx = np.where(onsets>-75)[0]
-            onsets = onsets[_idx]
-            offsets = offsets[_idx]
-            # onset_samps = onset_samps[_idx]
-            # offset_samps = offset_samps[_idx]
-        except:
+        # there are onsets after 0(stim appearance)
+        _idx = np.where(onsets>time_window[0])[0]
+        onsets = onsets[_idx]
+        offsets = offsets[_idx]
+
+        if len(_idx) == 0:
             _idx = None
             if self.state_outcome == 1:
-                self.logger.warning(f'No detected wheel movement in correct trial after stimulus presentation!')
+                self.logger.warning(f'No detected wheel movement in correct trial after {time_window[0]}!')
 
         if _idx is not None:
+            # reaction time from speed
+            time_idx_start,_ = find_nearest(wheel_time,t[0]) # start
+            time_idx_end,_ = find_nearest(wheel_time,t[-1]) # start
+            wheel_time_after_cutoff = wheel_time[time_idx_start:time_idx_end]
+            wheel_speed = wheel_speed[time_idx_start:time_idx_end]
+            wheel_speed_pass_idx = np.argmax(wheel_speed>speed_thresh)
+            if wheel_speed_pass_idx > 0:
+                wheel_dict['wheel_speed_reaction_time'] = wheel_time_after_cutoff[wheel_speed_pass_idx]
+                wheel_dict['wheel_speed_bias'] = np.sign(wheel_pos[wheel_speed_pass_idx])
+            
+            # reaction time from delta tick
             for i,o in enumerate(onsets):
                 t_onset_idx,_ = find_nearest(t,o)
                 t_offset_idx,_ = find_nearest(t,offsets[i])                        
@@ -168,16 +196,32 @@ class WheelDetectionTrial(Trial):
             if self.state_outcome == 1 and wheel_dict['wheel_reaction_time'] is None:
                 self.logger.error(f"Can't calculate wheel reaction time in correct trial!! Using stateMachine time")
                 wheel_dict['wheel_reaction_time'] = self.response_latency
-                
+        
+        # Logging discrapencies 
+        # Delta tick
         if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] < 1000:
             if self.state_outcome == 0:
                 self.logger.critical(f"The trial was classified as a MISS, but wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
-                wheel_dict['wheel_outcome'] = 1
-                
+                wheel_dict['wheel_outcome'] = 1     
+               
         if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_reaction_time'] <= 150:
             if self.state_outcome != -1:
                 self.logger.critical(f"Too fast response, but was not classified as EARLY. wheel reaction time is {wheel_dict['wheel_reaction_time']}!")
                 wheel_dict['wheel_outcome'] = -1
+        
+        # wheel speed        
+        if wheel_dict['wheel_speed_reaction_time'] is not None and wheel_dict['wheel_speed_reaction_time'] < 1000:
+            if self.state_outcome == 0:
+                self.logger.critical(f"The trial was classified as a MISS, but wheel speed reaction time is {wheel_dict['wheel_speed_reaction_time']}!")
+                wheel_dict['wheel_speed_outcome'] = 1 
+                
+        if wheel_dict['wheel_speed_reaction_time'] is not None and wheel_dict['wheel_speed_reaction_time'] <= 150:
+            if self.state_outcome != -1:
+                self.logger.critical(f"Too fast response, but was not classified as EARLY. wheel speed reaction time is {wheel_dict['wheel_reaction_time']}!")
+                wheel_dict['wheel_speed_outcome'] = -1 
+                
+        if wheel_dict['wheel_reaction_time'] is not None and wheel_dict['wheel_speed_reaction_time'] is None:
+            self.logger.critical(f"There was a reaction time in delta ticks but not in wheel speed")
                 
         self._attrs_from_dict(wheel_dict)
         return wheel_dict
@@ -191,6 +235,11 @@ class WheelDetectionTrial(Trial):
                           't_stimstart_absolute' : None,
                           't_stimend': None,
                           'state_outcome' : None}
+        
+        # in the beginning check if state data is complete
+        if 'trialend' not in self.data['state']['transition'].to_list():
+            self._attrs_from_dict(state_log_data)
+            return state_log_data
         
         # iscatch?
         if len(self.data['state'].filter(pl.col('transition') == 'catch')):
@@ -268,25 +317,27 @@ class WheelDetectionTrial(Trial):
         """
         Gets the screen pulses from rig data
         """
-        screen_data = self.data['screen']
-        screen_arr = screen_data.select(['duinotime','value']).to_numpy()
-        
         screen_dict = {'t_stimstart_rig' : None,
                        't_stimend_rig' : None}
-        
-        #TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION
-        if self.state_outcome != -1:
-            if len(screen_arr) == 1:
-                self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
-                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
-            elif len(screen_arr) > 2:
-                self.logger.error('More than 2 screen events per trial, this is not possible')
-            elif len(screen_arr) == 0:
-                self.logger.critical('NO SCREEN EVENT FOR STIMULUS TRIAL!')
-            else:
-                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
-                screen_dict['t_stimend_rig'] = screen_arr[1,0]
-        
+            
+        if 'screen' in self.data.keys():
+            screen_data = self.data['screen']
+            screen_arr = screen_data.select(['duinotime','value']).to_numpy()
+            
+            
+            #TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION
+            if self.state_outcome != -1:
+                if len(screen_arr) == 1:
+                    self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
+                    screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+                elif len(screen_arr) > 2:
+                    self.logger.error('More than 2 screen events per trial, this is not possible')
+                elif len(screen_arr) == 0:
+                    self.logger.critical('NO SCREEN EVENT FOR STIMULUS TRIAL!')
+                else:
+                    screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+                    screen_dict['t_stimend_rig'] = screen_arr[1,0]
+            
         self._attrs_from_dict(screen_dict)
         return screen_dict
     
@@ -294,8 +345,12 @@ class WheelDetectionTrial(Trial):
         """ 
         :return: A dictionary to be appended in the session dataframe
         """
+        trial_log_data = {'trial_no':self.trial_no}
+        
         # state machine
         state_dict = self.get_state_changes()
+        if state_dict['state_outcome'] is None:
+            return {**trial_log_data,**state_dict}
         # screen
         screen_dict = self.get_screen_events()
         # vstim
@@ -309,7 +364,7 @@ class WheelDetectionTrial(Trial):
         # opto
         opto_dict = self.get_opto()
         
-        trial_log_data = {'trial_no':self.trial_no,
+        trial_log_data = {**trial_log_data,
                           **state_dict,
                           **screen_dict,
                           **vstim_dict, 

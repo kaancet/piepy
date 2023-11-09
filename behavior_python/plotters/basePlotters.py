@@ -389,7 +389,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         """ Plots the trial response times as a scatter cloud plot """
         if 'fontsize' in kwargs.keys():
             kwargs.pop('fontsize')
-        ax.scatter(contrast,time,alpha=0.6,**kwargs)
+        ax.scatter(contrast,time,alpha=0.6,linewidths=0,**kwargs)
         
         #median
         ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,
@@ -422,7 +422,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         return resp_times
         
     def plot_scatter(self,ax:plt.Axes=None,
-             t_cutoff:float=10_000,
+             t_cutoff:float=1_000,
              cloud_width:float=0.33,
              xaxis_type:str='linear_spaced',
              wheel_time:bool = True,
@@ -468,6 +468,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                         x_dots,y_dots = self.make_dot_cloud(response_times,cpos[c],cloud_width)
                         median = np.median(response_times)
                         ax = self.__plot_scatter__(ax,x_dots,y_dots,median,cpos[c],cloud_width,
+                                                   s=200,
                                                    color=self.color.stim_keys[k]['color'],
                                                    label=filt_df[0,'stim_label'] if s=='contra' and c==12.5 else '_',
                                                    **kwargs)
@@ -481,22 +482,27 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                 
                 if len(pfilt_df)<2:
                     continue
-                elif len(pfilt_df)==2:
-                    if wheel_time:
-                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_wheel_reaction_times'].to_numpy(),
-                                                                         pfilt_df[1,'cutoff_wheel_reaction_times'].to_numpy())            
-                    else:
-                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
-                                                                        pfilt_df[1,'cutoff_response_times'].to_numpy())            
-                    stars = ''
-                    if p < 0.001:
-                        stars = '***'
-                    elif 0.001 < p < 0.01:
-                        stars = '**'
-                    elif 0.01 < p < 0.05:
-                        stars = '*'
-                    ax.text(cpos[c], 1100+j*200, stars,color=self.color.stim_keys[pfilt_df[0,'stimkey']]['color'], fontsize=30)
+                elif len(pfilt_df)>=2:
                     
+                    for k in range(1,len(pfilt_df)):
+                        if wheel_time:
+                            p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_wheel_reaction_times'].to_numpy(),
+                                                                            pfilt_df[k,'cutoff_wheel_reaction_times'].to_numpy())            
+                        else:
+                            if len(pfilt_df[k,'cutoff_response_times'].to_numpy()) >0:
+                                p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
+                                                                                pfilt_df[k,'cutoff_response_times'].to_numpy())   
+                            else:
+                                p = 1         
+                        stars = ''
+                        if p < 0.001:
+                            stars = '***'
+                        elif 0.001 < p < 0.01:
+                            stars = '**'
+                        elif 0.01 < p < 0.05:
+                            stars = '*'
+                            
+                        ax.text(cpos[c], 1100+j*200+k*100, stars,color=self.color.stim_keys[pfilt_df[k,'stimkey']]['color'], fontsize=30)
                 else:
                     raise ValueError(f'WEIRD DATA FRAME FOR P-VALUE ANALYSIS!')
                 
@@ -835,6 +841,7 @@ class WheelTrajectoryPlotter(BasePlotter):
              time_lims:list=None,
              traj_lims:list=None,
              trace_type:str='sem',
+             n_interp:int=3000,
              **kwargs):
         
         fontsize = kwargs.pop('fontsize',20)
@@ -857,8 +864,8 @@ class WheelTrajectoryPlotter(BasePlotter):
         elif seperate_by == 'outcome':
             color = self.color.outcome_keys
         
-        self.fig, axes = plt.subplots(ncols=n_stim,
-                                      nrows=n_opto,
+        self.fig, axes = plt.subplots(ncols=n_opto,
+                                      nrows=n_stim,
                                       constrained_layout=True,
                                       figsize=kwargs.pop('figsize',(15,15)))
 
@@ -878,36 +885,34 @@ class WheelTrajectoryPlotter(BasePlotter):
                             wheel_time = filt_data['wheel_time'].to_numpy()
                             wheel_pos = filt_data['wheel_pos'].to_numpy()
                         
-                            
-                            wheel_interp_t,wheel_stats = get_trajectory_avg(wheel_time,wheel_pos)
-                            avg = wheel_stats['avg']
-                            sem = wheel_stats['sem']
-                            
-                            wheel_y = avg[1,:]+side
-                            sem_plus = wheel_y + sem[1,:]
-                            sem_minus = wheel_y - sem[1,:]
-                            
-                            if avg is not None:
-                                # avg = avg[find_nearest(avg[:,0],plot_range_time[0])[0]:find_nearest(avg[:,0],plot_range_time[1])[0]]
-                                # sem = sem[find_nearest(sem[:,0],plot_range_time[0])[0]:find_nearest(sem[:,0],plot_range_time[1])[0]]
-                                if trace_type=='sem':
-                                    ax.fill_between(wheel_interp_t,sem_plus,sem_minus,
-                                                alpha=0.2,
-                                                color=color[str(sep)]['color'],
-                                                linewidth=0)
-                                elif trace_type=='indiv':
-                                    for w in wheel_stats['indiv']:
-                                        ax.plot(wheel_interp_t,w+side,
+                            t_interp = np.linspace(-2000, 2000,n_interp)
+                            wheel_all_cond = np.zeros((len(wheel_time),n_interp))
+                            wheel_all_cond[:] = np.nan
+                            for i_t,trial in enumerate(wheel_time):
+    
+                                pos_interp = interp1d(trial,wheel_pos[i_t],fill_value="extrapolate")(t_interp)
+                                wheel_all_cond[i_t,:] = pos_interp
+                                
+                                if trace_type == 'indiv':
+                                    ax.plot(t_interp,pos_interp+side,
                                                 color = color[str(sep)]['color'],
                                                 linewidth=0.8,
                                                 alpha=0.5)
                                 
-                                ax = self.__plot__(ax,wheel_interp_t,wheel_y,
-                                                    color=color[str(sep)]['color'],
-                                                    label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
-                                                    **kwargs) 
+                            avg = np.nanmean(wheel_all_cond,axis=0)
+                            sem = stats.sem(wheel_all_cond,axis=0)    
+                            if trace_type=='sem':
+                                ax.fill_between(t_interp,avg+sem,avg-sem,
+                                            alpha=0.2,
+                                            color=color[str(sep)]['color'],
+                                            linewidth=0)
+                            
+                            
+                            ax = self.__plot__(ax,t_interp,avg,
+                                                color=color[str(sep)]['color'],
+                                                label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
+                                                **kwargs) 
                     
-                        
                         ax.set_xlim(time_lims)
                         ax.set_ylim(traj_lims)
                         
@@ -918,11 +923,11 @@ class WheelTrajectoryPlotter(BasePlotter):
                         ax.axvline(1000,color='k',linestyle=':',linewidth=2,alpha=0.6)
                         
                         #5*((3*2*np.pi*31.2)/1024) where 5 is the tick difference to detect answer
-                        ax.axhline(side+2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
-                        ax.axhline(side-2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
+                        # ax.axhline(side+2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
+                        # ax.axhline(side-2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
 
                         ax.set_title(f'{stim}_{opto}')
-                        ax.set_ylabel('Wheel Position (deg)', fontsize=fontsize)
+                        ax.set_ylabel('Wheel Rotation (cm)', fontsize=fontsize)
                         ax.set_xlabel('Time(ms)', fontsize=fontsize)
                         
                         # make it pretty

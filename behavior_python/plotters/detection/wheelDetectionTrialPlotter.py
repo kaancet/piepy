@@ -75,6 +75,13 @@ class DetectionTrialPlotter:
         ax.plot(wheel_time,wheel_pos,'k+',
                 linewidth=3,label='Wheel Trace')
         
+        # speed
+        wheel_speed = self.trial_data[0,'wheel_speed'].to_list()
+        ax2 = ax.twinx()
+        ax2.plot(wheel_time[:-1],wheel_speed,color='tab:orange',label='Wheel Speed')
+        ax2.set_ylabel('Wheel Speed (cm/s)',fontsize=fontsize)
+        ax2.tick_params(labelsize=fontsize)
+        
         # plot movements
         for i,o in enumerate(onsets):
             on_idx, on_t = find_nearest(t,o)
@@ -83,13 +90,23 @@ class DetectionTrialPlotter:
             ax.plot(t[on_idx:off_idx],pos[on_idx:off_idx],'b',label='Detected Movements' if i==0 else '_')
             ax.scatter(off_t,pos[off_idx],s=50,color='r')
         
+        # delta tick
         if self.trial_data[0,'wheel_reaction_time'] is not None:
             ax.axvline(self.trial_data[0,'wheel_reaction_time'],
-                    color='purple',linestyle='-.',linewidth=2,label=f"Wheel Response Time({round(self.trial_data[0,'wheel_reaction_time'],1)}ms)")
+                    color='purple',linestyle='-.',linewidth=2,label=f"Wheel Tick Reaction({round(self.trial_data[0,'wheel_reaction_time'],1)}ms)")
             
             past_thresh_idx,_ = find_nearest(t,self.trial_data[0,'wheel_reaction_time'])
             ax.axhline(pos[past_thresh_idx],
-                       color='purple',linestyle=':',linewidth=2,label=f"Threshold ({pos[past_thresh_idx]})")
+                       color='purple',linestyle=':',linewidth=2,label=f" Wheel Tick Threshold ({round(pos[past_thresh_idx],2)} cm)")
+        
+        # speed    
+        if self.trial_data[0,'wheel_speed_reaction_time'] is not None:
+            ax2.axvline(self.trial_data[0,'wheel_speed_reaction_time'],
+                    color='dodgerblue',linestyle='-.',linewidth=2, label=f"Wheel Speed Reaction({round(self.trial_data[0,'wheel_speed_reaction_time'],1)}ms)")
+            
+            speed_past_thresh = interp1d(wheel_time[:-1],wheel_speed)(self.trial_data[0,'wheel_speed_reaction_time'])
+            ax2.axhline(speed_past_thresh,
+                       color='dodgerblue',linestyle=':',linewidth=2,label=f"Speed Threshold ({round(speed_past_thresh.tolist(),4)} cm/ms)")
                         
         ax.axvline(self.trial_data[0,'response_latency'],
                 color='r',linestyle=':',linewidth=2,label=f"State Response Time({self.trial_data[0,'response_latency']}ms)")
@@ -120,7 +137,7 @@ class DetectionTrialPlotter:
         else:
             ax.set_xlabel('Time from Trial Start (ms)',fontsize=fontsize)
         
-        ax.set_ylabel('Wheel Position (deg)',fontsize=fontsize)
+        ax.set_ylabel('Wheel Position (cm)',fontsize=fontsize)
         ax.tick_params(labelsize=fontsize)
         
         ax.set_xlim(t_lim)
@@ -129,7 +146,14 @@ class DetectionTrialPlotter:
         ax.spines['left'].set_position(('outward', 10))
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
-        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
+    
+        ax2.spines['right'].set_position(('outward', 10))
+        ax2.spines['left'].set_visible(False)
+        ax2.spines['top'].set_visible(False)
+        ax2.spines['bottom'].set_visible(False)
+        
+        ax.legend(loc='center left',bbox_to_anchor=(1.2,0.5),fontsize=fontsize,frameon=False)
+        ax2.legend(loc='center left',bbox_to_anchor=(1.2,0.02),fontsize=fontsize,frameon=False)
         
         return ax
         

@@ -5,6 +5,7 @@ import scipy.stats as st
 from os.path import join as pjoin
 from behavior_python.core.session import Session, SessionData, SessionMeta
 from .wheelDetectionTrial import *
+from tabulate import tabulate
 
 
 class WheelDetectionData(SessionData):
@@ -25,8 +26,18 @@ class WheelDetectionData(SessionData):
         if 'outcome' not in self.data.columns:
             self.data = self.data.with_columns(pl.col(col_name).alias('outcome'))
         else:
-            tmp = self.data[col_name]
-            self.data.replace('outcome', tmp)
+            if col_name in self.data.columns:
+                tmp = self.data[col_name]
+                self.data.replace('outcome', tmp)
+            else:
+                raise ValueError(f"{outcome_type} is not a valid outcome type!!! Try 'wheel' or 'state'.")
+            
+    def compare_outcomes(self) -> None:
+        """ Compares the different outcome types and prints a small summary table"""
+        out_cols = [c for c in self.data.columns if '_outcome' in c]
+        q = self.data.groupby(out_cols).agg([pl.count().alias("count")]).sort(["state_outcome"])
+        tmp = q.to_pandas()
+        print(tabulate(tmp,headers=q.columns))
             
     def enhance_data(self,pattern_names:dict,isgrating:bool=False) -> None:
         # add a isgrating column
@@ -285,18 +296,21 @@ class WheelDetectionSession(Session):
             
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
         for t in pbar:         
-            temp_trial = WheelDetectionTrial(t,meta=self.meta,logger=self.logger)
+            temp_trial = WheelDetectionTrial(int(t),meta=self.meta,logger=self.logger)
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
-            if len(trial_row):
+            if trial_row['state_outcome'] is not None:
                 if t == 1:
                     data_to_append = {k:[v] for k,v in trial_row.items()}
                 else:
                     for k,v in trial_row.items():
                         data_to_append[k].append(v)
             else:
-                if t == len(trials):
-                    display(f'Last trial {t} is discarded')
+                if t != len(trials):
+                    self.logger.critical("NO TRIAL DATA")
+                else:
+                    self.logger.info("Discarded the last trial...")
+
             pbar.update()        
         
         self.logger.set_msg_prefix('session')
@@ -330,7 +344,7 @@ class WheelDetectionSession(Session):
         
 
         if session_data.is_empty():
-            self.logger.critical("THERE IS NO SESSION DATA !!!", cml=True)
+            self.logger.error("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
             return session_data

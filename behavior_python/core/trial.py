@@ -138,7 +138,10 @@ class Trial:
                 if self.opto_pattern is not None and self.opto_pattern >= 0:
                     self.logger.warning('stimlog says opto, but no opto logged in riglog, using screen event as time!!')
                     is_opto = True
-                    opto_arr = [self.t_stimstart_rig,1]
+                    opto_arr = [[self.t_stimstart_rig]]
+        else:
+            is_opto = False
+            opto_arr = []
         
         opto_dict = {'opto' : is_opto,
                      'opto_pulse' : opto_arr}
