@@ -1,11 +1,11 @@
 {
     "spatiotemporal":{
         "0.04cpd_8.0Hz_-1": {
-            "color":"tab:orange",
+            "color":"#FF7F0F",
             "linestyle":"-"
         },
         "0.04cpd_8.0Hz_0": {
-            "color":"cornflowerblue",
+            "color":"#6495ED",
             "linestyle":"--"
         },
         "0.04cpd_8.0Hz_1": {
@@ -29,7 +29,7 @@
             "linestyle":"-"
         },
         "0.16cpd_0.5Hz_0": {
-            "color":"mediumblue",
+            "color":"#0000CD",
             "linestyle":"--"
         },
         "0.16cpd_0.5Hz_1": {
