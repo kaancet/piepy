@@ -196,7 +196,7 @@ class WheelDetectionSession(Session):
             self.data.data = self.data.data.with_columns([pl.lit(self.meta.animalid).alias('animalid'),
                                                           pl.lit(self.meta.baredate).alias('baredate')])
             
-            self.data.data = self.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, fmt='%y%m%d').cast(pl.Date).alias('date'))
+            self.data.data = self.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, format='%y%m%d').cast(pl.Date).alias('date'))
             self.save_session()
             self.logger.info(f'Saving data to {self.data_paths.savePath}',cml=True)
         
@@ -318,18 +318,18 @@ class WheelDetectionSession(Session):
         session_data = pl.DataFrame(data_to_append)
         
         # add a stim_side column for ease of access
-        session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then("contra")
-                                                    .when(pl.col("stim_pos") < 0).then("ipsi")
-                                                    .when(pl.col("stim_pos") == 0).then("catch")
+        session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then(pl.lit("contra"))
+                                                    .when(pl.col("stim_pos") < 0).then(pl.lit("ipsi"))
+                                                    .when(pl.col("stim_pos") == 0).then(pl.lit("catch"))
                                                     .otherwise(None).alias("stim_side"))
         
         # add easy/hard contrast type groups
         session_data = session_data.with_columns(pl.when(pl.col('contrast') >= 25)
-                                                 .then("easy")
+                                                 .then(pl.lit("easy"))
                                                  .when((pl.col('contrast') < 25) & (pl.col('contrast') > 0))
-                                                 .then("hard")
+                                                 .then(pl.lit("hard"))
                                                  .when(pl.col('contrast') == 0)
-                                                 .then("catch")
+                                                 .then(pl.lit("catch"))
                                                  .otherwise(None).alias("contrast_type"))
         
         # add contrast titration boolean
