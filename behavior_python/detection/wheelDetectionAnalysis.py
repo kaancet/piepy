@@ -5,7 +5,11 @@ from ..utils import display
 
 
 class DetectionAnalysis:
-    def __init__(self,data:pl.DataFrame) -> None:
+    def __init__(self,data:pl.DataFrame=None) -> None:
+        if data is not None:
+            self.set_data(data)
+        
+    def set_data(self,data:pl.DataFrame) -> None:
         self.data = data
         self.agg_data = self.make_agg_data()
         
@@ -25,6 +29,7 @@ class DetectionAnalysis:
                     (pl.col("wheel_reaction_time").median().alias("median_wheel_reaction_time")),
                     (pl.col("response_latency").median().alias("median_response_time")),
                     (pl.col("wheel_time")),
+                    (pl.col("signed_contrast").first()),
                     (pl.col("wheel_pos")),
                     (pl.col("opto").first()),
                     (pl.col("stimkey").first()),
@@ -35,13 +40,11 @@ class DetectionAnalysis:
 
         q = q.with_columns((pl.col("correct_count") / pl.col("count")).alias("hit_rate"))
         q = q.with_columns((1.96 * np.sqrt((pl.col("hit_rate")*(1.0 - pl.col("hit_rate"))) / pl.col("count"))).alias("confs"))
-        q = q.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
-
 
         # reorder stim_label to last column
         cols = q.columns
-        del cols[-4]
-        del cols [-4]
+        del cols[-3]
+        del cols [-3]
         cols.extend(['stimkey','stim_label'])
         q = q.select(cols)
 

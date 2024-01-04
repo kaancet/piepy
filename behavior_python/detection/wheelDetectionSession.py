@@ -45,6 +45,7 @@ class WheelDetectionData(SessionData):
             self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
             # add stim type
             self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str)+'cpd_'+pl.col('temporal_freq').cast(str)+'Hz').alias('stim_type'))
+            self.data = self.data.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
                 
             if len(self.data['opto'].unique().to_numpy()) == 1:
                 # Regular training sessions
