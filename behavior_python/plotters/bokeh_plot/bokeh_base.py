@@ -16,6 +16,23 @@ class Graph():
     """ Abstract class for individual bokeh plots on the dashboard """
     def __init__(self,*args,**kwargs):
         self.fig = None
+        self.possible_stims = [
+                                "0.04cpd_8.0Hz_-1",
+                                "0.04cpd_8.0Hz_0",
+                                "0.04cpd_8.0Hz_1",
+                                "0.08cpd_2.0Hz_-1",
+                                "0.08cpd_2.0Hz_0",
+                                "0.08cpd_2.0Hz_1",
+                                "0.16cpd_0.5Hz_-1",
+                                "0.16cpd_0.5Hz_0",
+                                "0.16cpd_0.5Hz_1",
+                                "0.1cpd_4.0Hz_-1",
+                                "0.1cpd_4.0Hz_0",
+                                "0.1cpd_4.0Hz_1",
+                                "0.1cpd_4.0Hz_grating_-1",
+                                "0.1cpd_4.0Hz_grating_0",
+                                "0.1cpd_4.0Hz_grating_1"
+                              ]
         
     @staticmethod    
     def morph_data(data:pl.DataFrame) -> dict:

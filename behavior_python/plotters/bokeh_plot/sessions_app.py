@@ -1,4 +1,4 @@
-from bokeh.models import Div, Select, CustomJS, Spinner, Switch, RangeSlider
+from bokeh.models import Div, Select, CustomJS, Spinner, Switch, RangeSlider, TabPanel, Tabs
 from bokeh.layouts import row, column, layout
 from behavior_python.plotters.bokeh_plot.dashboard import *
 from behavior_python.plotters.bokeh_plot.trial_plots import TrialGraph
@@ -7,22 +7,41 @@ from behavior_python.plotters.bokeh_plot.response_time_plots import ReactionTime
 from behavior_python.plotters.bokeh_plot.trial_type_plot import TrialTypeBarGraph
 from behavior_python.plotters.bokeh_plot.pattern_image_plot import PatternImageGraph
 
-from behavior_python.detection.wheelDetectionSession import WheelDetectionSession
+
+summary_div_style = {'font-size':'30px',
+                     'font-family':' Helvetica, Arial, sans-serif',
+                     'font-weight': 'bold',
+                     'text-align':'center',
+                     'padding':'15px',
+                     'margin':'10px',
+                     'color':'#FFFFFF',
+                     'border-radius': '15px',
+                     'background':'#e6402e'}
+
+summary_div_key = {0:'stim_count',
+                   1:'hit_rate',
+                   2:'false_alarm',
+                   3:'median_response_time'}
 
 # hardcoded animal list
-animal_list = ['KC139','KC140','KC141','KC142','KC143','KC144','KC145','KC146']
+animal_list = ['KC139','KC141','KC142',
+               'KC143','KC144','KC145',
+               'KC146','KC147','KC148',
+               'KC149']
 
 # Instantiate and initialize the DashBoard
 dash = DashBoard()
-dash.set_animal('KC143') # arbitrary selection
-dash.current_session = dash.session_list[-1] # most recent session
-
-w = WheelDetectionSession(sessiondir=dash.current_session,load_flag=True)
-dash.set_session(w)
+dash.set_mode('presentation')
+dash.set_animal('KC147') # arbitrary selection
+dash.set_session('240228_KC147_detect_opto120_dorsal__1P_KC') # this will set the last session in session list
 
 ###################
 # CONTROL WIDGETS #
 ###################
+# experiment/trial switch
+dash.add_widget('mode_selector',
+                Select(title='Training/Experiment',options=['training','presentation'],value=dash.current_mode))
+
 # animalselector
 dash.add_widget('animal_selector',
                 Select(title='Select Animal', options=animal_list,value=dash.current_animal))
@@ -41,7 +60,7 @@ dash.add_widget('trial_selector',
 
 # reactiontrype selector
 dash.add_widget('reaction_type_selector',
-                Select(title="Reaction Time Mode", options=['response_latency','wheel_reaction_time','wheel_speed_reaction_time'],value='response_latency'))
+                Select(title="Reaction Time Mode", options=['response_latency','pos_reaction_time','speed_reaction_time'],value='response_latency'))
 
 # include miss switch
 dash.add_widget('include_miss_switch',
@@ -62,14 +81,17 @@ cols = dash.set_data_table()
 # data viewer
 dash.add_widget('data_table',
                 DataTable(source=dash.dash_cds,columns=cols,width=600,height=500))
+# a list of 
+dash.add_widget('summary_divs',[Div(text=dash.get_val_of(summary_div_key[i]),styles=summary_div_style) for i in range(4)])
 
 #stats text
 dash.add_widget('stats_div',
-                Div(text=dash.stats,styles={'font-size':'15px'}))
+                Div(text=dash.stats_text,styles={'font-size':'15px'}))
 
 #include miss?
 dash.add_widget('switch_text',
                 Div(text="Include Miss?",styles={'font-size':'15px'}))
+
 
 #########
 # PLOTS #
@@ -81,28 +103,33 @@ dash.add_graph('trial_type',TrialTypeBarGraph())
 dash.add_graph('pattern_img',PatternImageGraph())
 dash.make_graphs(isInit=True)
 
+
 #############################
 # CALLBACKS AND OTHER FUNCS #
 #############################
+def mode_selector_callback(attr, new, old):
+    print(dash.widgets['mode_selector'].value)
+    dash.set_mode(dash.widgets['mode_selector'].value)
+    dash.widgets['session_selector'].options = dash.session_list
+    dash.set_session(dash.session_list[-1])
+    dash.widgets['session_selector'].value = dash.current_session
+dash.widgets['mode_selector'].on_change('value',mode_selector_callback)
 
 def animal_selector_callback(attr,old,new):
-    dash.current_animal = dash.widgets['animal_selector'].value
-    dash.set_animal_sessions()
-    # refill the session selector
+    dash.set_animal(dash.widgets['animal_selector'].value)
     dash.widgets['session_selector'].options = dash.session_list
-    dash.current_session = dash.session_list[-1]
-    dash.widgets['session_selector'].value = dash.current_animal
+    dash.set_session(dash.session_list[-1])
+    dash.widgets['session_selector'].value = dash.current_session
 dash.widgets['animal_selector'].on_change('value',animal_selector_callback)
 
 def session_selector_callback(attr,old,new):
-    dash.current_session = dash.widgets['session_selector'].value
-    try:
-        w = WheelDetectionSession(sessiondir=dash.current_session,load_flag=True)
-    except:
-        w = WheelDetectionSession(sessiondir=dash.current_session,load_flag=False)
-    dash.set_session(w)
+    dash.set_session(dash.widgets['session_selector'].value)
     dash.make_graphs()
-    dash.widgets['stats_div'].text = dash.stats
+    dash.widgets['stats_div'].text = dash.stats_text
+    # set the summary div values
+    for i, d in enumerate(dash.widgets['summary_divs']):
+        d.text = dash.get_val_of(summary_div_key[i])
+    
 dash.widgets['session_selector'].on_change('value',session_selector_callback)
 
 def trial_selector_callback(attr,old,new):
@@ -149,10 +176,18 @@ dash.dash_cds.selected.js_on_change('indices', datatable_callback)
 # dash.graphs['reaction_time_scatter'].cds_dots.selected.js_on_change('indices',plot_click_callback)
 
 
+# put two stat relatet widgets to tabpanels
+summary_tabs = column(row(dash.widgets['summary_divs'][0],dash.widgets['summary_divs'][1]),
+                      row(dash.widgets['summary_divs'][2],dash.widgets['summary_divs'][3]))
+
+tab_summary = TabPanel(child=summary_tabs,title='Summary')
+tab_stats = TabPanel(child=dash.widgets['stats_div'],title='Stats')
+
 # final arrangement of the layout
-controls = column(dash.widgets['animal_selector'],
+controls = column(dash.widgets['mode_selector'],
+                  dash.widgets['animal_selector'],
                   dash.widgets['session_selector'],
-                  dash.widgets['stats_div'])
+                  Tabs(tabs=[tab_summary,tab_stats]))
 
 psycho_plot = column(dash.graphs['psychometric'].fig)
 

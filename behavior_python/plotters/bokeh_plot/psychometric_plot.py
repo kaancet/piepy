@@ -30,21 +30,26 @@ class PsychometricGraph(Graph):
         jittered = contrast_in + np.random.uniform(-jitter_rng/2,jitter_rng/2)
         jittered[0] += np.random.uniform(0,jitter_rng)/100
         return jittered
+    
+    def reset_cds(self) -> None:
+        self.cds_dots = {}
+        self.cds_curves = {}
         
     def set_cds(self,data:pl.DataFrame,**kwargs) -> None:
         self.stat_analysis.set_data(data)
         q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto_pattern'],descending=True)
         
-        u_stimkey = q['stimkey'].unique().to_numpy()        
         self.c_key = np.unique(q['signed_contrast'].to_numpy())
         self.c_val = np.arange(-int(len(self.c_key)/2),int(len(self.c_key)/2)+1)
+        if 0 not in self.c_key:
+            self.c_val = np.delete(self.c_val,int(len(self.c_val)/2))
         contrast_map = {self.c_key[i]:c for i,c in enumerate(self.c_val)}
         
         temp_dots = {}
         temp_curves = {}
-        for i,k in enumerate(u_stimkey):
-            filt_df = q.filter(pl.col('stimkey')==k)
-            if not filt_df.is_empty():
+        for i,k in enumerate(self.possible_stims):
+            filt_df = q.filter(pl.col('stimkey')==k)                
+            if not filt_df.is_empty(): 
                 
                 contrast = np.array([contrast_map[c] for c in filt_df['signed_contrast'].to_numpy()])
                 contrast = self._jitter_contrast(contrast)
@@ -70,7 +75,8 @@ class PsychometricGraph(Graph):
                 temp_dots[k] = {'contrast' : [],
                                 'signed_contrast' : [],
                                 'hit_rate' : [],
-                                'confs' : [],
+                                'confs_up' : [],
+                                'confs_down' : [],
                                 'correct_count' : [],
                                 'miss_count' : [],
                                 'label' : [],

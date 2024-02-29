@@ -23,17 +23,22 @@ class ReactionTimeScatterGraph(Graph):
         
     def set_include_miss(self,include_miss:bool=False) -> None:
         self.include_miss = include_miss
+        
+    def reset_cds(self) -> None:
+        self.cds_dots = None
+        self.cds_curves = None
     
     def set_cds(self, data:pl.DataFrame) -> None:
         temp = data.drop_nulls(subset=['contrast'])
         if not self.include_miss:
             temp = temp.filter(pl.col('outcome')==1)
-        temp = temp.select(['trial_no','signed_contrast','response_latency','wheel_reaction_time','wheel_speed_reaction_time','stimkey'])
+        temp = temp.select(['trial_no','signed_contrast','response_latency','pos_reaction_time','speed_reaction_time','stimkey'])
         temp = temp.with_columns((pl.col(self.reaction_type)*1).alias('reaction_time'))
 
         self.c_key = np.unique(temp['signed_contrast'].to_numpy())
         self.c_val = np.arange(-int(len(self.c_key)/2),int(len(self.c_key)/2)+1)
-        
+        if 0 not in self.c_key:
+            self.c_val = np.delete(self.c_val,int(len(self.c_val)/2))
         contrast_map = {self.c_key[i]:c for i,c in enumerate(self.c_val)}
         
         colors = [self.color.stim_keys[c]['color'] for c in temp['stimkey'].to_list()]
@@ -87,8 +92,8 @@ class ReactionTimeScatterGraph(Graph):
         hover = HoverTool(tooltips=[('Trial No', '@trial_no'),
                                     ('Contrast', '@signed_contrast'),
                                     ('Response Time', '@response_latency'),
-                                    ('Wheel Reaction Time','@wheel_reaction_time'),
-                                    ('Wheel Speed reaction Time','@wheel_speed_reaction_time')])
+                                    ('Wheel Reaction Time','@pos_reaction_time'),
+                                    ('Wheel Speed reaction Time','@speed_reaction_time')])
         f.add_tools(hover) 
         
         self.fig = f

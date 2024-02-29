@@ -34,6 +34,9 @@ class TrialTypeBarGraph(Graph):
         data_dict['xaxis'] = temp
         
         return data_dict
+    
+    def reset_cds(self) -> None:
+        self.cds = None
         
     def set_cds(self,data:pl.DataFrame) -> None:
         data_dict = self.morph_data(data)

@@ -14,7 +14,6 @@ class PatternImageGraph(Graph):
     def map_range(img:np.ndarray) -> np.ndarray:
         return np.interp(img,[np.min(img),np.max(img)],[0,65536])
     
-        
     @staticmethod
     def make_palette_name(name:str) -> None:
         return f'{name}256'
@@ -30,6 +29,9 @@ class PatternImageGraph(Graph):
         if self.fig is not None:
             self.img_glyph.glyph.color_mapper.update(low=low,high=high)
             self.color_bar.color_mapper.update(low=low,high=high)
+            
+    def reset_cds(self) -> None:
+        self.cds = None
         
     def set_cds(self,data:np.ndarray) -> None:
         img = np.fliplr(data[::-1])

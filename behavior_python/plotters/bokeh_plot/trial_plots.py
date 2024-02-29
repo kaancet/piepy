@@ -1,78 +1,131 @@
 from bokeh.layouts import column
 from .bokeh_base import *
-from ...wheelUtils import interpolate_position
-from ...utils import find_nearest
+from ...wheelTrace import WheelTrace
 
 
 class TrialGraph(Graph):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cds_wheel = None
+        # trial epoch areas
         self.cds_areas = None
+        
+        # lines for reactions and reward
         self.cds_lines = None
+        
+        # licks
         self.cds_licks = None
+
+        #wheel related
+        self.cds_wheel = None
         self.cds_interp = None
-        self.cds_mov = None
+        self.cds_region = None
+        self.cds_move = None
+        self.cds_reactions = None
         
-    @staticmethod    
-    def morph_data(data:pl.DataFrame) -> dict:
-        """ Morphs the data to be column data source compatible and changes some column names """
-        if data[0,'outcome'] == -1:
-            time_anchor = 't_trialstart'
-        else:
-            time_anchor = 't_stimstart_rig'
-        
-        data = data.with_columns([
-            (pl.col('t_trialstart') - pl.col(time_anchor)).alias('trial_start'),
-            (pl.when(pl.col('t_stimstart_rig').is_not_null()).then(pl.col('t_stimstart_rig') - pl.col(time_anchor)).otherwise(pl.col('t_blank_dur'))).alias('stimstart_rig'),
-            (pl.col('t_stimend_rig') - pl.col(time_anchor)).alias('stimend_rig')
-            ])
-        data = data.with_columns((pl.col("trial_start")+pl.col("t_quiescence_dur")).alias("quiescence_end"))
-        
-        return data.to_dict(as_series=False)
+        self.thresh_in_ticks = kwargs.get('tick_thresh',10)
+        self.speed_thresh = self.thresh_in_ticks/kwargs.get('time_thresh',17) #17 is the avg ms for a loop
+        self.traj = WheelTrace()
         
     def set_cds(self,data:pl.DataFrame) -> None:
         """ Creates a column data source(cds)"""
-        self.dict_data = self.morph_data(data)
+        regions_df = data.select([c for c in data.columns if c.startswith('t_')])
         
-        temp_wheel = {'wheel_time' : self.dict_data['wheel_time'][0],
-                      'wheel_pos' : self.dict_data['wheel_pos'][0]
-                     }
+        if data[0,'state_outcome'] == -1:
+            # early
+            anchor = 't_trialinit'
+            regions_df = regions_df.with_columns([
+                (pl.col('t_trialstart') - pl.col('t_trialinit')).alias('trialstart'),
+                (pl.col('t_trialinit') - pl.col('t_trialinit')).alias('trialinit'),
+                (pl.col('t_blank_dur')).alias('stimstart'), 
+                (pl.col('t_blank_dur')).alias('stimend')])
+            
+            time_anchor = data[0,anchor]
+            time_window = [time_anchor, time_anchor + regions_df[0,'stimend']]
+        else:
+            if data[0,'t_stimstart_rig'] is not None:
+                anchor = 't_stimstart_rig'
+                end = 't_stimend_rig'
+            else:
+                anchor = 't_stimstart'
+                end = 't_stimend'
+            regions_df = regions_df.with_columns([
+                (pl.col('t_trialstart') - pl.col(anchor)).alias('trialstart'),
+                (pl.col('t_trialinit') - pl.col(anchor)).alias('trialinit'),
+                (pl.col('t_stimstart') - pl.col(anchor)).alias('stimstart'), 
+                (pl.col(end) - pl.col(anchor)).alias('stimend')])
+            
+            time_anchor = data[0,anchor]
+            time_window = [time_anchor, data[0,end]] # from timeanchor to 
         
-        temp_areas = {'trial_start' : self.dict_data['trial_start'],
-                      'quiescence_end' : self.dict_data['quiescence_end'],
-                      'stimstart_rig' : self.dict_data['stimstart_rig'],
-                      'stimend_rig' : self.dict_data['stimend_rig'],
-                      'opto_start' : self.dict_data['stimstart_rig'] if self.dict_data['opto'] else [],
-                      'opto_end' :self.dict_data['stimend_rig'] if self.dict_data['opto'] else [] }
+        if data[0,'opto'] == 1:
+            regions_df = regions_df.with_columns([pl.col('stimstart').alias('optostart'),
+                                                  pl.col('stimend').alias('optoend')])
+        else:
+            regions_df = regions_df.with_columns([pl.lit(None).alias('optostart'),
+                                                 pl.lit(None).alias('optoend')])
+        
+        temp_areas = regions_df.to_pandas()
+
         # temp_licks = {'lick_time':None}
         # temp_lines = {'response_latency' : None}
         
-        # interpolate the wheels
-        pos,t = interpolate_position(self.dict_data['wheel_time'][0],self.dict_data['wheel_pos'][0],freq=5)
-        temp_interp = {'t':t,
-                       'pos':pos}
+        self.traj.set_trace_data(data[0,'wheel_time'].to_list(),
+                                 data[0,'wheel_pos'].to_list())
         
-        temp_mov = {'onsets' : self.dict_data['wheel_onsets'][0],
-                    'offsets' : self.dict_data['wheel_offsets'][0]}
+        
+        #initialize the trace
+        self.traj.init_trace(time_anchor=time_anchor)
+        # get the movements from interpolated positions
+        self.traj.get_movements(pos_thresh=0.03,t_thresh=0.5)
+        print(time_window,flush=True)
+        interval_mask = self.traj.make_interval_mask(time_window=time_window)
+        self.traj.select_trace_interval(mask=interval_mask)
+        
+        # get all the reaction times and outcomes here:
+        self.traj.get_speed_reactions(speed_threshold=self.speed_thresh)
+        self.traj.get_tick_reactions(tick_threshold=self.thresh_in_ticks)
+        
+        temp_interp = {'t':self.traj.tick_t_interp,
+                       'pos':self.traj.tick_pos_interp}
+        
+        colors = ['#17e800','#074500','#0096ed','#004973','#910011']
+        reactions = [self.traj.pos_reaction_t, 
+                     self.traj.pos_decision_t,
+                     self.traj.speed_reaction_t,
+                     self.traj.speed_decision_t,
+                     data[0,'response_latency']]
+        
+        temp_reactions = {'reactions':reactions,
+                          'colors':colors}
+        
+        temp_wheel = {'wheel_time' : self.traj.tick_t,
+                      'wheel_pos' : self.traj.tick_pos}
+                     
+        temp_region = {'t_region':self.traj.trace_interval['t'],
+                       'pos_region':self.traj.trace_interval['pos'],
+                       'speed_region':self.traj.trace_interval['velo']}
+        
+        temp_move = {'t_move':self.traj.trace_interval['t_movements'],
+                     'pos_move':self.traj.trace_interval['pos_movements'],
+                     'speed_move':self.traj.trace_interval['velo_movements']}
         
         if self.cds_areas is None:
             self.cds_wheel = ColumnDataSource(data=temp_wheel)
             self.cds_areas = ColumnDataSource(data=temp_areas)
-            # self.cds_lines = ColumnDataSource(data=temp_lines)
-            # self.cds_licks = ColumnDataSource(data=temp_licks)
             self.cds_interp = ColumnDataSource(data=temp_interp)
-            self.cds_mov = ColumnDataSource(data=temp_mov)
+            self.cds_region = ColumnDataSource(data=temp_region)
+            self.cds_move = ColumnDataSource(data=temp_move)
+            self.cds_reactions = ColumnDataSource(data=temp_reactions)
         else:
             self.cds_wheel.data = temp_wheel
             self.cds_areas.data = temp_areas
-            # self.cds_lines.data = temp_lines
-            # self.cds_licks.data = temp_licks
             self.cds_interp.data = temp_interp
-            self.cds_mov.data = temp_mov
+            self.cds_region.data = temp_region
+            self.cds_move.data = temp_move
+            self.cds_reactions.data = temp_reactions
     
     def plot(self,**kwargs):
-        
+        """ """
         f_top = figure(title="", width=700,height=80,x_axis_location="above")
         f_top.toolbar.logo = None
         f_top.toolbar_location = None
@@ -80,67 +133,73 @@ class TrialGraph(Graph):
         f_top.ygrid.grid_line_color = None
         f_top.axis.visible = False
         
-        f_top.vstrip(x0='opto_start',x1='opto_end',source=self.cds_areas,
+        f_top.vstrip(x0='optostart',x1='optoend',source=self.cds_areas,
                      color='#2b3cfc',fill_alpha=0.5,line_alpha=0)
         
         f = figure(title=None,width=700, height=400,x_range=f_top.x_range, y_range=f_top.y_range,
                    x_axis_label='Time(ms)', y_axis_label='Wheel Position')
     
         # quiescence
-        f.vstrip(x0='trial_start',
-                x1='quiescence_end',
+        f.vstrip(x0='trialstart',
+                x1='trialinit',
                 line_alpha=0,
                 fill_alpha=0.3,
                 fill_color='#d1d1d1',
                 hatch_pattern='/',
                 hatch_alpha=0.1,
-                source=self.cds_areas,
-                legend_label=f'Trial Prep. ({round(self.dict_data["t_quiescence_dur"][0],1)}ms)')
+                source=self.cds_areas)
         
         #blank
-        f.vstrip(x0='quiescence_end',
-                x1='stimstart_rig',
+        f.vstrip(x0='trialinit',
+                x1='stimstart',
                 line_alpha=0,
                 fill_alpha=0.3,
                 fill_color='#c22121',
                 hatch_pattern='x',
                 hatch_alpha=0.1,
-                source=self.cds_areas,
-                legend_label=f'Wait for Stim ({round(self.dict_data["t_blank_dur"][0],1)}ms)')
+                source=self.cds_areas)
         
         # response window
-        f.vstrip(x0='stimstart_rig',
-                x1='stimend_rig',
+        f.vstrip(x0='stimstart',
+                x1='stimend',
                 line_alpha=0,
                 fill_alpha=0.3,
                 fill_color='#009912',
                 hatch_pattern='x',
                 hatch_alpha=0.1,
-                source=self.cds_areas,
-                legend_label='Response Window')
-        
-        # if trial_data[0,'opto_pattern']!=-1 and trial_data[0,'outcome']!=-1:
-        #     pass
-        #     # opto trial that wasn't early
-        #     # f.block(x=,
-        #     #         y=,
-        #     #         )
-        #     #     ax.barh(ax.get_ylim()[1],trial_data[0,'response_latency'],left=0,height=10,color='aqua')   
-            
-        # plot wheel traces        
-        f.line('t', 'pos', color="#878787", source=self.cds_interp, line_width=3)
-        
-        f.circle('wheel_time', 'wheel_pos', source=self.cds_wheel, legend_label="Wheel Trace", color="#000000", size=5)
-        
-        # plot movements
-        # for i,o in enumerate(self.dict_data['wheel_onsets']):
-        #     on_idx, on_t = find_nearest(t,o)
-        #     off_idx, off_t = find_nearest(t,offsets[i])
-        #     f.triangle(on_t,pos[on_idx], color="#075900", size=5, line_alpha=0)
-        #     f.triangle_dot(t[on_idx:off_idx],pos[on_idx:off_idx], color="#9c0902", size=5, line_alpha=0)
-        #     f.line(t[on_idx:off_idx],pos[on_idx:off_idx],color="#1d02c9",line_width=3,line_dash='dotted')
+                source=self.cds_areas)
 
-        # # plot the reward
+        # plot wheel traces 
+        # data points
+        f.circle('wheel_time', 'wheel_pos',
+                 color="#000000", 
+                 size=5,
+                 source=self.cds_wheel)
+        
+        # interp       
+        f.line('t', 'pos', 
+               color="#8c8c8c", 
+               line_dash="dashed", 
+               line_width=2,
+               source=self.cds_interp)
+        
+        # analysis region
+        f.line('t_region', 'pos_region',
+               color="#c4a8f0",
+               line_width=4,
+               source=self.cds_region)
+        
+        # movements
+        f.multi_line('t_move','pos_move',
+                    color="#4a326e",
+                    line_width=5,
+                    source=self.cds_move)
+        
+        f.vspan('reactions',
+               line_width=2,
+               line_color='colors',
+               source=self.cds_reactions)
+        
         # reward = trial_data[0,'reward']
         # if reward is not None:
         #     reward = reward[0] - trial_data[0,time_anchor]

@@ -68,9 +68,9 @@ class DetectionPsychometricPlotter(BasePlotter):
                                    (pl.col('stim_side')==s))
                 
                 if not filt_df.is_empty():
-                    contrast = filt_df['contrast'].to_numpy()
+                    _contrast = filt_df['signed_contrast'].to_numpy()
                     if xaxis_type == 'linear_spaced':
-                        contrast = np.arange(1,len(contrast)+1) if len(contrast)>1 else [0]  
+                        contrast = np.arange(1,len(_contrast)+1) if len(_contrast)>1 else [0]  
                     contrast = -1*contrast if s=='ipsi' else contrast
                     
                     confs = 100*filt_df['confs'].to_numpy()
@@ -84,7 +84,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                                     contrast+jittered_offset,
                                     hr,
                                     confs,
-                                    label=f"{stim_label[0]}{self._makelabel(contrast,count)}" if s!='catch' else '_',
+                                    label=f"{stim_label[0]}{self._makelabel(_contrast,count)}" if s!='catch' else '_',
                                     marker = 'o',
                                     markersize=18,
                                     color = self.color.stim_keys[k]['color'] if color is None else color,
