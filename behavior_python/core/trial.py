@@ -19,7 +19,7 @@ class Trial:
         config = getConfig()
         self.db_interface = DataBaseInterface(config['databasePath'])
         
-    def __repr__(self):
+    def __repr__(self) -> str:
         rep = f"""Trial No :{self.trial_no}
         {self.data['state']}"""
         return rep
@@ -43,7 +43,7 @@ class Trial:
                     'button','reward','lap','cam1','cam2',
                     'cam3','act0','act1','opto']
         
-        states = rawdata['stateMachine']
+        states = rawdata['statemachine']
         states = states.rename({"cycle":"trialNo"})
         
         state_slice = states.filter(pl.col('trialNo')==self.trial_no)
@@ -53,7 +53,7 @@ class Trial:
         self.t_trialend = state_slice['elapsed'][-1]
 
         for k,v in rawdata.items():
-            if k == 'stateMachine':
+            if k == 'statemachine':
                 continue
             if not v.is_empty():
                 t_start = self.t_trialstart
@@ -79,8 +79,8 @@ class Trial:
                 
     def get_licks(self) -> dict:
         """ Extracts the lick data from slice"""
-        if 'lick' in self.data.keys():
-            lick_data = self.data['lick']
+        lick_data = self.data.get('lick', None)
+        if lick_data is not None:
             if len(lick_data):
             # lick_arr = np.array(lick_data[['duinotime', 'value']])
                 lick_arr = lick_data.select(['duinotime','value']).to_series().to_list()
@@ -99,19 +99,22 @@ class Trial:
     def get_reward(self) -> dict:
         """ Extracts the reward clicks from slice"""
         
-        reward_data = self.data['reward']
-        # reward_arr = np.array(reward_data[['duinotime', 'value']])
-        reward_arr = reward_data.select(['duinotime','value']).to_numpy()
-        if len(reward_arr):
-            try:
-                reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
-            except:
-                reward_amount_uL = self.meta.rewardSize
-                self.logger.warning(f'No reward logged from vstim, using rewardSize from prot file')
-            reward_arr = np.append(reward_arr,reward_arr[:,1])
-            reward_arr[1] = reward_amount_uL
-            reward_arr = reward_arr.tolist() 
-            # reward is a 3 element array: [time,value_il, value_ms]
+        reward_data = self.data.get('reward',None)
+        if reward_data is not None:
+            # no reward data, shouldn't happen a lot, usually in shitty sessions
+            reward_arr = reward_data.select(['duinotime','value']).to_numpy()
+            if len(reward_arr):
+                try:
+                    reward_amount_uL = np.unique(self.data['vstim']['reward'])[0]
+                except:
+                    reward_amount_uL = self.meta.rewardSize
+                    self.logger.warning(f'No reward logged from vstim, using rewardSize from prot file')
+                reward_arr = np.append(reward_arr,reward_arr[:,1])
+                reward_arr[1] = reward_amount_uL
+                reward_arr = reward_arr.tolist() 
+                # reward is a 3 element array: [time,value_il, value_ms]
+            else:
+                reward_arr = None
         else:
             reward_arr = None
         
@@ -141,29 +144,10 @@ class Trial:
                     opto_arr = [[self.t_stimstart_rig]]
         else:
             is_opto = False
-            opto_arr = []
+            opto_arr = [[]]
         
         opto_dict = {'opto' : is_opto,
                      'opto_pulse' : opto_arr}
         self._attrs_from_dict(opto_dict)
         return opto_dict
     
-    def save_to_db(self,in_dict:dict,table_name:str=None,**kwargs):
-        """ Checks if an entry exists and saves/updates accordingly"""
-        if table_name is None:
-            table_name = 'trials'
-        
-        total_trial_no = int(self.trial_no) + kwargs.get('total_trial_no',0)
-        const_dict = {'id':self.meta.animalid,
-                      'sessionId':self.meta.session_id,
-                      'date':self.meta.baredate,
-                      'trial_no':int(self.trial_no),
-                      'total_trial_no':total_trial_no}
-        
-        db_dict = {**const_dict ,**in_dict}
-        
-        if not self.db_interface.exists(db_dict,table_name):
-            self.db_interface.add_entry(db_dict,table_name,verbose=False)
-        else:
-            display(f'Trial with id {self.meta.session_id} is already in database, updating the entry')
-            self.db_interface.update_entry(const_dict,db_dict,table_name,verbose=False)

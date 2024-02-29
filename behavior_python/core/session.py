@@ -9,22 +9,23 @@ from ..gsheet_functions import GSheet
 
 class SessionMeta:
     """ An object to hold Session meta data"""
-    def __init__(self, prot_file:str=None, init_dict:dict=None) -> None:
+    def __init__(self, prot_file:str=None, init_dict:dict=None,**kwargs) -> None:
         """ Initializes the meta either from a prot file or a dictionary that already has the required keys"""
         if init_dict is not None:
             self.init_dict = init_dict
             self.init_from_dict()
         elif prot_file is not None:
             self.prot_file = prot_file
-            self.init_from_prot()
+            skip_google = kwargs.get('skip_google',False)
+            self.init_from_prot(skip_google=skip_google)
 
     def __repr__(self):
         kws = [f'{key}={value!r}' for key, value in self.__dict__.items() if key != 'init_dict']
         return '{}\n{}'.format(type(self).__name__, ',\n'.join(kws))
 
-    def init_from_prot(self):
+    def init_from_prot(self,skip_google:bool=False):
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
-                  'progressWindow', 'debiasingWindow', 'rewardDuration', 'decimationRatio']
+                  'progressWindow', 'debiasingWindow', 'decimationRatio']
         self.opto = False
         opts,params = parseProtocolFile(self.prot_file)
         for k, v in opts.items():
@@ -40,18 +41,30 @@ class SessionMeta:
                         
         if self.opto:
             self.opto_mode = int(opts.get('optoMode',0)) #0 continuous, 1 pulsed
+
+        lvl = ''
+        if self.prot_file.find('level') != -1:
+            tmp = self.prot_file[self.prot_file.find('level')+len('level'):]
+            for char in tmp:
+                if char not in ['.','_']:
+                    lvl += char
+                else:
+                    break      
+        else:
+            lvl = 'exp'
+        self.level = lvl
                                
         self.sf_values = nonan_unique(params['sf'].to_numpy()).tolist()
         self.tf_values = nonan_unique(params['tf'].to_numpy()).tolist()
         
-        self.session_dir = self.prot_file.split('/')[-2]
-        self.experiment_name = self.prot_file.split('/')[-1].split('.')[0]
+        self.session_dir = self.prot_file.split(os.sep)[-2]
+        self.experiment_name = self.prot_file.split(os.sep)[-1].split('.')[0]
         
         self.animalid = self.session_dir.split('_')[1]
         self.user = self.session_dir.split('_')[-1]
         self.set_date(self.session_dir.split(os.sep)[-1].split('_')[0])
         
-        self.set_weight_and_water()
+        self.set_weight_and_water(skip_google=skip_google)
         self.generate_session_id()
 
     def init_from_dict(self):
@@ -77,21 +90,21 @@ class SessionMeta:
             create_epoch = os_stat.st_ctime
         self.time = dt.fromtimestamp(create_epoch).strftime('%H%M')
         
-    def set_weight_and_water(self):
+    def set_weight_and_water(self,skip_google:bool=False) -> None:
         """ Gets the session weight from google sheet"""
-        logsheet = GSheet('Mouse Database_new')
-        gsheet_df = logsheet.read_sheet(2)
-        gsheet_df = gsheet_df[(gsheet_df['Mouse ID'] == self.animalid) & (gsheet_df['Date [YYMMDD]'] == int(self.baredate))]
-        if not gsheet_df.empty:
-            gsheet_df.reset_index(inplace=True)
-            self.weight = gsheet_df['weight [g]'].iloc[0]
-            try:
-                self.water_consumed = int(gsheet_df['rig water [µl]'].iloc[0])
-            except:
-                self.water_consumed = None
-        else:
-            self.weight = None
-            self.water_consumed = None
+        self.weight = None
+        self.water_consumed = None
+        if not skip_google:
+            logsheet = GSheet('Mouse Database_new')
+            gsheet_df = logsheet.read_sheet(2)
+            gsheet_df = gsheet_df[(gsheet_df['Mouse ID'] == self.animalid) & (gsheet_df['Date [YYMMDD]'] == int(self.baredate))]
+            if not gsheet_df.empty:
+                gsheet_df.reset_index(inplace=True)
+                self.weight = gsheet_df['weight [g]'].iloc[0]
+                try:
+                    self.water_consumed = int(gsheet_df['rig water [µl]'].iloc[0])
+                except:
+                    self.water_consumed = None
         
     def generate_session_id(self) -> None:
         """ Generates a unique session id for the session """
@@ -100,6 +113,7 @@ class SessionMeta:
             self.session_id = self.baredate + self.time + mouse_part
         except:
             raise RuntimeError(f'Failed to create session id for {self.session_dir}')
+
 
 class SessionData:
     """ The SessionData object is to pass around the session data to plotters and analyzers"""
@@ -147,8 +161,7 @@ class Session:
     def __init__(self, 
                  sessiondir, 
                  load_flag=False, 
-                 save_mat=False, 
-                 runno = None,
+                 save_mat=False,
                  *args, 
                  **kwargs):
         self.sessiondir = sessiondir
@@ -159,13 +172,13 @@ class Session:
         self.logversion = 'stimpy'
         
         # initialize relevant data paths, the log version and the database interface
-        self.init_data_paths(runno)
+        self.init_data_paths()
         
         self.logger = Logger(log_path=self.data_paths.analysisPath, append=self.load_flag)
         
         self.db_interface = DataBaseInterface(self.data_paths.config['databasePath'])
         
-    def overall_session_no(self):
+    def overall_session_no(self) -> int:
         """ Gets the session number of the session"""
         mouse_entry = self.db_interface.get_entries({'id':self.meta.animalid},table_name='animals')
         if len(mouse_entry):
@@ -177,46 +190,69 @@ class Session:
         current_session_no = last_session_no + 1
         return current_session_no
                 
-    def init_data_paths(self,runno=None) -> None:
+    def init_data_paths(self) -> None:
         """ Initializes the relevant data paths (log,pref,prot) and creates the savepath"""
-        self.data_paths = DataPaths(self.sessiondir,runno)
+        self.data_paths = DataPaths(self.sessiondir)
 
         if not os.path.exists(self.data_paths.savePath):
             # make dirs
             os.makedirs(self.data_paths.savePath)
-            display('Save path does not exist, created save folder at {0}'.format(self.data_paths.savePath))
+            display(f'Save path does not exist, created save folder at {self.data_paths.savePath}')
     
+    @staticmethod
+    def read_combine_logs(stimlog_paths:str|list, riglog_paths:str|list) -> tuple[pl.DataFrame, list]:
+        """ Reads the logs and combines them if multiple logs of same type exist in the run directory"""
+        if isinstance(stimlog_paths,list) and isinstance(riglog_paths,list):
+            assert len(stimlog_paths) == len(riglog_paths), f'The number stimlog files need to be equal to amount of riglog files {len(stimlog_paths)}=/={len(riglog_paths)}'
+                
+            stim_data_all = []
+            rig_data_all = []
+            stim_comments = []
+            rig_comments = []
+            for i,s_log in enumerate(stimlog_paths):
+                try:
+                    temp_slog,temp_scomm = parseStimpyLog(s_log)
+                except:
+                    # probably not the right stimpy version, try github
+                    temp_slog, temp_scomm = parseStimpyGithubLog(s_log)
+                temp_rlog,temp_rcomm = parseStimpyLog(riglog_paths[i])
+                stim_data_all.append(temp_slog)
+                rig_data_all.append(temp_rlog)
+                stim_comments.extend(temp_scomm)
+                rig_comments.extend(temp_rcomm)
+                
+            stim_data = stitchLogs(stim_data_all,isStimlog=True) # stimlog
+            rig_data = stitchLogs(rig_data_all,isStimlog=False)  # riglog
+        else:
+            try:
+                stim_data, stim_comments = parseStimpyLog(stimlog_paths)
+            except:
+                stim_data, stim_comments = parseStimpyGithubLog(stimlog_paths)
+            rig_data, rig_comments = parseStimpyLog(riglog_paths)
+        
+        rawdata = {**stim_data, **rig_data}
+        comments = stim_comments + rig_comments
+        return rawdata, comments
+        
     @timeit('Read data')
     def read_data(self) -> None:
         """ Reads the data from concatanated riglog and stimlog files"""
         if self.logversion == 'pyvstim':
             self.rawdata, self.comments = parseVStimLog(self.data_paths.log)
         elif self.logversion == 'stimpy':
-            # because there are two different log files now, they have to be combined into a single data variable
-            if isinstance(self.data_paths.stimlog,list) and isinstance(self.data_paths.riglog,list):
-                assert len(self.data_paths.stimlog) == len(self.data_paths.riglog), f'The number stimlog files need to be equal to amount of riglog files {len(self.data_paths.stimlog)}=/={len(self.data_paths.riglog)}'
-                self.logger.error(' UNEQUAL LOG FILE COUNT! ')
-                
-                stim_data_all = []
-                rig_data_all = []
-                stim_comments = []
-                rig_comments = []
-                for i,s_log in enumerate(self.data_paths.stimlog):
-                    temp_slog,temp_scomm = parseStimpyLog(s_log)
-                    temp_rlog,temp_rcomm = parseStimpyLog(self.data_paths.riglog[i])
-                    stim_data_all.append(temp_slog)
-                    rig_data_all.append(temp_rlog)
-                    stim_comments.extend(temp_scomm)
-                    rig_comments.extend(temp_rcomm)
-                    
-                stim_data = stitchLogs(stim_data_all,isStimlog=True) # stimlog
-                rig_data = stitchLogs(rig_data_all,isStimlog=False)  # riglog
-            else:
-                stim_data, stim_comments = parseStimpyLog(self.data_paths.stimlog)
-                rig_data, rig_comments = parseStimpyLog(self.data_paths.riglog)
-            self.rawdata = {**stim_data, **rig_data}
-            self.comments = stim_comments + rig_comments
-            self.rawdata = extrapolate_time(self.rawdata)
+            if len(self.data_paths.runPaths) > 1:
+                # multiple runs
+                self.rawdata = []
+                self.comments = []
+                for r in self.data_paths.runPaths:
+                    rawdata, comments = self.read_combine_logs(r['stimlog'],r['riglog'])
+                    self.rawdata.append(extrapolate_time(rawdata))
+                    self.comments.append(comments)
+            elif len(self.data_paths.runPaths) == 1:
+                # single run, the stimlog and riglog attributes of the data_paths will point to the run logs
+                rawdata, comments = self.read_combine_logs(self.data_paths.stimlog,self.data_paths.riglog)
+                self.rawdata = [extrapolate_time(rawdata)]
+                self.comments = [comments]
         self.logger.info('Read rawdata')
                     
     def extract_trial_count(self):
@@ -234,11 +270,15 @@ class Session:
         loadable = False
         # the 'stim_pos and 'wheel' columns are saved as lists in DataFrame columns!
         if os.path.exists(self.data_paths.savePath):
-            if os.path.exists(self.data_paths.data):
-                loadable = True
-                self.logger.info('Found saved data: {0}'.format(self.data_paths.data),cml=True)
-            else:
-                self.logger.info(f'{self.data_paths.savePath} exists but no data file is present...',cml=True)
+            loadable = True
+            for r in self.data_paths.dataPaths:
+                if os.path.exists(r):
+                    tmp_loadable = True
+                    self.logger.info(f'Found saved data: {r}',cml=True)
+                else:
+                    tmp_loadable = False
+                    self.logger.info(f'{self.data_paths.savePath} exists but no data file is present...',cml=True)
+                loadable = loadable and tmp_loadable
         else:
             display('THIS SHOULD NOT HAPPEN')
         return loadable

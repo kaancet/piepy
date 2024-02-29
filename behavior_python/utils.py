@@ -6,6 +6,7 @@ import os
 import json
 import sys
 import time
+from ast import literal_eval
 
 from tqdm import tqdm
 from datetime import datetime as dt
@@ -244,14 +245,8 @@ def parseCamLog(fname):
             camlogheader = [c.replace(' ','') for c in cod]
         elif c.startswith('# Commit hash:'):
             commit = c.strip('# Commit hash:').strip(' ')
-
-    camdata = pd.read_csv(fname,
-                      names = camlogheader,
-                      delimiter=',',
-                      header=None,comment='#',
-                      engine='c')
-    
-    
+            
+    camdata = pl.read_csv(fname,has_header=False,comment_prefix='#',new_columns=camlogheader)
     return camdata,comments,commit
 
 # TODO: Data from stimlog and riglog now has to be combined downstrem
@@ -282,10 +277,10 @@ def parseStimpyLog(fname):
     codes = {}
     for c in comments:
         if c.startswith('# CODES:'):
-            code_list = c.strip('# CODES:').strip(' ').split(',')
+            code_list = c.strip('# CODES').strip(': ').split(',')
             for code_str in code_list:
                 code_name,code_nr = code_str.split('=')
-                codes[int(code_nr)] = code_name
+                codes[int(code_nr)] = code_name.lower()
         elif c.startswith('# VLOG HEADER:'):
             header_list = c.strip('# VLOG HEADER:').strip(' ').split(',')
             vlogheader = [header_str.replace(' ','') for header_str in header_list]
@@ -349,6 +344,118 @@ def parseStimpyLog(fname):
         display(f'No data found for log key(s) : {not_found}')        
     return data,comments
 
+def parseStimpyGithubLog(fname) -> dict:
+    """ """
+    headers = []
+    markers = []
+    sources = []        
+    comments = []
+    with open(fname, 'r') as file:
+        lines = file.readlines()
+    
+    for l in lines:
+        line = l.strip('\n').strip('\r')
+        if l.startswith('####'):
+            headers.append(line)
+        elif line.startswith('###'):
+            markers.append(line)
+        elif line.startswith('##'):
+            sources.append(line)
+        elif line.startswith('#'):
+            comments.append(line)
+      
+    # make a source parser dict
+    source_key_cols = {}
+    source_key_name = {}
+    for s in sources:
+        """e.g.:'## 2:StateMachine ['state', 'prev_state']'"""
+        temp, args = s.split(' ', 2)[-2:]
+        code_str, name = temp.split(':', 1)
+        code = int(code_str)
+        cols = literal_eval(args)
+        
+        source_key_cols[code] = ['code', 'time'] + cols
+        
+        #make names similar to old stimpy
+        if name == 'StateMachine': name = 'stateMachine'
+        if name == 'FunctionBased': name = 'vstim'
+        if name == 'PhotoIndicator': name = 'photo'
+        
+        source_key_name[code] = name
+    
+    """
+    # Below part for columns types is hard-coded, 
+    # this can easily be pulled from a log.config file in the future,
+    # which is planned for future implementation for flexible logging
+    """
+    # first two is always int(code) and float(time)                                
+    source_key_type = {0:[pl.Int64, pl.Float64, pl.Float64, pl.Float64, pl.Float64, pl.Float64, pl.List, pl.List, pl.Int64, pl.Boolean, pl.Utf8, pl.Float64, pl.Float64, pl.Boolean, pl.Utf8], # 0:FunctionBased ['duration', 'contrast', 'ori', 'phase', 'pos', 'size', 'flick', 'interpolate', 'mask', 'sf', 'tf', 'opto', 'pattern']
+                       1:[pl.Int64, pl.Float64, pl.Boolean, pl.Float64, pl.List, pl.Utf8, pl.Int64, pl.Int64, pl.Boolean],  # 1:PhotoIndicator ['state', 'size', 'pos', 'units', 'mode', 'frames', 'enabled']
+                       2:[pl.Int64, pl.Float64, pl.Int64, pl.Int64], ## 2:StateMachine ['state', 'prev_state']
+                       3:[pl.Int64, pl.Float64, pl.Int64, pl.Int64, pl.Int64, pl.Int64]} ## 3:LogDict ['block_nr', 'trial_nr', 'condition_nr', 'trial_type']
+    
+    for k in source_key_cols.keys():
+        col_count = len(source_key_cols[k])
+        type_count = len(source_key_type[k])
+        assert col_count == type_count, f"The number of column names({col_count}) =/= column types({type_count})"
+        
+        
+    logdata = pl.read_csv(fname,
+                          comment_prefix='#',
+                          separator=',',
+                          has_header=False)
+    
+    data = {}
+    for k,v in source_key_name.items():
+        col_names = source_key_cols[k]
+        col_types = source_key_type[k]
+        code_filt = logdata.filter(pl.col('column_1')==k)
+        
+        # reattach the columns where the list was seperated
+        _list_starts = []
+        _list_ends = []
+        for c in code_filt.columns:
+            _val = code_filt[0,c]
+            if isinstance(_val,str):
+                if '[' in _val:
+                    _list_starts.append(c)
+                elif ']' in _val:
+                    _list_ends.append(c)
+        
+        assert len(_list_starts) == len(_list_ends), f"PROBLEMATIC LOGGING OF LISTS !!"
+        for i,c_l in enumerate(_list_starts):
+            code_filt = code_filt.with_columns((pl.col(c_l)+','+pl.col(_list_ends[i])).alias(c_l))
+            code_filt = code_filt.with_columns((pl.col(c_l).str.json_decode()))
+            code_filt = code_filt.drop(_list_ends[i])
+        
+        # rename the columns
+        code_filt = code_filt.rename({code_filt.columns[i]:c for i,c in enumerate(col_names)})
+        
+        # drops the columns that are all null
+        keeping = []
+        for i,col in enumerate(code_filt):
+            if not col.null_count() == code_filt.height:
+                keeping.append(i)
+        col_names = [col_names[i] for i in keeping]
+        col_types = [col_types[i] for i in keeping]
+        code_filt = code_filt.select(col_names)
+        
+        # try to change dtypes
+ 
+        for i,c in enumerate(code_filt.columns):
+            t = col_types[i]
+            if t!=pl.List:
+                try:
+                    code_filt = code_filt.with_columns(pl.col(c).cast(t))
+                except pl.InvalidOperationError:
+                    # for converting string boolean to boolean
+                    code_filt = code_filt.with_columns(pl.col(c).str.to_lowercase().map_dict({"true":True, "false":False}))
+        # drop the code column from all of the data
+        code_filt =  code_filt.drop('code')
+        data[v] = code_filt
+
+    return data,comments
+        
 def stitchLogs(data_list:list,isStimlog:bool) -> dict:
     """ Stitches the seperate log files """
 
@@ -361,7 +468,7 @@ def stitchLogs(data_list:list,isStimlog:bool) -> dict:
                 if k == 'vstim':
                     to_append[k] = to_append[k].with_columns([(pl.col('presentTime')+v[-1,'presentTime']),
                                                               (pl.col('iTrial')+v[-1,'iTrial']+1)])
-                elif k == 'stateMachine':
+                elif k == 'statemachine':
                     to_append[k] = to_append[k].with_columns([(pl.col('elapsed')+v[-1,'elapsed']),
                                                               (pl.col('cycle')+v[-1,'cycle'])])
             else:
@@ -396,8 +503,9 @@ def extrapolate_time(data):
                                                   0]))!=0)[0]
         elif 'photo' in data['vstim'].columns:
             indkey = 'photo'
+            vstim_data = data['vstim'].to_pandas()
             fliploc = np.where(np.diff(np.hstack([0,
-                                                  data['vstim']['photo']==0,
+                                                  vstim_data['photo']==0,
                                                   0]))!=0)[0]
         
         if len(data['screen'])==len(fliploc):

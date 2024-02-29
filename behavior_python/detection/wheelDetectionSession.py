@@ -42,7 +42,7 @@ class WheelDetectionData(SessionData):
     def enhance_data(self,pattern_names:dict,isgrating:bool=False) -> None:
         # add a isgrating column
         if 'is_grating' not in self.data.columns:
-            self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[int(isgrating)]*len(self.data)})],how='horizontal')
+            self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[bool(isgrating)]*len(self.data)})],how='horizontal')
             # add stim type
             self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str)+'cpd_'+pl.col('temporal_freq').cast(str)+'Hz').alias('stim_type'))
             self.data = self.data.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
@@ -56,11 +56,17 @@ class WheelDetectionData(SessionData):
                 # add stim_label for legends and stuff
                 self.data = self.data.with_columns((pl.col("stim_type")).alias('stim_label'))
             else:
-                try:
-                # add the pattern name depending on pattern id
-                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['state_outcome']!=-1 else None).alias('opto_region'))        
-                except:
-                    raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
+                if isinstance(pattern_names,dict):
+                    try:
+                    # add the pattern name depending on pattern id
+                        self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['state_outcome']!=-1 else None).alias('opto_region'))        
+                    except:
+                        raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
+                elif isinstance(pattern_names,str):
+                    display(f"{self.data_paths.patternPath} NO OPTO PATTERN DIRECTORY!!")
+                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names if x['state_outcome']!=-1 else None).alias('opto_region'))
+                else:
+                    raise ValueError(f"Weird pattern name: {pattern_names}")
                 # add 'stimkey' from sftf
                 self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
                 # add stim_label for legends and stuff
@@ -69,10 +75,10 @@ class WheelDetectionData(SessionData):
     def get_session_images(self):
         """ Reads the related session images(window, pattern,etc)
         Returns a dict with images and also a dict that """
-        sesh_imgs = {}
-        pattern_names = {}
-        sesh_patterns = {}
         if os.path.exists(self.data_paths.patternPath):
+            sesh_imgs = {}
+            pattern_names = {}
+            sesh_patterns = {}
             for im in os.listdir(self.data_paths.patternPath):
                 if im.endswith('.tif'):
                     pattern_id = int(im[:-4].split('_')[-1])
@@ -89,7 +95,11 @@ class WheelDetectionData(SessionData):
                     name = im.split('_')[1]
                     read_bmp = np.array(Image.open(pjoin(self.data_paths.patternPath,im)))
                     sesh_patterns[name] = read_bmp[::-1,::-1]
-        
+        else:
+            sesh_imgs = None
+            pattern_names = None
+            sesh_patterns = None
+            pattern_names = '*'+self.data_paths.patternPath.split('_')[4]+'*'
         return sesh_imgs,sesh_patterns,pattern_names
 
 
@@ -162,7 +172,7 @@ class WheelDetectionSession(Session):
         super().__init__(sessiondir, *args, **kwargs)
         
         start = time.time()
-        
+        self.trial_list = []
         # add specific data paths
         self.data_paths.metaPath = pjoin(self.data_paths.savePath,'sessionMeta.json')
         self.data_paths.statPath = pjoin(self.data_paths.savePath,'sessionStats.json')
@@ -174,9 +184,13 @@ class WheelDetectionSession(Session):
             self.data.set_outcome(kwargs.get('outcome_type','state'))
             
         else:
-            self.set_meta()
+            self.set_meta(**kwargs)
             self.read_data()
 
+            if len(self.rawdata) == 1:
+                # this will be the case in opto silencing experiments as there is single runs in sessions
+                self.rawdata = self.rawdata[0]
+                self.comments = self.comments[0]
             session_data = self.get_session_data()
             # session_data = get_running_stats(session_data)
             
@@ -207,33 +221,18 @@ class WheelDetectionSession(Session):
         r = f'Detection Session {self.sessiondir}'
         return r
     
-    def set_meta(self):
-        self.meta = SessionMeta(self.data_paths.prot)
+    def set_meta(self,**kwargs):
+        self.meta = SessionMeta(prot_file=self.data_paths.prot,**kwargs)
         self.meta.logversion = self.logversion
         self.meta.set_rig(self.data_paths.prefs)
         
         self.meta.contrastVector = [float(i) for i in self.meta.contrastVector.strip('] [').strip(' ').split(',')]
 
-        
         if hasattr(self.meta,'easyContrast'):
             self.meta.easyContrast = [float(i) for i in self.meta.easyContrast.strip('] [').strip(' ').split(',')]
 
         if hasattr(self.meta,'stimRegion'):
             self.meta.stimRegion = [float(i) for i in self.meta.stimRegion.strip('] [').strip(' ').split(',')]
-
-        tmp = self.data_paths.prot
-
-        lvl = ''
-        if tmp.find('level') != -1:
-            tmp = tmp[tmp.find('level')+len('level'):]
-            for char in tmp:
-                if char not in ['.','_']:
-                    lvl += char
-                else:
-                    break      
-        else:
-            lvl = 'exp'
-        self.meta.level = lvl
     
     @timeit('Saving...')
     def save_session(self) -> None:
@@ -280,8 +279,8 @@ class WheelDetectionSession(Session):
     
     def get_session_data(self) -> pl.DataFrame:
         data_to_append = []
-        self.rawdata['stateMachine'] = self.rawdata['stateMachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
-        self.states = self.rawdata['stateMachine']
+        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
+        self.states = self.rawdata['statemachine']
         
         self.logger.info(f'Setting global indexing keys for {self.logversion} logging')
         
@@ -301,6 +300,7 @@ class WheelDetectionSession(Session):
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
             if trial_row['state_outcome'] is not None:
+                self.trial_list.append(temp_trial)
                 if t == 1:
                     data_to_append = {k:[v] for k,v in trial_row.items()}
                 else:
