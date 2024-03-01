@@ -321,6 +321,17 @@ def parseStimpyLog(fname):
         q = q.with_columns(pl.col('*').cast(pl.Float32,strict=False))
 
         col_names = {k:vlogheader[i] for i,k in enumerate(q.columns)}
+        logdata = q.select(
+            [
+                pl.col("code").str.strip("["),
+                pl.col("timereceived"),
+                pl.col("duinotime"),
+                pl.col("value").str.strip("]"),
+            ]
+        ).collect()
+        logdata = logdata.with_columns(
+            pl.col("*").str.strip(" ").cast(pl.Float32, strict=False)
+        )
         logdata = q.rename(col_names).collect()
         
     data = {}
