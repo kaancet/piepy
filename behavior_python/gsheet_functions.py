@@ -3,12 +3,12 @@ import pandas as pd
 import gspread
 from googleapiclient import discovery
 from oauth2client.service_account import ServiceAccountCredentials
-from .utils import display, getConfig
+from .utils import display, parseConfig
 
 # define the scope
 scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
-config = getConfig()
-cred_path = config['gsheetPath']
+config = parseConfig()
+cred_path = config['gsheet']
 
 
 class GSheet:

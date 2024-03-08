@@ -140,8 +140,8 @@ class Color:
     __slots__ = ['colorkey_path','stim_keys','contrast_keys','outcome_keys']
     def __init__(self):
          # this is hardcoded for now, fix this
-        cfg = getConfig()
-        self.colorkey_path = cfg['colorsPath']
+        cfg = parseConfig()
+        self.colorkey_path = cfg['colors'][0]
         self.read_colors()
         
     

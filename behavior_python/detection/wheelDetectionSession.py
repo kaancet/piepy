@@ -3,24 +3,27 @@ from PIL import Image
 import tifffile as tf
 import scipy.stats as st
 from os.path import join as pjoin
-from behavior_python.core.session import Session, SessionData, SessionMeta
-from .wheelDetectionTrial import *
+
 from tabulate import tabulate
+from ..core.logger import Logger
+from ..core.session import Session
+from .wheelDetectionTrial import *
+from ..core.run import RunData, Run
+from ..core.pathfinder import PathFinder
 
 
-class WheelDetectionData(SessionData):
-    def __init__(self,data_paths,data:pl.DataFrame=None) -> None:
-        super().__init__()
-        self.set_paths(data_paths)
-        self.set_data(data)
-
-    def set_data(self,data:pl.DataFrame,isgrating:bool=False) -> None:
+class WheelDetectionData(RunData):
+    def __init__(self,data:pl.DataFrame=None) -> None:
+        super().__init__(data)
+        
+    def set_data(self,data:pl.DataFrame) -> None:
+        """ Sets the data of the session and augments it"""
         if data is not None:
             super().set_data(data)
-            self.pattern_imgs, self.patterns, pattern_names = self.get_session_images()
-            self.enhance_data(pattern_names,isgrating)
+            self.add_qolumns()
             
     def set_outcome(self,outcome_type:str='state') -> None:
+        """ Sets the outcome column to the selected column"""
         display(f'Setting outcome to {outcome_type}')
         col_name = f'{outcome_type}_outcome'
         if 'outcome' not in self.data.columns:
@@ -30,7 +33,7 @@ class WheelDetectionData(SessionData):
                 tmp = self.data[col_name]
                 self.data.replace('outcome', tmp)
             else:
-                raise ValueError(f"{outcome_type} is not a valid outcome type!!! Try 'wheel' or 'state'.")
+                raise ValueError(f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'.")
             
     def compare_outcomes(self) -> None:
         """ Compares the different outcome types and prints a small summary table"""
@@ -38,69 +41,75 @@ class WheelDetectionData(SessionData):
         q = self.data.groupby(out_cols).agg([pl.count().alias("count")]).sort(["state_outcome"])
         tmp = q.to_pandas()
         print(tabulate(tmp,headers=q.columns))
-            
-    def enhance_data(self,pattern_names:dict,isgrating:bool=False) -> None:
-        # add a isgrating column
-        if 'is_grating' not in self.data.columns:
-            self.data = pl.concat([self.data,pl.DataFrame({"is_grating":[bool(isgrating)]*len(self.data)})],how='horizontal')
-            # add stim type
-            self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str)+'cpd_'+pl.col('temporal_freq').cast(str)+'Hz').alias('stim_type'))
-            self.data = self.data.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
-                
-            if len(self.data['opto'].unique().to_numpy()) == 1:
-                # Regular training sessions
+        
+    def add_qolumns(self) -> None:
+        """ Adds some quality of life (qol) columns """
+        #adds string stimtype
+        self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str) + 'cpd_' + 
+                                            pl.col('temporal_freq').cast(str) + 'Hz').alias('stim_type'))
+        
+        # add signed contrast
+        self.data = self.data.with_columns(pl.when(pl.col("stim_side")=="ipsi")
+                                           .then((pl.col("contrast")*-1))
+                                           .otherwise(pl.col("contrast")).alias("signed_contrast"))
+        
+    def add_pattern_related_columns(self) -> None:
+        """ Adds columns related to the silencing pattern if they exist """
+        if len(self.data['opto'].unique()) == 1:
+            # Regular training sessions
+            # add the pattern name depending on pattern id
+            self.data = self.data.with_columns(pl.lit(None).alias('opto_region'))
+            # add 'stimkey' from sftf
+            self.data = self.data.with_columns((pl.col("stim_type")+'_-1').alias('stimkey'))
+            # add stim_label for legends and stuff
+            self.data = self.data.with_columns((pl.col("stim_type")).alias('stim_label'))
+        else:
+            if isinstance(self.pattern_names,dict):
+                try:
                 # add the pattern name depending on pattern id
-                self.data = self.data.with_columns(pl.lit(None).alias('opto_region'))
-                # add 'stimkey' from sftf
-                self.data = self.data.with_columns((pl.col("stim_type")+'_-1').alias('stimkey'))
-                # add stim_label for legends and stuff
-                self.data = self.data.with_columns((pl.col("stim_type")).alias('stim_label'))
+                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"])
+                                                       .apply(lambda x: self.pattern_names[x['opto_pattern']] if x['state_outcome']!=-1 else None).alias('opto_region'))        
+                except:
+                    raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to an integer (0,-1,1,..)!')
+            elif isinstance(self.pattern_names,str):
+                display(f"{self.paths.opto_pattern} NO OPTO PATTERN DIRECTORY!!")
+                self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"])
+                                                   .apply(lambda x: self.pattern_names if x['state_outcome']!=-1 else None).alias('opto_region'))
             else:
-                if isinstance(pattern_names,dict):
-                    try:
-                    # add the pattern name depending on pattern id
-                        self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names[x['opto_pattern']] if x['state_outcome']!=-1 else None).alias('opto_region'))        
-                    except:
-                        raise KeyError(f'Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to 0!')
-                elif isinstance(pattern_names,str):
-                    display(f"{self.data_paths.patternPath} NO OPTO PATTERN DIRECTORY!!")
-                    self.data = self.data.with_columns(pl.struct(["opto_pattern", "state_outcome"]).apply(lambda x: pattern_names if x['state_outcome']!=-1 else None).alias('opto_region'))
-                else:
-                    raise ValueError(f"Weird pattern name: {pattern_names}")
-                # add 'stimkey' from sftf
-                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
-                # add stim_label for legends and stuff
-                self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
-                       
-    def get_session_images(self):
-        """ Reads the related session images(window, pattern,etc)
-        Returns a dict with images and also a dict that """
-        if os.path.exists(self.data_paths.patternPath):
-            sesh_imgs = {}
-            pattern_names = {}
-            sesh_patterns = {}
-            for im in os.listdir(self.data_paths.patternPath):
+                raise ValueError(f"Weird pattern name: {self.pattern_names}")
+            
+            # add 'stimkey' from sftf
+            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_pattern").cast(pl.Int8,strict=False).cast(str)).alias('stimkey'))
+            # add stim_label for legends and stuff
+            self.data = self.data.with_columns((pl.col("stim_type")+'_'+pl.col("opto_region")).alias('stim_label'))
+
+    def get_opto_images(self,get_from:str) -> None:
+        """ Reads the related run images(window, pattern, etc)
+            Returns a dict with images and also a dict that """
+        if get_from is not None and os.path.exists(get_from):
+            self.sesh_imgs = {}
+            self.pattern_names = {}
+            self.sesh_patterns = {}
+            for im in os.listdir(get_from):
                 if im.endswith('.tif'):
                     pattern_id = int(im[:-4].split('_')[-1])
-                    read_img = tf.imread(pjoin(self.data_paths.patternPath,im))
+                    read_img = tf.imread(pjoin(get_from,im))
                     if pattern_id == -1:
-                        sesh_imgs['window'] = read_img
-                        pattern_names[pattern_id] = 'nonopto'
+                        self.sesh_imgs['window'] = read_img
+                        self.pattern_names[pattern_id] = 'nonopto'
                     else:  
                         name = im[:-4].split('_')[-2]
-                        pattern_names[pattern_id] = name
-                        sesh_imgs[name] = read_img
+                        self.pattern_names[pattern_id] = name
+                        self.sesh_imgs[name] = read_img
                 elif im.endswith('.bmp'):
                     pattern_id = int(im.split('_')[0])
                     name = im.split('_')[1]
-                    read_bmp = np.array(Image.open(pjoin(self.data_paths.patternPath,im)))
-                    sesh_patterns[name] = read_bmp[::-1,::-1]
+                    read_bmp = np.array(Image.open(pjoin(get_from,im)))
+                    self.sesh_patterns[name] = read_bmp[::-1,::-1]
         else:
-            sesh_imgs = None
-            pattern_names = None
-            sesh_patterns = None
-            pattern_names = '*'+self.data_paths.patternPath.split('_')[4]+'*'
-        return sesh_imgs,sesh_patterns,pattern_names
+            self.sesh_imgs = None
+            self.sesh_patterns = None
+            self.pattern_names = None# '*'+self.paths.pattern.split('_')[4]+'*'
 
 
 class WheelDetectionStats:
@@ -166,137 +175,52 @@ class WheelDetectionStats:
     def get_dict(self)->dict:
         return {key : getattr(self, key, None)for key in self.__slots__}
 
-    
-class WheelDetectionSession(Session):
-    def __init__(self, sessiondir, *args, **kwargs):
-        super().__init__(sessiondir, *args, **kwargs)
-        
-        start = time.time()
+
+class WheelDetectionRun(Run):
+    def __init__(self, run_no: int, _path: PathFinder, **kwargs) -> None:
+        super().__init__(run_no, _path)
         self.trial_list = []
-        # add specific data paths
-        self.data_paths.metaPath = pjoin(self.data_paths.savePath,'sessionMeta.json')
-        self.data_paths.statPath = pjoin(self.data_paths.savePath,'sessionStats.json')
-        self.data = WheelDetectionData(self.data_paths)
+        self.data = WheelDetectionData()
         
-        if self.isSaved() and self.load_flag:
-            self.logger.info(f'Loading from {self.data_paths.savePath}',cml=True)
-            self.load_session()
-            self.data.set_outcome(kwargs.get('outcome_type','state'))
-            
-        else:
-            self.set_meta(**kwargs)
-            self.read_data()
-
-            if len(self.rawdata) == 1:
-                # this will be the case in opto silencing experiments as there is single runs in sessions
-                self.rawdata = self.rawdata[0]
-                self.comments = self.comments[0]
-            session_data = self.get_session_data()
-            # session_data = get_running_stats(session_data)
-            
-            g = 'grating' in self.data_paths.stimlog
-            
-            self.data.set_data(session_data,g)
-            self.data.set_outcome(kwargs.get('outcome_type','state'))
-            self.stats = WheelDetectionStats(data_in=self.data)
-            
-            if self.meta.water_consumed is not None:
-                self.meta.water_per_reward = self.meta.water_consumed / self.stats.correct_count
-            else:
-                self.logger.warning('CONSUMED REWARD NOT ENTERED IN GOOGLE SHEET')
-                self.meta.water_per_reward = -1
-                
-            # add some metadata to the dataframe
-            self.data.data = self.data.data.with_columns([pl.lit(self.meta.animalid).alias('animalid'),
-                                                          pl.lit(self.meta.baredate).alias('baredate')])
-            
-            self.data.data = self.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, format='%y%m%d').cast(pl.Date).alias('date'))
-            self.save_session()
-            self.logger.info(f'Saving data to {self.data_paths.savePath}',cml=True)
+    def analyze_run(self):
+        """ """
+        self.read_run_data()
+        run_data = self.get_run_trials_from_data()
         
-        end = time.time()
-        self.logger.info(f'Done! t={(end-start):.2f} s',cml=True)
+        # set the data object
+        self.data.set_data(run_data)
         
-    def __repr__(self):
-        r = f'Detection Session {self.sessiondir}'
-        return r
+        # get related images(silencing patterns etc)
+        self.data.get_opto_images(self.paths.opto_pattern)
+        self.data.add_pattern_related_columns()
+        
+        self.data.set_outcome('state')
+        self.stats = WheelDetectionStats(data_in=self.data) 
     
-    def set_meta(self,**kwargs):
-        self.meta = SessionMeta(prot_file=self.data_paths.prot,**kwargs)
-        self.meta.logversion = self.logversion
-        self.meta.set_rig(self.data_paths.prefs)
-        
-        self.meta.contrastVector = [float(i) for i in self.meta.contrastVector.strip('] [').strip(' ').split(',')]
-
-        if hasattr(self.meta,'easyContrast'):
-            self.meta.easyContrast = [float(i) for i in self.meta.easyContrast.strip('] [').strip(' ').split(',')]
-
-        if hasattr(self.meta,'stimRegion'):
-            self.meta.stimRegion = [float(i) for i in self.meta.stimRegion.strip('] [').strip(' ').split(',')]
-    
-    @timeit('Saving...')
-    def save_session(self) -> None:
-        """ Saves the session data, meta and stats"""
-        self.data.save_data(self.save_mat)
-
-        save_dict_json(self.data_paths.metaPath, self.meta.__dict__)
-        self.logger.info('Saved session metadata')
-
-        save_dict_json(self.data_paths.statPath, self.stats.get_dict())
-        self.logger.info("Saved session stats")
-    
-    @timeit('Loaded all data')
-    def load_session(self):
-        """ Loads the saved session data """
-        meta = load_json_dict(self.data_paths.metaPath)
-        self.meta = SessionMeta(init_dict=meta)
-        self.logger.info('Loaded session metadata')
-        
-        self.data.load_data()
-        self.logger.info('Loaded session data')
-
-        stats = load_json_dict(self.data_paths.statPath)
-        self.stats = WheelDetectionStats(dict_in=stats)
-        self.logger.info('Loaded Session stats')
-        
-    def translate_transition(self,oldState,newState) -> dict:
-        """ 
-        A function to be called that add the meaning of state transitions into the state DataFrame
-        """
-        curr_key = '{0}->{1}'.format(int(oldState), int(newState))
-        state_keys = {'0->1' : 'trialstart',
-                      '1->2' : 'cuestart',
-                      '2->3' : 'stimstart',
-                      '2->5' : 'early',
-                      '3->4' : 'hit',
-                      '3->5' : 'miss',
-                      '3->6' : 'catch',
-                      '6->0' : 'trialend',
-                      '4->6' : 'stimendcorrect',
-                      '5->6' : 'stimendincorrect'}
-        
-        return state_keys[curr_key] 
-    
-    def get_session_data(self) -> pl.DataFrame:
+    def get_run_trials_from_data(self) -> pl.DataFrame:
+        """ Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial """
         data_to_append = []
+    
         self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
         self.states = self.rawdata['statemachine']
-        
-        self.logger.info(f'Setting global indexing keys for {self.logversion} logging')
-        
+                
         if self.states.shape[0] == 0:
             self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
             return None
         
         trials = np.unique(self.states['cycle'])
-        if len(trials) == 1 and len(self.states) > 6 and self.logversion=='stimpy':
+        if len(trials) == 1 and len(self.states) > 6:
             # this is a failsafe for some early stimpy data where trial count has not been incremented
             self.extract_trial_count()
             trials = np.unique(self.states[self.column_keys['trialNo']])
             
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
-        for t in pbar:         
-            temp_trial = WheelDetectionTrial(int(t),meta=self.meta,logger=self.logger)
+        for t in pbar:
+            # instantiate a trial      
+            temp_trial = WheelDetectionTrial(trial_no = int(t),
+                                             meta = self.meta,
+                                             logger = self.logger)
+            # get the data slice using state changes
             temp_trial.get_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
             if trial_row['state_outcome'] is not None:
@@ -315,16 +239,16 @@ class WheelDetectionSession(Session):
             pbar.update()        
         
         self.logger.set_msg_prefix('session')
-        session_data = pl.DataFrame(data_to_append)
+        r_data = pl.DataFrame(data_to_append)
         
         # add a stim_side column for ease of access
-        session_data = session_data.with_columns(pl.when(pl.col("stim_pos") > 0).then(pl.lit("contra"))
+        r_data = r_data.with_columns(pl.when(pl.col("stim_pos") > 0).then(pl.lit("contra"))
                                                     .when(pl.col("stim_pos") < 0).then(pl.lit("ipsi"))
                                                     .when(pl.col("stim_pos") == 0).then(pl.lit("catch"))
                                                     .otherwise(None).alias("stim_side"))
         
         # add easy/hard contrast type groups
-        session_data = session_data.with_columns(pl.when(pl.col('contrast') >= 25)
+        r_data = r_data.with_columns(pl.when(pl.col('contrast') >= 25)
                                                  .then(pl.lit("easy"))
                                                  .when((pl.col('contrast') < 25) & (pl.col('contrast') > 0))
                                                  .then(pl.lit("hard"))
@@ -333,23 +257,105 @@ class WheelDetectionSession(Session):
                                                  .otherwise(None).alias("contrast_type"))
         
         # add contrast titration boolean
-        uniq_stims = nonan_unique(session_data['contrast'].to_numpy())
+        uniq_stims = nonan_unique(r_data['contrast'].to_numpy())
         isTitrated = 0
         if len(uniq_stims) > len(self.meta.contrastVector):
             isTitrated = 1
-        session_data = session_data.with_columns([pl.lit(isTitrated).cast(pl.Boolean).alias('isTitrated')])
+        r_data = r_data.with_columns([pl.lit(isTitrated).cast(pl.Boolean).alias('isTitrated')])
         
         # round sf and tf
-        session_data = session_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
+        r_data = r_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
                                                   (pl.col('temporal_freq').round(1).alias('temporal_freq'))])
         
-
-        if session_data.is_empty():
+        if r_data.is_empty():
             self.logger.error("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
-            return session_data
+            return r_data
+    
+    def translate_transition(self,oldState,newState) -> dict:
+        """ 
+        A function to be called that add the meaning of state transitions into the state DataFrame
+        """
+        curr_key = '{0}->{1}'.format(int(oldState), int(newState))
+        state_keys = {'0->1' : 'trialstart',
+                      '1->2' : 'cuestart',
+                      '2->3' : 'stimstart',
+                      '2->5' : 'early',
+                      '3->4' : 'hit',
+                      '3->5' : 'miss',
+                      '3->6' : 'catch',
+                      '6->0' : 'trialend',
+                      '4->6' : 'stimendcorrect',
+                      '5->6' : 'stimendincorrect'}
+        
+        return state_keys[curr_key]
 
+    def save_run(self) -> None:
+        """ Saves the run data, meta and stats """
+        super().save_run()
+
+        for s_path in self.paths.save:
+            save_dict_json(pjoin(s_path,'sessionStats.json'), self.stats.get_dict())
+            self.logger.info(f"Saved session stats to {s_path}")
+        
+    def load_run(self) -> None:
+        """ Loads the run data and stats if exists """
+        super().load_run()
+        
+        for s_path in self.paths.save:
+            stat_path = pjoin(s_path,'sessionStats.json')
+            if os.path.exists(stat_path):
+                stats = load_json_dict(stat_path)
+                self.stats = WheelDetectionStats(dict_in=stats)
+                self.logger.info(f'Loaded Session stats from {s_path}')
+                break
+        
+    
+class WheelDetectionSession(Session):
+    def __init__(self, sessiondir,load_flag:bool,save_mat:bool=False,**kwargs):
+        start = time.time()
+        super().__init__(sessiondir, load_flag, save_mat)
+        
+        # sets session meta
+        self.set_session_meta(skip_google=kwargs.get('skip_google',False))
+        
+        # initialize runs : read and parse or load the data 
+        self.init_runs()
+        
+        for run in self.runs:
+            run.init_run_meta()
+            # transferring some session metadata to run metadata
+            run.meta.imaging_mode = self.meta.imaging_mode
+            if run.is_run_saved() and self.load_flag:
+                display(f'Loading from {run.paths.save}')
+                run.load_run()
+                # initially sets the outcome to be the outcome from the python state machine
+                run.data.set_outcome('state')
+            else:
+                run.analyze_run()
+        
+                # add some metadata to run datas for ease of manipulation
+                run.data.data = run.data.data.with_columns([pl.lit(self.meta.animalid).alias('animalid'),
+                                                            pl.lit(self.meta.baredate).alias('baredate')])
+                run.data.data = run.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, format='%y%m%d').cast(pl.Date).alias('date'))
+
+                run.save_run()
+        
+        end = time.time()
+        display(f'Done! t={(end-start):.2f} s')
+        
+    def __repr__(self):
+        r = f'Detection Session {self.sessiondir}'
+        return r
+    
+    def init_runs(self) -> None:
+        """ Initializes runs in a session """
+        self.runs = []
+        self.run_count = len(self.paths.all_paths['stimlog'])
+        for r in range(self.run_count):
+            self.runs.append(WheelDetectionRun(r,self.paths))
+        
 
 @timeit('Getting rolling averages...')
 def get_running_stats(data_in:pd.DataFrame,window_size:int=20) -> pd.DataFrame:

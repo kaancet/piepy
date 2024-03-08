@@ -119,7 +119,7 @@ def load_json_dict(path: str) -> dict:
         return json.load(f_in)
 
 #TODO: there is definetly a better way to do this?
-def getConfig():
+def parseConfig():
     # set the directory paths and animal ids
     config_dir = os.path.dirname(os.path.abspath(__file__))
     while True:
@@ -249,7 +249,6 @@ def parseCamLog(fname):
     camdata = pl.read_csv(fname,has_header=False,comment_prefix='#',new_columns=camlogheader)
     return camdata,comments,commit
 
-# TODO: Data from stimlog and riglog now has to be combined downstrem
 def parseStimpyLog(fname):
     """ Parses the log file (riglog or stimlog) and returns data and comments
 
@@ -326,7 +325,15 @@ def parseStimpyLog(fname):
     data = {}
     not_found = []
     for code_nr in tqdm(codes.keys(),desc='Reading logs '):
-        code_key = codes[code_nr]
+        # TODO: cam1=6,cam2=7,cam3=8 changing the code_keys for later, semi hardcoded and depends on rig!!
+        if code_nr == 6:
+            code_key = 'facecam'
+        elif code_nr == 7:
+            code_key = 'eyecam'
+        elif code_nr == 8:
+            code_key = 'onepcam'
+        else:
+            code_key = codes[code_nr]
         data[code_key] = logdata.filter(pl.col('code') == code_nr)
         if len(data[code_key]):
             """

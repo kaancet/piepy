@@ -5,7 +5,7 @@ from ..wheelTrace import WheelTrace
 
 
 class WheelDetectionTrial(Trial):
-    def __init__(self,trial_no:int,meta,logger:Logger) -> None:
+    def __init__(self,trial_no:int,meta,logger) -> None:
         super().__init__(trial_no,meta,logger)
     
     def get_vstim_props(self) -> dict:
@@ -15,7 +15,7 @@ class WheelDetectionTrial(Trial):
         ignore = ['iTrial','photo','code','presentTime']
         
         vstim = self.data['vstim']
-        vstim = vstim.drop_nulls()
+        vstim = vstim.drop_nulls(subset=['prob'])
         # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
         vstim = vstim[:-1]
         
@@ -66,7 +66,7 @@ class WheelDetectionTrial(Trial):
         self._attrs_from_dict(vstim_dict)      
         return vstim_dict
     
-    def get_wheel_pos(self,**kwargs) -> dict:
+    def get_wheel_traces(self,**kwargs) -> dict:
         """ Extracts the wheel trajectories and resets the positions according to time_anchor"""
         thresh_in_ticks = kwargs.get('tick_thresh',self.meta.wheelThresholdStim)
         speed_thresh = thresh_in_ticks/kwargs.get('time_thresh',17) #17 is the avg ms for a loop
@@ -154,6 +154,8 @@ class WheelDetectionTrial(Trial):
         every key starting with t_ is an absolute time starting from experiment start
         """
         empty_log_data = {'t_trialstart' : self.t_trialstart, # this is an absolute value
+                          'vstim_offset' : self.vstim_offset,
+                          'state_offset' : self.state_offset,
                           't_stimstart' : None,
                           't_stimend': None,
                           'state_outcome' : None}
@@ -173,7 +175,7 @@ class WheelDetectionTrial(Trial):
         # trial init and blank duration
         cue  = self.data['state'].filter(pl.col('transition') == 'cuestart')
         if len(cue):
-            state_log_data['t_trialinit'] = cue[0,'elapsed']
+            state_log_data['t_trialinit'] = cue[0,'corrected_elapsed']
             state_log_data['t_quiescence_dur'] = cue[0,'stateElapsed']
             try:
                 temp_blank = cue[0,'blankDuration']
@@ -191,7 +193,7 @@ class WheelDetectionTrial(Trial):
         
         # stimulus start
         else:
-            state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'elapsed'] 
+            state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition') == 'stimstart')[0,'corrected_elapsed'] 
             
             #hit
             hit = self.data['state'].filter(pl.col('transition') == 'hit')
@@ -217,7 +219,6 @@ class WheelDetectionTrial(Trial):
                     # actual miss >= 1000
                     state_log_data['state_outcome'] = 0
                     state_log_data['response_latency'] = temp_resp
-                    state_log_data['t_stimend'] = miss[0,'elapsed']
         
         if state_log_data['state_outcome'] is None:
             # this happens when training with 0 contrast, -1 means there was no answer
@@ -228,11 +229,9 @@ class WheelDetectionTrial(Trial):
         if state_log_data['t_stimstart'] is not None:
             try:
                 if state_log_data['state_outcome'] != 1:
-                    temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendincorrect'))[0,'elapsed']
+                    state_log_data['t_stimend'] = self.data['state'].filter((pl.col('transition') == 'stimendincorrect'))[0,'corrected_elapsed']
                 else:
-                    temp_stim_end = self.data['state'].filter((pl.col('transition') == 'stimendcorrect'))[0,'elapsed']
-                    
-                state_log_data['t_stimend'] = temp_stim_end - state_log_data['t_stimstart_absolute']
+                    state_log_data['t_stimend'] = self.data['state'].filter((pl.col('transition') == 'stimendcorrect'))[0,'corrected_elapsed']
             except:
                 # this means that the trial was cut short, should only happen in last trial
                 self.logger.warning('Stimulus appeared but not disappeared, is this expected??')
@@ -240,34 +239,6 @@ class WheelDetectionTrial(Trial):
         state_log_data['t_trialend'] = self.t_trialend
         self._attrs_from_dict(state_log_data)
         return state_log_data
-    
-    def get_screen_events(self) -> dict:
-        """
-        Gets the screen pulses from rig data
-        """
-        screen_dict = {'t_stimstart_rig' : None,
-                       't_stimend_rig' : None}
-            
-        if 'screen' in self.data.keys():
-            screen_data = self.data['screen']
-            screen_arr = screen_data.select(['duinotime','value']).to_numpy()
-            
-            
-            #TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION
-            if self.state_outcome != -1:
-                if len(screen_arr) == 1:
-                    self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
-                    screen_dict['t_stimstart_rig'] = screen_arr[0,0]
-                elif len(screen_arr) > 2:
-                    self.logger.error('More than 2 screen events per trial, this is not possible')
-                elif len(screen_arr) == 0:
-                    self.logger.critical('NO SCREEN EVENT FOR STIMULUS TRIAL!')
-                else:
-                    screen_dict['t_stimstart_rig'] = screen_arr[0,0]
-                    screen_dict['t_stimend_rig'] = screen_arr[1,0]
-            
-        self._attrs_from_dict(screen_dict)
-        return screen_dict
     
     def trial_data_from_logs(self,**wheel_kwargs) -> dict:
         """ 
@@ -284,13 +255,18 @@ class WheelDetectionTrial(Trial):
         # vstim
         vstim_dict = self.get_vstim_props()
         # wheel
-        wheel_dict = self.get_wheel_pos(**wheel_kwargs)
+        wheel_dict = self.get_wheel_traces(**wheel_kwargs)
         # lick
         lick_dict = self.get_licks()
         # reward
         reward_dict = self.get_reward()
         # opto
         opto_dict = self.get_opto()
+        
+        frames_dict = {}
+        for c in ['eyecam','facecam','onepcam']:
+            tmp = self.get_frames(get_from=c)
+            frames_dict = {**frames_dict, **tmp}
         
         trial_log_data = {**trial_log_data,
                           **state_dict,
@@ -299,6 +275,7 @@ class WheelDetectionTrial(Trial):
                           **wheel_dict, 
                           **lick_dict,
                           **reward_dict,
-                          **opto_dict}
+                          **opto_dict,
+                          **frames_dict}
         
         return trial_log_data

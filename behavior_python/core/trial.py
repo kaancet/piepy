@@ -1,6 +1,6 @@
-from numpy import ndarray
-from ..utils import *
-from .core import Logger
+import polars as pl
+import numpy as np
+from ..utils import parseConfig
 from .dbinterface import DataBaseInterface
 
 
@@ -8,7 +8,7 @@ class Trial:
     __slots__ = ['trial_no','data','column_keys',
                  't_trialstart','t_trialend','db_interface','total_trial_count',
                  'reward_ms_per_ul','meta','logger']
-    def __init__(self,trial_no:int,meta,logger:Logger) -> None:
+    def __init__(self, trial_no:int, meta, logger) -> None:
         
         self.trial_no = trial_no
         self.meta = meta
@@ -16,8 +16,8 @@ class Trial:
         self.reward_ms_per_ul = 0
         self.logger.set_msg_prefix(f'trial-[{self.trial_no}]')
         
-        config = getConfig()
-        self.db_interface = DataBaseInterface(config['databasePath'])
+        config = parseConfig()
+        self.db_interface = DataBaseInterface(config['database'])
         
     def __repr__(self) -> str:
         rep = f"""Trial No :{self.trial_no}
@@ -32,6 +32,52 @@ class Trial:
         for k,v in log_data.items():
             setattr(self,k,v)
     
+    def get_state_slice_and_correct_time_frame(self, rawdata:dict) -> None:
+        """ """
+        states = rawdata['statemachine']
+        states = states.rename({"cycle":"trialNo"})
+        vstim = rawdata['vstim']
+        vstim = vstim.with_columns((pl.col('presentTime')*1000).alias('presentTime')) #ms
+        screen = rawdata['screen']
+    
+        state_slice = states.filter(pl.col('trialNo')==self.trial_no)
+        state_start = state_slice[0,'elapsed']
+        state_end = state_slice[-1,'elapsed']
+        
+        vstim_slice = vstim.filter(pl.col('iTrial')==self.trial_no)        
+        
+        screen_slice = screen.filter((pl.col('duinotime') >= state_start) &
+                                     ((pl.col('duinotime') <= state_end)))
+        
+        if len(screen_slice):
+            #there is an actual screen event
+            rig_onset = screen_slice[0,'duinotime']
+            
+            # vstim time
+            vstim_onset = vstim_slice.filter(pl.col('photo')==True)[0,'presentTime']
+            
+            # state time
+            state_onset = state_slice.filter(pl.col('transition')=='stimstart')[0,'elapsed']
+            
+            vstim_offset = vstim_onset - rig_onset
+            state_offset = state_onset - rig_onset
+        else:
+            vstim_offset = 0
+            state_offset = 0
+        
+        vstim_slice = vstim_slice.with_columns((pl.col('presentTime')-vstim_offset).alias('corrected_presentTime'))
+        state_slice = state_slice.with_columns((pl.col('elapsed')-state_offset).alias('corrected_elapsed'))
+        
+        self.vstim_offset = vstim_offset
+        self.state_offset = state_offset
+        
+        self.data = {'state' : state_slice}
+        self.data['vstim'] = vstim_slice
+        self.data['screen'] = screen_slice
+        
+        self.t_trialstart = state_slice['corrected_elapsed'][0]
+        self.t_trialend = state_slice['corrected_elapsed'][-1]
+    
     def get_data_slices(self,rawdata:dict) -> pl.DataFrame:
         """
         Extracts the relevant portion from each data 
@@ -40,27 +86,23 @@ class Trial:
         :return: DataFrame slice of corresponding trial no
         """
         rig_cols = ['screen','imaging','position','lick',
-                    'button','reward','lap','cam1','cam2',
-                    'cam3','act0','act1','opto']
+                    'button','reward','lap','facecam','eyecam',
+                    'onepcam','act0','act1','opto']
         
-        states = rawdata['statemachine']
-        states = states.rename({"cycle":"trialNo"})
-        
-        state_slice = states.filter(pl.col('trialNo')==self.trial_no)
-        self.data = {'state' : state_slice}
-        
-        self.t_trialstart = state_slice['elapsed'][0]
-        self.t_trialend = state_slice['elapsed'][-1]
+        self.get_state_slice_and_correct_time_frame(rawdata)
 
+        # rig and stimlog
         for k,v in rawdata.items():
-            if k == 'statemachine':
+            if k in ['statemachine','vstim','screen']:
+                # skip because already looked into it
                 continue
             if not v.is_empty():
                 t_start = self.t_trialstart
                 t_end = self.t_trialend
                 
                 if k in rig_cols:
-                     temp_v = v.filter((pl.col('duinotime') >= self.t_trialstart) & (pl.col('duinotime') <= self.t_trialend))
+                     temp_v = v.filter((pl.col('duinotime') >= self.t_trialstart) & 
+                                       (pl.col('duinotime') <= self.t_trialend))
                     
                 if k == 'vstim':
                     # since we don't need any time info from vstim, just get trial no
@@ -151,3 +193,54 @@ class Trial:
         self._attrs_from_dict(opto_dict)
         return opto_dict
     
+    def get_screen_events(self) -> dict:
+        """ Gets the screen pulses from rig data """
+        screen_dict = {'t_stimstart_rig' : None,
+                       't_stimend_rig' : None}
+        
+        if 'screen' in self.data.keys():
+            screen_data = self.data['screen']
+            screen_arr = screen_data.select(['duinotime','value']).to_numpy()
+
+            if len(screen_arr) == 1:
+                self.logger.error('Only one screen event! Stimulus appeared but not dissapeared?')
+                # assumes the single pulse is stim on
+                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+            elif len(screen_arr) > 2:
+                # TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION?
+                self.logger.error('More than 2 screen events per trial, this is not possible')
+            elif len(screen_arr) == 0:
+                self.logger.critical('NO SCREEN EVENT FOR STIMULUS TRIAL!')
+            else:
+                # This is the correct stim ON/OFF scenario
+                screen_dict['t_stimstart_rig'] = screen_arr[0,0]
+                screen_dict['t_stimend_rig'] = screen_arr[1,0]
+                
+        self._attrs_from_dict(screen_dict)        
+        return screen_dict
+    
+    def get_frames(self,get_from:str=None, **kwargs) -> dict:
+        """ Extracts the frames from designated imaging mode, returns None if no"""
+
+        start_frame = None
+        frame_ids = []
+        if not self.meta.imaging_mode is None:
+            if get_from in self.data.keys():
+                rig_frames_data = self.data[get_from] # this should already be the frames of trial dur
+
+                if self.t_stimstart_rig is not None:
+                    # get stim present slice
+                    rig_frames_data = rig_frames_data.filter((pl.col('duinotime') >= self.t_stimstart_rig) & 
+                                                            (pl.col('duinotime') <= self.t_stimend_rig))
+                    
+                    if len(rig_frames_data):
+                        start_frame = int(rig_frames_data[0,'value'])
+                        frame_ids = [int(rig_frames_data[0,'value']), int(rig_frames_data[-1,'value'])]
+                
+                    else:
+                        self.logger.critical(f'{get_from} no camera pulses recorded during stim presentation!!! THIS IS BAD!')
+        frames_dict = {f'{get_from}_stimstart': start_frame,
+                       f'{get_from}_frame_ids':frame_ids}
+        
+        self._attrs_from_dict(frames_dict)
+        return frames_dict

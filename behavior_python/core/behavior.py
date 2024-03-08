@@ -1,4 +1,4 @@
-from .core import *
+from .logger import *
 import glob
 import natsort
 import scipy.io as sio

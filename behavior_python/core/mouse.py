@@ -1,4 +1,4 @@
-from .core import *
+from .logger import *
 import matplotlib.pyplot as plt
 
 
