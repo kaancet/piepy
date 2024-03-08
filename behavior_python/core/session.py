@@ -97,6 +97,7 @@ class Session:
         # every Session object has a meta, session_data and stat attribute
         self.load_flag = load_flag
         self.save_mat = save_mat
+        self.runs = []
         
         # find relevant data paths
         self.paths = PathFinder(self.sessiondir)
@@ -110,7 +111,6 @@ class Session:
     def init_session_runs(self) -> None:
         """ Initializes runs in a session, 
             to be overwritten by other Session types(e.g. WheelDetectionSession)"""
-        self.runs = []
         self.run_count = len(self.paths.stimlog)
         for r in range(self.run_count):
             self.runs.append(Run(r,self.paths))
@@ -126,6 +126,13 @@ class Session:
         """ Helper method to loop through the runs and load data and stats """
         for run in self.runs:
             run.load_run()
+            
+    @property
+    def data(self):
+        if len(self.runs) == 1:
+            return self.runs[0].data.data
+        else:
+            raise ValueError(f"Session has {self.runs} runs, can't get a single session data :(")
     
     ####
     # DATABASE RELATED, NOT USED AT THE MOMENT
