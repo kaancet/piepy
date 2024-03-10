@@ -103,26 +103,22 @@ class OnePSession(Session):
     def _generate_frames_for_analysis(self, 
                                       pre_stim_t:float, 
                                       post_stim_t:float,
-                                      fixed_count:int=None) -> None:
-        
+                                      fixed_dur:int = None) -> None:
+
         extra_start_frames = int(np.round(pre_stim_t / self.frame_t))
         extra_end_frames = int(np.round(post_stim_t / self.frame_t))
-        
+    
         #!!
         self.make_stim_matrix(extra_start_frames,extra_end_frames)
         
-        if fixed_count is None:
+        if fixed_dur is None:
             # return the minimum frame count
             min_count = np.min(self.stim_mat[:,6])
         else:
-            if fixed_count < 0:
-                raise ValueError(f'Fixed frame count can"t be negative. got {fixed_count}')
-            
-            if fixed_count < np.min(self.stim_mat[:,6]):
-                print(f'>>> WARNING <<< Fixed frame count is too low; there are trials with less then {fixed_count} frames, using {np.min(self.stim_mat[:,6])} frames instead.')
-                min_count = np.min(self.stim_mat[:,6])
-            else:
-                min_count = fixed_count
+            fixed_count_frames = int(np.round(fixed_dur / self.frame_t))
+            if fixed_count_frames < 0:
+                raise ValueError(f'Fixed frame count can"t be negative. got {fixed_count_frames}')
+            min_count = fixed_count_frames
         
         # getting rid of trials with less then minimum frame (for recordings during the task) 
         mask = np.ones((len(self.stim_mat)),dtype='bool')
@@ -153,7 +149,7 @@ class OnePSession(Session):
             
             self._generate_frames_for_analysis(pre_stim_t=kwargs.get('pre_stim_t',0),
                                                post_stim_t=kwargs.get('post_stim_t',0),
-                                               fixed_count=kwargs.get('fixed_count',None))
+                                               fixed_dur=kwargs.get('fixed_dur',None))
             
             trial_avg = self.get_run_trial_average(batch_count=kwargs.get('batch_count',1),
                                                    downsample=kwargs.get('downsample',1),
@@ -334,44 +330,37 @@ class OnePSession(Session):
             3-screen duration
         """
         screen_df = self.selected_rawdata['screen']
-        self.screen_times = screen_df['duinotime'].to_numpy()
-        
-        self.screen_times
-        
         idx = 1 if screen_df[0,'value'] == 0 else 0 # sometimes screen events have a 0 value entry at the beginning
         
-        starts = screen_df.slice(offset=idx).gather_every(2)['duinotime'].to_numpy()
-        ends = screen_df.slice(offset=idx+1).gather_every(2)['duinotime'].to_numpy()
+        starts = screen_df.slice(offset=idx).gather_every(2)
+        ends = screen_df.slice(offset=idx+1).gather_every(2)
+        ends = ends.drop('code')
+        ends = ends.rename({'timereceived':'timereceived_end',
+                            'duinotime':'duinotime_end'})
         
-        trial_durs = ends-starts
-        if np.diff(trial_durs)[0]>1000:
+        epoch_df = starts.join(ends,on='value',how='left')
+        epoch_df = epoch_df.with_columns((pl.col('duinotime_end')-pl.col('duinotime')).alias('screen_duration'))
+        
+        if epoch_df[1,'screen_duration'] - epoch_df[0,'screen_duration']>1000:
             # sometimes for some reason the first trial is an extra
-            starts = starts[1:]
-            ends = ends[1:]
-            trial_durs = trial_durs[1:]
-            self.screen_times = self.screen_times[1:]  
-    
-        if len(self.screen_times) > 2*len(trial_durs):
-            display(f'Missmatch in lengths after stim time manipulation!!')
-            self.screen_times = self.screen_times[1:]
+            epoch_df = epoch_df[1:]
             
-        trials = np.arange(1,len(starts)+1).reshape(-1,1)
+        trials = pl.Series('trial_no',np.arange(1,len(epoch_df)+1))
+        epoch_df = epoch_df.with_columns(trials)
         
-        self.screen_epochs = np.hstack((trials,
-                                        starts.reshape(-1,1),
-                                        ends.reshape(-1,1),
-                                        trial_durs.reshape(-1,1))).astype(int)
+        self.screen_epochs = epoch_df.select(['trial_no','duinotime','duinotime_end','screen_duration']).with_columns(pl.col('*').cast(pl.Int64)).to_numpy()
         
     def filter_vstim(self) -> None:
         """ Removes the blank time in the beginning and converts str to numeric values"""
         for i,data in enumerate(self.rawdata):
             vstim = data['vstim']
             vstim = vstim.drop_nulls(subset=['photo'])
-            try:
+            # makes teh iStim column
+            if 'iStim' in vstim.columns:
                 vstim = vstim.with_columns(pl.col('iStim').cast(pl.Int32))
-            except pl.ColumnNotFoundError:
-                istim = [0]*len(vstim)
-                vstim = vstim.with_columns(iStim=istim)
+            else:
+                istim = pl.Series('iStim',[0]*len(vstim))
+                vstim = vstim.with_columns(istim)
             self.rawdata[i]['vstim'] = vstim
     
     def _correct_stimlog_times(self) -> None:
@@ -380,15 +369,17 @@ class OnePSession(Session):
         photodiodes =  self.selected_rawdata['vstim']['photo'].to_numpy()
         state_times = self.selected_rawdata['statemachine']['elapsed'].to_numpy()
         
-        first_stim_onset = np.round(stim_times[np.where(photodiodes==1)][0])
-        photodiode_onset = self.screen_times[0]
-        offset = first_stim_onset - photodiode_onset
-        corrected_times = stim_times - offset
-        state_corrected = state_times - offset
+        # vstim time
+        vstim_onset = np.round(stim_times[np.where(photodiodes==1)][0])
+        photodiode_onset = self.screen_epochs[0,1] #first 
         
-        self.selected_rawdata['vstim'] = self.selected_rawdata['vstim'].with_columns(corrected_times=corrected_times)
-        self.selected_rawdata['statemachine'] = self.selected_rawdata['statemachine'].with_columns(corrected_times=state_corrected)
-        display(f"Corrected the stimlog times by shifting {offset} seconds")
+        offset = vstim_onset - photodiode_onset
+        corrected_times = pl.Series('corrected_times',stim_times - offset)
+        state_corrected = pl.Series('corrected_times',state_times - offset)
+        
+        self.selected_rawdata['vstim'] = self.selected_rawdata['vstim'].with_columns(corrected_times)
+        self.selected_rawdata['statemachine'] = self.selected_rawdata['statemachine'].with_columns(state_corrected)
+        display(f"Corrected the stimlog and statemachine times by shifting {offset} seconds")
            
     def make_stim_matrix(self,extra_start_frames:int=0,extra_end_frames:float=0) -> None:
         """Iterates the screen epoch matrix """
@@ -401,7 +392,7 @@ class OnePSession(Session):
         prev_epoch_end = 0
         for i,row in enumerate(self.screen_epochs):
             
-            epoch_times = row[1:3] - [0, 60] # is this the blank at the end??
+            epoch_times = row[1:3] #- [0, 60] # is this the blank at the end??
             stim_data = vstim.filter((pl.col('corrected_times') >= epoch_times[0]) &
                                      (pl.col('corrected_times') <= epoch_times[1]))
             
