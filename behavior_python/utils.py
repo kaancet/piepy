@@ -564,10 +564,10 @@ def parseProtocolFile(protfile):
                     tmp[1] = tmp[1].split('#')[0]
                 options[tmp[0]] = tmp[1].replace('\r','')
                 try:
-                    prot[tmp[0]] = int(prot[tmp[0]])
+                    options[tmp[0]] = int(options[tmp[0]])
                 except:
                     try:
-                        prot[tmp[0]] = float(prot[tmp[0]])
+                        options[tmp[0]] = float(options[tmp[0]])
                     except:
                         pass
             else:

@@ -132,7 +132,7 @@ class Session:
         if len(self.runs) == 1:
             return self.runs[0].data.data
         else:
-            raise ValueError(f"Session has {self.runs} runs, can't get a single session data :(")
+            raise ValueError(f"Session has {len(self.runs)} runs, can't get a single session data :(")
     
     ####
     # DATABASE RELATED, NOT USED AT THE MOMENT

@@ -71,7 +71,7 @@ class PathFinder:
             save_paths = []
             if tmp_runs is not None:
                 for t in tmp_runs:
-                    save_paths.append([pjoin(pp,t) for pp in self.config['analysis']])
+                    save_paths.append([pjoin(pp,self.sessiondir,t) for pp in self.config['analysis']])
                     # self.all_paths['analysis'].append([self.config['analysis']])
             else:
                 # self.all_paths['analysis'] = [self.config['analysis']]

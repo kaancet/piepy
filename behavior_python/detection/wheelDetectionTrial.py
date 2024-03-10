@@ -8,7 +8,7 @@ class WheelDetectionTrial(Trial):
     def __init__(self,trial_no:int,meta,logger) -> None:
         super().__init__(trial_no,meta,logger)
     
-    def get_vstim_props(self) -> dict:
+    def get_vstim_properties(self) -> dict:
         """ 
         Extracts the necessary properties from vstim data
         """
@@ -253,7 +253,7 @@ class WheelDetectionTrial(Trial):
         # screen
         screen_dict = self.get_screen_events()
         # vstim
-        vstim_dict = self.get_vstim_props()
+        vstim_dict = self.get_vstim_properties()
         # wheel
         wheel_dict = self.get_wheel_traces(**wheel_kwargs)
         # lick
@@ -262,7 +262,7 @@ class WheelDetectionTrial(Trial):
         reward_dict = self.get_reward()
         # opto
         opto_dict = self.get_opto()
-        
+        # camera frames
         frames_dict = {}
         for c in ['eyecam','facecam','onepcam']:
             tmp = self.get_frames(get_from=c)
