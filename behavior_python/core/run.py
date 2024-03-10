@@ -17,24 +17,23 @@ class RunMeta:
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
                   'progressWindow', 'debiasingWindow', 'decimationRatio']
         self.opto = False
-        opts,params = parseProtocolFile(self.prot_file)
+        self.opts,self.params = parseProtocolFile(self.prot_file)
         # put all of the options into meta attributes
-        for k, v in opts.items():
+        for k, v in self.opts.items():
             if k not in ignore:
                 try:
                     v = float(v.strip(' '))
                 except:
                     pass
-                setattr(self, k, v)
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
-                        
-        # parse contrast vector
-        self.contrastVector = [float(i) for i in self.contrastVector.strip('] [').strip(' ').split(',')]
-                        
+                elif k == 'contrastVector':
+                    v = [float(i) for i in v.strip('] [').strip(' ').split(',')]
+                setattr(self, k, v)
+
         if self.opto:
-            self.opto_mode = int(opts.get('optoMode',0)) #0 continuous, 1 pulsed
+            self.opto_mode = int(self.opts.get('optoMode',0)) #0 continuous, 1 pulsed
 
         lvl = ''
         if self.prot_file.find('level') != -1:
@@ -47,9 +46,6 @@ class RunMeta:
         else:
             lvl = 'exp'
         self.level = lvl
-                               
-        self.sf_values = nonan_unique(params['sf'].to_numpy()).tolist()
-        self.tf_values = nonan_unique(params['tf'].to_numpy()).tolist()
         
         os_stat = os.stat(self.prot_file)
         if sys.platform == 'darwin':
@@ -168,13 +164,28 @@ class Run:
             pass
     
         # try eyecam and facecam either way
-        if os.path.exists(self.paths.eyecamlog):
+        if self.paths.eyecam is not None and os.path.exists(self.paths.eyecamlog):
             self.rawdata['eyecam_log'],self.comments['eyecam'],_ = parseCamLog(self.paths.eyecamlog)
         
-        if os.path.exists(self.paths.facecamlog):
+        if self.paths.facecam is not None and os.path.exists(self.paths.facecamlog):
             self.rawdata['facecam_log'],self.comments['facecam'],_ = parseCamLog(self.paths.facecamlog)            
                 
         display('Read rawdata')
+        
+    def check_and_translate_state_data(self) -> bool:
+        """ Checks if state data exists and translated the state transitions according to defined translation dictionary
+        This function needs the translate transition to be defined beforehand """
+        if self.rawdata['statemachine'].is_empty():
+            self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
+            return False
+        
+        # do the translation
+        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
+        
+        # rename cycle to 'trialNo for semantic reasons
+        self.rawdata['statemachine'] = self.rawdata['statemachine'].rename({"cycle":"trialNo"})
+        
+        return True
         
     def is_run_saved(self) -> bool:
         """ Initializes the necessary save paths and checks if data already exists"""
@@ -203,15 +214,15 @@ class Run:
                 display(f"Loaded session data from {d_path}")
                 break
             
-    def extract_trial_count(self):
+    def extract_trial_count(self,num_state_changes:int):
         """ Extracts the trial no from state changes, this works for stimpy for now"""
         display('Trial increment faulty, extracting from state changes...')
-        self.states.reset_index(drop=True, inplace=True)
-        trial_end_list = self.states.index[self.states['oldState']==6].tolist()
-        temp_start = 0
-        for i,end in enumerate(trial_end_list,1):
-            self.states.loc[temp_start:end+1,'cycle'] = i
-            temp_start = end + 1
+        
+        trial_cnt = int(len(self.rawdata['statemachine'])/num_state_changes)
+        trial_no = np.repeat(np.arange(1,trial_cnt+1),num_state_changes)
+        
+        new_trial_no = pl.Series('trialNo',trial_no)
+        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(new_trial_no)
             
     def compare_cam_logging(self) -> None:
         """ Compares the camlogs with corresponding riglog recordings """

@@ -8,11 +8,19 @@ from tabulate import tabulate
 from ..core.logger import Logger
 from ..core.session import Session
 from .wheelDetectionTrial import *
-from ..core.run import RunData, Run
+from ..core.run import RunData, Run, RunMeta
 from ..core.pathfinder import PathFinder
 
 
-class WheelDetectionData(RunData):
+class WheelDetectionRunMeta(RunMeta):
+    def __init__(self, prot_file: str) -> None:
+        super().__init__(prot_file)
+        
+        self.sf_values = nonan_unique(self.params['sf'].to_numpy()).tolist()
+        self.tf_values = nonan_unique(self.params['tf'].to_numpy()).tolist()
+
+
+class WheelDetectionRunData(RunData):
     def __init__(self,data:pl.DataFrame=None) -> None:
         super().__init__(data)
         
@@ -44,6 +52,16 @@ class WheelDetectionData(RunData):
         
     def add_qolumns(self) -> None:
         """ Adds some quality of life (qol) columns """
+        # add a stim_side column for ease of access
+        self.data = self.data.with_columns(pl.when(pl.col("stim_pos") > 0).then(pl.lit("contra"))
+                                           .when(pl.col("stim_pos") < 0).then(pl.lit("ipsi"))
+                                           .when(pl.col("stim_pos") == 0).then(pl.lit("catch"))
+                                           .otherwise(None).alias("stim_side"))
+        
+        # round sf and tf
+        self.data = self.data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
+                                      (pl.col('temporal_freq').round(1).alias('temporal_freq'))])
+        
         #adds string stimtype
         self.data = self.data.with_columns((pl.col('spatial_freq').round(2).cast(str) + 'cpd_' + 
                                             pl.col('temporal_freq').cast(str) + 'Hz').alias('stim_type'))
@@ -52,6 +70,12 @@ class WheelDetectionData(RunData):
         self.data = self.data.with_columns(pl.when(pl.col("stim_side")=="ipsi")
                                            .then((pl.col("contrast")*-1))
                                            .otherwise(pl.col("contrast")).alias("signed_contrast"))
+        
+        # add easy/hard contrast type groups
+        self.data = self.data.with_columns(pl.when(pl.col('contrast') >= 25).then(pl.lit("easy"))
+                                           .when((pl.col('contrast') < 25) & (pl.col('contrast') > 0)).then(pl.lit("hard"))
+                                           .when(pl.col('contrast') == 0).then(pl.lit("catch"))
+                                           .otherwise(None).alias("contrast_type"))
         
     def add_pattern_related_columns(self) -> None:
         """ Adds columns related to the silencing pattern if they exist """
@@ -116,7 +140,7 @@ class WheelDetectionStats:
     __slots__ = ['all_count','early_count','stim_count','correct_count','miss_count',
                  'all_correct_percent','hit_rate','easy_hit_rate','false_alarm','nogo_percent',
                  'median_response_time','d_prime']
-    def __init__(self,dict_in:dict=None,data_in:WheelDetectionData=None) -> None:
+    def __init__(self,dict_in:dict=None,data_in:WheelDetectionRunData=None) -> None:
         if data_in is not None:
             self.init_from_data(data_in)
         elif dict_in is not None:
@@ -128,7 +152,7 @@ class WheelDetectionStats:
             rep += f'''{k} = {getattr(self,k,None)}\n'''
         return rep
     
-    def init_from_data(self,data_in:WheelDetectionData):
+    def init_from_data(self,data_in:WheelDetectionRunData):
         data = data_in.data
         early_data = data.filter((pl.col('outcome')==-1) & (pl.col('isCatch')==0))
         stim_data = data.filter((pl.col('outcome')!=-1) & (pl.col('isCatch')==0))
@@ -180,7 +204,7 @@ class WheelDetectionRun(Run):
     def __init__(self, run_no: int, _path: PathFinder, **kwargs) -> None:
         super().__init__(run_no, _path)
         self.trial_list = []
-        self.data = WheelDetectionData()
+        self.data = WheelDetectionRunData()
         
     def analyze_run(self):
         """ """
@@ -195,25 +219,20 @@ class WheelDetectionRun(Run):
         self.data.add_pattern_related_columns()
         
         self.data.set_outcome('state')
-        self.stats = WheelDetectionStats(data_in=self.data) 
+        self.stats = WheelDetectionStats(data_in=self.data)
+        
+    def init_run_meta(self):
+        """ Initializes the metadata for the run """
+        self.meta = WheelDetectionRunMeta(self.paths.prot)
     
     def get_run_trials_from_data(self) -> pl.DataFrame:
         """ Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial """
         data_to_append = []
-    
-        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
-        self.states = self.rawdata['statemachine']
-                
-        if self.states.shape[0] == 0:
-            self.logger.critical("NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",cml=True)
+        
+        if not self.check_and_translate_state_data():
             return None
         
-        trials = np.unique(self.states['cycle'])
-        if len(trials) == 1 and len(self.states) > 6:
-            # this is a failsafe for some early stimpy data where trial count has not been incremented
-            self.extract_trial_count()
-            trials = np.unique(self.states[self.column_keys['trialNo']])
-            
+        trials = np.unique(self.rawdata['statemachine']['trialNo'])
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
         for t in pbar:
             # instantiate a trial      
@@ -221,8 +240,9 @@ class WheelDetectionRun(Run):
                                              meta = self.meta,
                                              logger = self.logger)
             # get the data slice using state changes
-            temp_trial.get_data_slices(self.rawdata)
+            temp_trial.get_data_slices(self.rawdata,use_state=True)
             trial_row = temp_trial.trial_data_from_logs()
+            
             if trial_row['state_outcome'] is not None:
                 self.trial_list.append(temp_trial)
                 if t == 1:
@@ -241,31 +261,12 @@ class WheelDetectionRun(Run):
         self.logger.set_msg_prefix('session')
         r_data = pl.DataFrame(data_to_append)
         
-        # add a stim_side column for ease of access
-        r_data = r_data.with_columns(pl.when(pl.col("stim_pos") > 0).then(pl.lit("contra"))
-                                                    .when(pl.col("stim_pos") < 0).then(pl.lit("ipsi"))
-                                                    .when(pl.col("stim_pos") == 0).then(pl.lit("catch"))
-                                                    .otherwise(None).alias("stim_side"))
-        
-        # add easy/hard contrast type groups
-        r_data = r_data.with_columns(pl.when(pl.col('contrast') >= 25)
-                                                 .then(pl.lit("easy"))
-                                                 .when((pl.col('contrast') < 25) & (pl.col('contrast') > 0))
-                                                 .then(pl.lit("hard"))
-                                                 .when(pl.col('contrast') == 0)
-                                                 .then(pl.lit("catch"))
-                                                 .otherwise(None).alias("contrast_type"))
-        
         # add contrast titration boolean
         uniq_stims = nonan_unique(r_data['contrast'].to_numpy())
         isTitrated = 0
         if len(uniq_stims) > len(self.meta.contrastVector):
             isTitrated = 1
         r_data = r_data.with_columns([pl.lit(isTitrated).cast(pl.Boolean).alias('isTitrated')])
-        
-        # round sf and tf
-        r_data = r_data.with_columns([(pl.col('spatial_freq').round(2).alias('spatial_freq')),
-                                                  (pl.col('temporal_freq').round(1).alias('temporal_freq'))])
         
         if r_data.is_empty():
             self.logger.error("THERE IS NO SESSION DATA !!!", cml=True)
@@ -321,9 +322,21 @@ class WheelDetectionSession(Session):
         self.set_session_meta(skip_google=kwargs.get('skip_google',False))
         
         # initialize runs : read and parse or load the data 
-        self.init_runs()
+        self.init_session_runs()
         
-        for run in self.runs:
+        end = time.time()
+        display(f'Done! t={(end-start):.2f} s')
+        
+    def __repr__(self):
+        r = f'Detection Session {self.sessiondir}'
+        return r
+    
+    def init_session_runs(self) -> None:
+        """ Initializes runs in a session """
+        self.runs = []
+        self.run_count = len(self.paths.all_paths['stimlog'])
+        for r in range(self.run_count):
+            run = WheelDetectionRun(r,self.paths)
             run.init_run_meta()
             # transferring some session metadata to run metadata
             run.meta.imaging_mode = self.meta.imaging_mode
@@ -341,20 +354,8 @@ class WheelDetectionSession(Session):
                 run.data.data = run.data.data.with_columns(pl.col('baredate').str.strptime(pl.Date, format='%y%m%d').cast(pl.Date).alias('date'))
 
                 run.save_run()
-        
-        end = time.time()
-        display(f'Done! t={(end-start):.2f} s')
-        
-    def __repr__(self):
-        r = f'Detection Session {self.sessiondir}'
-        return r
-    
-    def init_runs(self) -> None:
-        """ Initializes runs in a session """
-        self.runs = []
-        self.run_count = len(self.paths.all_paths['stimlog'])
-        for r in range(self.run_count):
-            self.runs.append(WheelDetectionRun(r,self.paths))
+            
+            self.runs.append(run)
         
 
 @timeit('Getting rolling averages...')

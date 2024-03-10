@@ -1,7 +1,6 @@
 import polars as pl
 import numpy as np
 from ..utils import parseConfig
-from .dbinterface import DataBaseInterface
 
 
 class Trial:
@@ -17,7 +16,6 @@ class Trial:
         self.logger.set_msg_prefix(f'trial-[{self.trial_no}]')
         
         config = parseConfig()
-        self.db_interface = DataBaseInterface(config['database'])
         
     def __repr__(self) -> str:
         rep = f"""Trial No :{self.trial_no}
@@ -32,22 +30,26 @@ class Trial:
         for k,v in log_data.items():
             setattr(self,k,v)
     
-    def get_state_slice_and_correct_time_frame(self, rawdata:dict) -> None:
+    def get_state_slice_and_correct_time_frame(self, rawdata:dict,use_state:bool=False) -> None:
         """ """
         states = rawdata['statemachine']
-        states = states.rename({"cycle":"trialNo"})
         vstim = rawdata['vstim']
         vstim = vstim.with_columns((pl.col('presentTime')*1000).alias('presentTime')) #ms
         screen = rawdata['screen']
     
         state_slice = states.filter(pl.col('trialNo')==self.trial_no)
-        state_start = state_slice[0,'elapsed']
-        state_end = state_slice[-1,'elapsed']
-        
         vstim_slice = vstim.filter(pl.col('iTrial')==self.trial_no)        
         
-        screen_slice = screen.filter((pl.col('duinotime') >= state_start) &
-                                     ((pl.col('duinotime') <= state_end)))
+        if use_state:
+            state_start = state_slice[0,'elapsed']
+            state_end = state_slice[-1,'elapsed']
+        
+            screen_slice = screen.filter((pl.col('duinotime') >= state_start) &
+                                        ((pl.col('duinotime') <= state_end)))
+        else:
+            # there should be exactly 2x trial count screen events
+            # idx = 1 if screen[0,'value'] == 0 else 0 # sometimes screen events have a 0 value entry at the beginning
+            screen_slice = screen.filter(pl.col('value') == self.trial_no)
         
         if len(screen_slice):
             #there is an actual screen event
@@ -78,7 +80,7 @@ class Trial:
         self.t_trialstart = state_slice['corrected_elapsed'][0]
         self.t_trialend = state_slice['corrected_elapsed'][-1]
     
-    def get_data_slices(self,rawdata:dict) -> pl.DataFrame:
+    def get_data_slices(self,rawdata:dict,use_state:bool=False) -> pl.DataFrame:
         """
         Extracts the relevant portion from each data 
         
@@ -89,7 +91,7 @@ class Trial:
                     'button','reward','lap','facecam','eyecam',
                     'onepcam','act0','act1','opto']
         
-        self.get_state_slice_and_correct_time_frame(rawdata)
+        self.get_state_slice_and_correct_time_frame(rawdata,use_state)
 
         # rig and stimlog
         for k,v in rawdata.items():
@@ -118,7 +120,11 @@ class Trial:
                         self.logger.warning(f"The timing of vstim is funky, has multiple trial no's {msg}")
             
                 self.data[k] = temp_v
-                
+    
+    def get_state_changes(self) -> dict:
+        """ This depends on the experimetn type at hand so need to be overwritten"""
+        pass
+    
     def get_licks(self) -> dict:
         """ Extracts the lick data from slice"""
         lick_data = self.data.get('lick', None)
@@ -222,7 +228,6 @@ class Trial:
     def get_frames(self,get_from:str=None, **kwargs) -> dict:
         """ Extracts the frames from designated imaging mode, returns None if no"""
 
-        start_frame = None
         frame_ids = []
         if not self.meta.imaging_mode is None:
             if get_from in self.data.keys():
@@ -234,13 +239,11 @@ class Trial:
                                                             (pl.col('duinotime') <= self.t_stimend_rig))
                     
                     if len(rig_frames_data):
-                        start_frame = int(rig_frames_data[0,'value'])
                         frame_ids = [int(rig_frames_data[0,'value']), int(rig_frames_data[-1,'value'])]
                 
                     else:
                         self.logger.critical(f'{get_from} no camera pulses recorded during stim presentation!!! THIS IS BAD!')
-        frames_dict = {f'{get_from}_stimstart': start_frame,
-                       f'{get_from}_frame_ids':frame_ids}
+        frames_dict = {f'{get_from}_frame_ids':frame_ids}
         
         self._attrs_from_dict(frames_dict)
         return frames_dict
