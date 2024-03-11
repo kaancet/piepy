@@ -33,10 +33,20 @@ class Preprocessing(dj.Computed):
         purge_previous_results = True
 
         # TODO move several of these fields to a lookup table
-        server_local = (DataPaths & 'data_type = "server_local"').fetch1('path_to_data')#r"\\nerffs17\boninlabwip2023\data"
-        server_nerfcluster = (DataPaths & 'data_type = "server_nerfcluster"').fetch1('path_to_data')#r"/mnt/boninlab/boninlabwip2023/data"
+        server_local_list = [(DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_local_24"').fetch1('path_to_data')]#r"\\nerffs17\boninlabwip2023\data"
+        server_nerfcluster_list = [(DataPaths & 'data_type = "server_nerfcluster_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_nerfcluster_23"').fetch1('path_to_data')]#r"/mnt/boninlab/boninlabwip2023/data"
+        print(server_local_list)
 
         rec_name = (Recording & key).fetch1('recording_name')
+        if os.path.isdir(os.path.join(server_local_list[0], rec_name)):
+            server_local = server_local_list[0]
+            server_nerfcluster = server_nerfcluster_list[0]
+        elif os.path.isdir(os.path.join(server_local_list[1], rec_name)):
+            server_local = server_local_list[1]
+            server_nerfcluster = server_nerfcluster_list[1]
+        else:
+            print('Uh-oh')
+
         bash_filename = f'preprocessing_{rec_name}.sh'
         bash_path = os.path.join('2photon', "raw", rec_name, bash_filename)
 
@@ -129,7 +139,9 @@ class BasicRecordingData(dj.Computed):
 
     def make(self, key):
         # Get the major paths from the lookup table for the data we will need
-        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local"').fetch1('path_to_data'), r'2photon\reg')
+
+        # TODO: correct for the fact that there is more than one fileserver
+        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), r'2photon\reg')
         reg_data_path = os.path.join(core_reg_path, (Preprocessing & key).fetch1('reg_file_name'), 'suite2p')
         
         # Get the paths to the suite2p output for each plane for this recording and find the number of planes
@@ -164,7 +176,7 @@ class BasicRecordingData(dj.Computed):
 @schema
 class Plane(dj.Imported):
     definition = """
-    # The neuropil corrected dF/F for each plane of the recording
+    #
     -> BasicRecordingData
     plane_n                 : int           # The number of the plane from the recording
     ---
@@ -173,9 +185,9 @@ class Plane(dj.Imported):
     """
 
     def make(self, key):
-        
+        #TODO: also correct the paths here
         # Get the major paths from the lookup table for the data we will need
-        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local"').fetch1('path_to_data'), r'2photon\reg')
+        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), r'2photon\reg')
         reg_data_path = os.path.join(core_reg_path, (Preprocessing & key).fetch1('reg_file_name'), 'suite2p')
         
         # Get the paths to the suite2p output for each plane for this recording and find the number of planes

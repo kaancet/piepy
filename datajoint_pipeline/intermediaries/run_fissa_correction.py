@@ -30,8 +30,10 @@ def run_fissa_correction(plane_path, sampling_freq):
 
     for i, n in enumerate(cell_ids):
         # i is the position in cell_ids, and n is the actual cell number
-        ypix = stat[n]["ypix"][~stat[n]["overlap"]]
-        xpix = stat[n]["xpix"][~stat[n]["overlap"]]
+
+        #TODO - temporarily commenting out the overlap subtraction because it seemed to be misbehaving. 
+        ypix = stat[n]["ypix"] #[~stat[n]["overlap"]]
+        xpix = stat[n]["xpix"] #[~stat[n]["overlap"]]
         rois[i][ypix, xpix] = 1
 
     output_folder = os.path.join(plane_path, "fissa_output")

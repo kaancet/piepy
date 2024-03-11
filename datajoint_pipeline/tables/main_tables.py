@@ -27,11 +27,14 @@ class DataPaths(dj.Lookup):
     definition = """
     data_type : varchar(50)    # The data the path is for 
     ---
-    path_to_data : varchar(300) # The path the largest common folder for the data
+    path_to_data : longblob # The path the largest common folder for the data
     """
+    
     contents = [
-        ['server_local', r"\\nerffs17\boninlabwip2023\data"],
-        ['server_nerfcluster', "/mnt/boninlab/boninlabwip2023/data"],
+        ['server_local_23', r"\\nerffs17\boninlabwip2023\data"],
+        ['server_nerfcluster_23', "/mnt/boninlab/boninlabwip2023/data"],
+        ['server_local_24', r"\\nerfceph01\nerfceph\boninlabwip2024\data"],
+        ['server_nerfcluster_24', "/mnt/boninlab/boninlabwip2024/data"],
         ['scratch_dir', "/scratch/dylanm-boninlab/suite2p_Kaan_tests"],
         ['behave_data', r'\\10.86.3.20\data_on_50TB\presentation'] #r'C:\Users\dylan\Documents\Repositories\temp_data\presentation']
     ]
