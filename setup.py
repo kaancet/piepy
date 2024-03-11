@@ -14,7 +14,7 @@ setup(
     long_description='Behavior Analysis Tool\n Disclaimer: For now works for wheel behaviour, more to come...',
     entry_points = {
         'console_scripts': [
-          'dashboard = behavior_python.wheel.viz.bokeh.launcher:main'
+          'detectionSession = behavior_python.detection.wheelDetectionSession:main'
         ]
         },
 )

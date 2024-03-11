@@ -1,5 +1,5 @@
 from .wheelDetectionSession import *
-from tabulate import tabulate
+
 
 class WheelDetectionExperiment:
     __slots__ = ['exp_list','data','summary_data']
@@ -146,33 +146,61 @@ class WheelDetectionExperiment:
         tmp = self.summary_data.to_pandas()
         print(tabulate(tmp,headers=self.summary_data.columns))
     
-    def filter_experiments(self,
-                           area:str,
-                           stim_count:int=1,
-                           stim_type:str=None,
-                           opto_targets:int=1,
-                           isTitrated:bool=False,
-                           verbose:bool=True) -> pl.DataFrame:
-        """ Filters the summary data according to 3 arguments,
-        Then uses the dates in those filtered sessions to filter self.data"""
+    
+    ##TODO: Below filtering logic can be better
+    def filter_by_params(self,
+                         df:pl.DataFrame=None,
+                         stim_count:int=1,
+                         stim_type:str=None,
+                         opto_targets:int=1,
+                         isTitrated:bool=False,
+                         verbose:bool=True) -> pl.DataFrame:
         
-        filt_summ = self.summary_data.filter((pl.col('area')==area) &
-                                             (pl.col('stimulus_count')==stim_count) &
-                                             (pl.col('opto_targets')==opto_targets) & 
-                                             (pl.col('isTitrated')==isTitrated))
+        if df is None:
+            df = self.summary_data
+        
+        filt_summ = df.filter((pl.col('stimulus_count')==stim_count) &
+                              (pl.col('opto_targets')==opto_targets) & 
+                              (pl.col('isTitrated')==isTitrated))
         
         if verbose:
             print(filt_summ)
             
         ids = filt_summ['session_ids'].explode().unique().to_list()
-        filter_dict = {'area':area,
-                       'session_no':ids}
+        filter_dict = {'session_no':ids}
         
         if stim_count==1 and stim_type is not None:
             filter_dict['stim_type'] = stim_type
             
         filt_df = self.filter_sessions(filter_dict)
 
+        return filt_df
+        
+    def filter_by_animal(self,
+                         animalid:str,
+                         stim_count:int=1,
+                         stim_type:str=None,
+                         opto_targets:int=1,
+                         isTitrated:bool=False,
+                         verbose:bool=True) -> pl.DataFrame:
+        
+        filt_summ = self.summary_data.filter((pl.col('animalid')==animalid))
+        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,verbose)
+        return filt_df
+        
+    
+    def filter_by_area(self,
+                       area:str,
+                       stim_count:int=1,
+                       stim_type:str=None,
+                       opto_targets:int=1,
+                       isTitrated:bool=False,
+                       verbose:bool=True) -> pl.DataFrame:
+        """ Filters the summary data according to 3 arguments,
+        Then uses the dates in those filtered sessions to filter self.data"""
+        
+        filt_summ = self.summary_data.filter((pl.col('area')==area))
+        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,verbose)
         return filt_df
                 
         

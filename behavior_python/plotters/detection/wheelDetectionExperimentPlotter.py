@@ -31,8 +31,8 @@ class ComparisonLinePlotter:
             .agg(
                 [
                     pl.count().alias("trial_count"),
-                    (pl.col("answer")==1).sum().alias("correct_count"),
-                    (pl.col("answer")==0).sum().alias("miss_count"),
+                    (pl.col("outcome")==1).sum().alias("correct_count"),
+                    (pl.col("outcome")==0).sum().alias("miss_count"),
                     (pl.col("response_latency").alias("response_times")),
                     (pl.col("response_latency").median().alias("median_response_time")),
                     (pl.col("opto_pattern").first()),
@@ -47,16 +47,15 @@ class ComparisonLinePlotter:
         q = q.with_columns((1.96 * np.sqrt((pl.col("hit_rate")*(100.0 - pl.col("hit_rate"))) / pl.col("trial_count"))).alias("confs"))
         q = q.with_columns((100*pl.col("hit_rate")).alias("hit_rate"))
         q = q.with_columns(pl.when(pl.col("stim_side")=="ipsi").then((pl.col("contrast")*-1)).otherwise(pl.col("contrast")).alias("signed_contrast"))
+        q = q.with_columns(pl.when((pl.col("contrast")>0) & (pl.col("contrast")<25)).then(pl.lit("hard")).when(pl.col("contrast")>25).then(pl.lit("easy")).otherwise(pl.lit("catch")).alias("contrast_difficulty"))
 
         # reorder stim_label to last column
         cols = q.columns
-        del cols[-4]
-        del cols [-4]
+        del cols[-6]
+        del cols[-5]
         cols.extend(['stimkey','stim_label'])
         q = q.select(cols)
-
         df = q.collect()
-
         return df
     
     def plot_hit_rates(self,**kwargs) -> plt.figure:
@@ -64,7 +63,7 @@ class ComparisonLinePlotter:
         fontsize = kwargs.pop('fontsize',30)
         linewidth = kwargs.pop('linewidth',3)
     
-        uniq_contrast = self.plot_data['contrast'].unique().sort().to_numpy()
+        uniq_contrast = self.plot_data['contrast_difficulty'].unique().sort().to_numpy()
         n_contrast = len(uniq_contrast) - 1 # remove 0
         uniq_stims = self.plot_data['stim_type'].unique().sort().to_numpy()
         n_stim = len(uniq_stims)
@@ -79,19 +78,19 @@ class ComparisonLinePlotter:
         j=-1
         for c in uniq_contrast:
             
-            contrast_df = self.plot_data.filter((pl.col("contrast")==c)) 
+            contrast_df = self.plot_data.filter((pl.col("contrast_difficulty")==c)) 
 
             self.p_values_hit_rate[c] = {}
             
             for i,k in enumerate(uniq_stims):
                 stim_df = contrast_df.filter(pl.col("stim_type")==k)
                 
-                if c==0:
+                if c=='catch':
                     base_df = stim_df.filter(pl.col('opto')==0)
                     baseline_avg = np.mean(base_df['hit_rate'].to_numpy())
                     baseline_sem = stats.sem(base_df['hit_rate'].to_numpy())
                     continue 
-                elif c!=0 and i==0:
+                elif c!='catch' and i==0:
                     j+=1
                 
                 ax = axes[n_stim*j+i]
@@ -104,11 +103,13 @@ class ComparisonLinePlotter:
                     ax.plot(animal_df['opto'].to_list(),
                             animal_df['hit_rate'].to_list(),
                             marker='o',
+                            markersize=20,
+                            markeredgewidth=0,
                             linewidth=linewidth,
                             c=ANIMAL_COLORS[a_id],
                             alpha=0.5,
-                            zorder=2,
-                            label=a_id)
+                            label=a_id,
+                            zorder=2)
                     
                 avg_df = (
                             stim_df.filter(pl.col("stim_side")=="contra")
@@ -127,8 +128,9 @@ class ComparisonLinePlotter:
                             avg_df['avg_hitrate'].to_list(),
                             avg_df['animal_confs'].to_list(),
                             marker='o',
+                            markersize=20,
                             linewidth=linewidth*2,
-                            c='dimgray',
+                            c='k',
                             zorder=2)
                 
                 ax.axhline(y=baseline_avg,linestyle=':',c='k',alpha=0.4,zorder=1)
@@ -141,7 +143,7 @@ class ComparisonLinePlotter:
                 non_opto = stim_df.filter((pl.col('opto')==0)&(pl.col('stim_side')=="contra"))['hit_rate'].to_numpy()
                 opto = stim_df.filter((pl.col('opto')==1)&(pl.col('stim_side')=="contra"))['hit_rate'].to_numpy()
                 # _,p = mannwhitneyu(non_opto,opto)
-                _,p = wilcoxon(non_opto,opto)
+                _,p = mannwhitneyu(non_opto,opto)
                 self.p_values_hit_rate[c][k] = p
                 
                 stars = ''
@@ -183,7 +185,7 @@ class ComparisonLinePlotter:
         fontsize = kwargs.pop('fontsize',30)
         linewidth = kwargs.pop('linewidth',3)
     
-        uniq_contrast = self.plot_data['contrast'].unique().to_numpy()
+        uniq_contrast = self.plot_data['contrast_difficulty'].unique().to_numpy()
         n_contrast = len(uniq_contrast) - 1 # remove 0
         uniq_stims = self.plot_data['stim_type'].unique().sort().to_numpy()
         n_stim = len(uniq_stims)
@@ -196,26 +198,26 @@ class ComparisonLinePlotter:
         self.fig, axes = plt.subplots(ncols=n_stim*n_contrast,
                                       nrows=1,
                                       constrained_layout=True,
-                                      figsize=kwargs.pop('figsize',(12,10)))
+                                      figsize=kwargs.pop('figsize',(20,10)))
 
         self.p_values_resp = {}
         
         j=-1
         for c in uniq_contrast:
             
-            contrast_df = self.plot_data.filter((pl.col("contrast")==c)) 
+            contrast_df = self.plot_data.filter((pl.col("contrast_difficulty")==c)) 
 
             self.p_values_resp[c] = {}
             
             for i,k in enumerate(uniq_stims):
                 stim_df = contrast_df.filter(pl.col("stim_type")==k)
                 
-                if c==0:
+                if c=='catch':
                     base_df = stim_df.filter(pl.col('opto')==0)
                     baseline_avg = np.mean(base_df['hit_rate'].to_numpy())
                     baseline_sem = stats.sem(base_df['hit_rate'].to_numpy())
                     continue
-                elif c!=0 and i==0:
+                elif c!='catch' and i==0:
                     j+=1
                 
                 ax = axes[n_stim*j+i]
@@ -233,8 +235,11 @@ class ComparisonLinePlotter:
                         ax.plot(animal_df['opto'].to_list(),
                                 median,
                                 marker='o',
+                                markersize=20,
+                                markeredgewidth=0,
                                 linewidth=linewidth,
                                 c=ANIMAL_COLORS[a_id],
+                                label=a_id,
                                 alpha=0.5,
                                 zorder=2)
                     else:
@@ -243,6 +248,7 @@ class ComparisonLinePlotter:
                                 marker='o',
                                 linewidth=linewidth,
                                 c=ANIMAL_COLORS[a_id],
+                                label=a_id,
                                 alpha=0.5,
                                 zorder=2)
                     
@@ -269,7 +275,7 @@ class ComparisonLinePlotter:
                                 conf,
                                 marker='o',
                                 linewidth=linewidth*2,
-                                c='dimgray',
+                                c='k',
                                 zorder=2)
                     
                 else:
@@ -277,8 +283,9 @@ class ComparisonLinePlotter:
                                 avg_df['avg_resp_time'].to_list(),
                                 avg_df['animal_confs'].to_list(),
                                 marker='o',
+                                markersize=20,
                                 linewidth=linewidth*2,
-                                c='dimgray',
+                                c='k',
                                 zorder=2)
                 
                 # ax.axhline(y=baseline_avg,linestyle=':',c='k',alpha=0.4,zorder=1)

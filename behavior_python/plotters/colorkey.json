@@ -1,24 +1,20 @@
 {
     "spatiotemporal":{
         "0.04cpd_8.0Hz_-1": {
-            "color":"tab:orange",
+            "color":"#FF7F0F",
             "linestyle":"-"
+        },
+        "0.04cpd_8.0Hz_0": {
+            "color":"#6495ED",
+            "linestyle":"--"
+        },
+        "0.04cpd_8.0Hz_1": {
+            "color":"#D52C8C",
+            "linestyle":":"
         },
         "0.08cpd_2.0Hz_-1": {
             "color":"tab:green",
             "linestyle":"-"
-        },
-        "0.16cpd_0.5Hz_-1": {
-            "color":"#5ac1a7",
-            "linestyle":"-"
-        },
-        "0.04cpd_8.0Hz_0": {
-            "color":"cornflowerblue",
-            "linestyle":"--"
-        },
-        "0.04cpd_8.0Hz_1": {
-            "color":"midnightblue",
-            "linestyle":":"
         },
         "0.08cpd_2.0Hz_0": {
             "color":"deepskyblue",
@@ -28,12 +24,16 @@
             "color":"deepskyblue",
             "linestyle":":"
         },
+        "0.16cpd_0.5Hz_-1": {
+            "color":"#5ac1a7",
+            "linestyle":"-"
+        },
         "0.16cpd_0.5Hz_0": {
-            "color":"mediumblue",
+            "color":"#0000CD",
             "linestyle":"--"
         },
         "0.16cpd_0.5Hz_1": {
-            "color":"mediumblue",
+            "color":"#B92C3B",
             "linestyle":":"
         },
         "0.1cpd_4.0Hz_-1":{
@@ -79,9 +79,9 @@
         "25.0":{"color":"turquoise"},
         "12.5":{"color":"limegreen"},
         "6.25":{"color":"indigo"},
-        "3.12":{"color":"hotpink"}
+        "3.125":{"color":"hotpink"}
     },
-    "answer":{
+    "outcome":{
         "1":{"color":"#009714"},
         "0":{"color":"#ca0000"},
         "-1":{"color":"k"}

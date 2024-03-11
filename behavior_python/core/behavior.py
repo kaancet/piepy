@@ -1,8 +1,11 @@
-from .core import *
+from .logger import *
 import glob
 import natsort
 import scipy.io as sio
 
+
+from ..gsheet_functions import GSheet
+from .dbinterface import DataBaseInterface
 
 class BehaviorData:
     """ Keeps the data as a huge csv of appended session data"""
@@ -39,8 +42,9 @@ class BehaviorData:
         summary_save_name = pjoin(path,f'{task_type}TrainingDataSummary.csv').replace("\\","/")
         
         # cast sf and tf to str
-        summary_save_data = self.summary_data.with_columns([("[" + pl.col("sf").cast(pl.List(pl.Utf8)).arr.join(", ") + "]").alias('sf'),
-                                                            ("[" + pl.col("tf").cast(pl.List(pl.Utf8)).arr.join(", ") + "]").alias('tf')])
+        summary_save_data = self.summary_data.with_columns([("[" + pl.col("sf").cast(pl.List(pl.Utf8)).list.join(", ") + "]").alias('sf'),
+                                                            ("[" + pl.col("tf").cast(pl.List(pl.Utf8)).list.join(", ") + "]").alias('tf')])
+        
         
         summary_save_data.write_csv(summary_save_name)
         self.cumul_data.write_parquet(cumul_save_name)
