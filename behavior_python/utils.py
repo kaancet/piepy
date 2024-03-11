@@ -307,15 +307,12 @@ def parseStimpyLog(fname):
         
         logdata = q.select(
             [
-                pl.col("code").str.strip("["),
+                pl.col("code").str.strip("[").str.strip(" ").cast(pl.Int64,strict=False),
                 pl.col("timereceived"),
                 pl.col("duinotime"),
-                pl.col("value").str.strip("]"),
+                pl.col("value").str.strip("]").str.strip(" ").cast(pl.Int64,strict=False),
             ]
         ).collect()
-        logdata = logdata.with_columns(
-            pl.col("*").str.strip(" ").cast(pl.Float32, strict=False)
-        )
         
     elif fname.endswith('.stimlog'):
         display('Parsing stimlog...')
