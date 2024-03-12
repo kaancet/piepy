@@ -7,7 +7,7 @@ import json
 import sys
 import time
 from ast import literal_eval
-
+from colorama import Fore, Style
 from tqdm import tqdm
 from datetime import datetime as dt
 try:
@@ -18,8 +18,20 @@ except:
     except ImportError:
         from io import StringIO
 
-def display(msg):
-    sys.stdout.write('['+dt.today().strftime('%y-%m-%d %H:%M:%S')+'] - ' + msg + '\n')
+
+
+
+def display(*msgs:str,color:str='white',timestamp:bool=True):
+    try:
+        fg_color = getattr(Fore, color.upper())
+    except AttributeError:
+        fg_color = Fore.WHITE
+    msg = fg_color
+    if timestamp:
+        msg += f"[{dt.today().strftime('%y-%m-%d %H:%M:%S')}] - "
+    msg += f"{''.join(msgs)}\n"
+    msg += Style.RESET_ALL
+    sys.stdout.write(msg)
     sys.stdout.flush()
     
 def unique_except(x,exceptions:list):

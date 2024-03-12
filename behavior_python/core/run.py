@@ -68,7 +68,7 @@ class RunData:
         self.data.write_parquet(data_save_path)
         if save_mat:
             self.save_as_mat(save_path)
-            display('Saving .mat file')
+            display(f'Saved .mat file at {save_path}',color='green')
             
     def load_data(self, load_path:str) -> pd.DataFrame:
         """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
@@ -159,7 +159,7 @@ class Run:
                 if os.path.exists(self.paths.onepcamlog):
                     self.rawdata['onepcam_log'],self.comments['onepcam'],_ = parseCamLog(self.paths.onepcamlog)
             except:
-                display("\n No 1P cam data for 1P experiment! IS THIS EXPECTED?! \n")
+                display("\n No 1P cam data for 1P experiment! IS THIS EXPECTED?! \n", color='yellow')
         elif self.meta.imaging_mode == '2P':
             pass
     
@@ -193,10 +193,10 @@ class Run:
         for d_path in self.paths.data:
             if exists(d_path):
                 loadable = True
-                display(f'Found saved data: {d_path}')
+                display(f'Found saved data: {d_path}',color='cyan')
                 break
             else:
-                display(f"{d_path} does not exist...")
+                display(f"{d_path} does not exist...",color='yellow')
         return loadable
     
     def save_run(self,save_mat:bool=False) -> None:
@@ -204,14 +204,14 @@ class Run:
         if self.data is not None:
             for s_path in self.paths.save:
                 self.data.save_data(s_path,save_mat)
-                display(f"Saved session data to {s_path}")
+                display(f"Saved session data to {s_path}", color='green')
             
     def load_run(self) -> None:
         """ Loads the saved """
         for d_path in self.paths.data:
             if exists(d_path):
                 self.data.load_data(d_path)
-                display(f"Loaded session data from {d_path}")
+                display(f"Loaded session data from {d_path}",color='green')
                 break
             
     def extract_trial_count(self,num_state_changes:int):
@@ -239,12 +239,12 @@ class Run:
             labcams_frames = len(self.rawdata[lab_cam_key])
             
             if labcams_frames < rig_cam_frames:
-                print(f'{rig_cam_frames - labcams_frames} logged frame(s) not recorded by {lab_cam_key}!!')
+                display(f'{rig_cam_frames - labcams_frames} logged frame(s) not recorded by {lab_cam_key}!!',color='yellow')
             elif labcams_frames > rig_cam_frames:
                 # remove labcams camlog frames if they are more than riglog recordings
-                print(f'{labcams_frames - rig_cam_frames} logged frame(s) not logged in {rig_cams[i]}!')
+                display(f'{labcams_frames - rig_cam_frames} logged frame(s) not logged in {rig_cams[i]}!',color='yellow')
                 
                 self.rawdata[lab_cam_key] = self.rawdata[lab_cam_key].slice(0,rig_cam_frames)     # removing extra recorded frames
                 if len(self.rawdata[lab_cam_key])==rig_cam_frames:
-                    print(f'Camlogs are equal now!')
+                    display(f'Camlogs are equal now!',color='cyan')
                     

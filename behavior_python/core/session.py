@@ -126,13 +126,29 @@ class Session:
         """ Helper method to loop through the runs and load data and stats """
         for run in self.runs:
             run.load_run()
-            
+
+    def get_meta(self):
+        if len(self.runs) == 1:
+            meta = self.runs[0].meta
+            for k,v in self.meta.__dict__.items():
+                setattr(meta,k,v)
+            return meta
+        else:
+            return self.meta
+        
     @property
     def data(self):
         if len(self.runs) == 1:
-            return self.runs[0].data.data
+            return self.runs[0].data
         else:
             raise ValueError(f"Session has {len(self.runs)} runs, can't get a single session data :(")
+    
+    @property
+    def stats(self):
+        if len(self.runs) == 1:
+            return self.runs[0].stats
+        else:
+            raise ValueError(f"Session has {len(self.runs)} runs, can't get a single session stats :(")
     
     ####
     # DATABASE RELATED, NOT USED AT THE MOMENT
