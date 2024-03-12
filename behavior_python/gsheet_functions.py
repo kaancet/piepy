@@ -8,7 +8,7 @@ from .utils import display, parseConfig
 # define the scope
 scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
 config = parseConfig()
-cred_path = config['gsheet']
+cred_path = config['gsheet'][0]
 
 
 class GSheet:
