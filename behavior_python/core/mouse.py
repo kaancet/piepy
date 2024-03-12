@@ -423,9 +423,33 @@ class Mouse:
             raise ModuleNotFoundError(f'No module found at {mod_path}')
     
 
+def main():
+    load_help_str = """ Gathers the data from all the sessions in the session list
+        load_type:    string to set how to load\n
+        \n'last_saved' = loads only the last analyzed data, doesn't analyze and add new sessions since last analysis\n
+        \n'load_and_add' = loads all the data and adds new sessions to the loaded data\n
+        \n'reanalyze' = loads the session data and reanalyzes the behavior data from that\n
+        \n'no_load' = doesn't load anything reanalyzes the sessions data from scratch
+    """
+    parser = ArgumentParser(description='Mouse Behavior Data Parsing Tool')
 
-        ax = fig.add_subplot(111)
-        pass
+    parser.add_argument('id',metavar='animalid',
+                        type=str,help='Animal ID (e.g. KC133)')
+    parser.add_argument('-p','--paradigm',metavar='paradigm',
+                        type=str,help='Behavior paradigm(e.g. detection)')
+    parser.add_argument('-l','--load',metavar='load_type',
+                        type=str,help=load_help_str)
+    
+    '''
+    mouseparse -p detection -l no_load KC133
+    '''
 
+    opts = parser.parse_args()
 
+    display(f'Reading {opts.paradigm} Behavior for {opts.id}')
+    m = Mouse(animalid=opts.id,paradigm=opts.paradigm)
+    m.gather_data(load_type=opts.load)
+    m.save()
 
+if __name__ == '__main__':
+    main()
