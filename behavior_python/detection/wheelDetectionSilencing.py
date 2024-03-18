@@ -2,20 +2,31 @@ from .wheelDetectionSession import *
 
 
 class WheelDetectionExperiment:
-    __slots__ = ['exp_list','data','summary_data']
     def __init__(self,exp_list:list,load_sessions:bool=False) -> None:
         self.exp_list = exp_list
-        self.data = self.parse_sessions(load_sessions=load_sessions)
+        self.load_sessions = load_sessions
+        
+    def set_data(self,data:pl.DataFrame=None) -> None:
+        if data is not None:
+            self.data = data    
+        else:
+            self.data = self.parse_sessions(load_sessions=self.load_sessions)
         self.summary_data = self.make_summary_data()
     
     @staticmethod
     def parse_session_name(exp_dir) -> dict:
         """ Parses the exp names from the dir path of experiment"""
         exp_name = exp_dir.split('\\')[-1]
+        area = exp_name.split('_')[4]
+        isCNO = False
+        if 'CNO' in area:
+            area = area.strip('CNO')
+            isCNO = True
         return {
                     'opto_power' : int(exp_name.split('_')[3][-3:])/100,
-                    'area' : exp_name.split('_')[4],
-                    'exp_name' : exp_name
+                    'area' : area,
+                    'exp_name' : exp_name,
+                    'isCNO' : isCNO
                 } 
         
     def parse_sessions(self,load_sessions:bool=False) -> pl.DataFrame:
@@ -26,8 +37,9 @@ class WheelDetectionExperiment:
         for i,exp in enumerate(pbar):
             temp = self.parse_session_name(exp)
 
-            w = WheelDetectionSession(temp['exp_name'],load_flag=load_sessions)
+            w = WheelDetectionSession(temp['exp_name'],load_flag=load_sessions,skip_google=True)
             data_len = len(w.data.data)
+            meta = w.get_meta()
             lit = {
                 'trial_count' : w.stats.all_count,
                 'early_count' : w.stats.early_count,
@@ -35,17 +47,17 @@ class WheelDetectionExperiment:
                 'miss_count' : w.stats.miss_count,
                 'hit_rate' : w.stats.hit_rate,
                 'false_alarm' : w.stats.false_alarm,
-                'opto_ratio' : w.meta.optoRatio,
+                'opto_ratio' : meta.optoRatio,
                 'opto_targets' : len(nonan_unique(w.data.data['opto_pattern'].to_numpy()))-1,
-                'stimulus_count' : len(w.meta.sf_values),
+                'stimulus_count' : len(meta.sf_values),
                 'isTitrated' : bool(w.data.data['isTitrated'][0]), # this should only give 0 or 1
-                'rig' : w.meta.rig,
+                'rig' : meta.rig,
             }
 
             non_lit = {
-                'contrast_vector' : [w.meta.contrastVector] * data_len,
-                'sf_values' : [[float(i) for i in w.meta.sf_values]] * data_len,
-                'tf_values' : [[float(i) for i in w.meta.tf_values]] * data_len
+                'contrast_vector' : [meta.contrastVector] * data_len,
+                'sf_values' : [[float(i) for i in meta.sf_values]] * data_len,
+                'tf_values' : [[float(i) for i in meta.tf_values]] * data_len
             }
             lit_dict = {**lit,**temp}
             
@@ -65,14 +77,15 @@ class WheelDetectionExperiment:
                 temp_df = pl.concat([temp_df,list_df],how='horizontal')
                 
                 
-                #sorting the columns
                 temp_df = temp_df.select(df.columns)
+                # fixing column datatypes
+                if df.dtypes != temp_df.dtypes:
+                    df = df.with_columns([pl.col(n).cast(t) for n,t in zip(df.columns,temp_df.dtypes) if t!=pl.Null])
                 try:
                     df = pl.concat([df,temp_df])
-                except Exception as err:
-                    print(f"SOMETHING WRONG WITH {temp['exp_name']}")
-                    raise err
-                    
+                except pl.SchemaError:
+                    raise pl.SchemaError(f"WEIRDNESS WITH COLUMNS AT {temp['exp_name']}")
+
             pbar.update()
         
         # make reorder column list
@@ -124,7 +137,7 @@ class WheelDetectionExperiment:
         """ Creates a summary data and and prints a tabulated text description of it"""
         q = (
             self.data.lazy()
-            .groupby(["animalid","area","stimulus_count","opto_targets","isTitrated"])
+            .groupby(["animalid","area","stimulus_count","opto_targets","isTitrated","isCNO"])
             .agg(
                 [   (pl.col("stim_type").unique(maintain_order=True)),
                     (pl.col("date").unique().count().alias("experiment_count")),
@@ -136,7 +149,7 @@ class WheelDetectionExperiment:
                     (pl.col("false_alarm").unique(maintain_order=True))
                 ]
             ).drop_nulls()
-            .sort(["animalid","area","stimulus_count","opto_targets","isTitrated"])
+            .sort(["animalid","area","stimulus_count","opto_targets","isTitrated","isCNO"])
         )
         df = q.collect()
         return df
@@ -147,6 +160,29 @@ class WheelDetectionExperiment:
         print(tabulate(tmp,headers=self.summary_data.columns))
     
     
+    def filter_by_params2(self,
+                         filter_kwargs:dict,
+                         verbose:bool=True) -> pl.DataFrame:
+        
+        for k in filter_kwargs.keys():
+            if k not in self.summary_data.columns:
+                raise ValueError(f"Filtering parameter {k} not in data columns!!")
+        
+        filt_summ = self.summary_data.filter(**filter_kwargs)
+        
+        if verbose:
+            print(filt_summ)
+            
+        ids = filt_summ['session_ids'].explode().unique().to_list()
+        filter_dict = {'session_no':ids}
+        
+        if stim_count==1 and stim_type is not None:
+            filter_dict['stim_type'] = stim_type
+            
+        filt_df = self.filter_sessions(filter_dict)
+
+        return filt_df
+    
     ##TODO: Below filtering logic can be better
     def filter_by_params(self,
                          df:pl.DataFrame=None,
@@ -154,6 +190,7 @@ class WheelDetectionExperiment:
                          stim_type:str=None,
                          opto_targets:int=1,
                          isTitrated:bool=False,
+                         isCNO:bool=False,
                          verbose:bool=True) -> pl.DataFrame:
         
         if df is None:
@@ -161,6 +198,7 @@ class WheelDetectionExperiment:
         
         filt_summ = df.filter((pl.col('stimulus_count')==stim_count) &
                               (pl.col('opto_targets')==opto_targets) & 
+                              (pl.col('isCNO')==isCNO) &
                               (pl.col('isTitrated')==isTitrated))
         
         if verbose:
@@ -182,10 +220,11 @@ class WheelDetectionExperiment:
                          stim_type:str=None,
                          opto_targets:int=1,
                          isTitrated:bool=False,
+                         isCNO:bool=False,
                          verbose:bool=True) -> pl.DataFrame:
         
         filt_summ = self.summary_data.filter((pl.col('animalid')==animalid))
-        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,verbose)
+        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,isCNO,verbose)
         return filt_df
         
     
@@ -195,12 +234,13 @@ class WheelDetectionExperiment:
                        stim_type:str=None,
                        opto_targets:int=1,
                        isTitrated:bool=False,
+                       isCNO:bool=False,
                        verbose:bool=True) -> pl.DataFrame:
         """ Filters the summary data according to 3 arguments,
         Then uses the dates in those filtered sessions to filter self.data"""
         
         filt_summ = self.summary_data.filter((pl.col('area')==area))
-        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,verbose)
+        filt_df = self.filter_by_params(filt_summ,stim_count,stim_type,opto_targets,isTitrated,isCNO,verbose)
         return filt_df
                 
         
