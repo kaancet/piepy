@@ -34,8 +34,13 @@ def main():
         session_parser =  getattr(mod,session_class_name)
     else:
         raise ModuleNotFoundError(f'No module found at {mod_path}')
-
-    session_parser(sessiondir=opts.sessiondir,load_flag=opts.load)
+    
+    if opts.load:
+        skip_google=True
+    else:
+        skip_google=False
+    
+    session_parser(sessiondir=opts.sessiondir,load_flag=opts.load,skip_google=skip_google)
 
 if __name__ == '__main__':
     main()

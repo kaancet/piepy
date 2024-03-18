@@ -1,6 +1,7 @@
 import os
 import glob
 import natsort
+import argparse
 import importlib
 import numpy as np
 import polars as pl
@@ -8,7 +9,6 @@ import pandas as pd
 from tqdm import tqdm
 from os.path import join as pjoin
 from collections import namedtuple
-from argparse import ArgumentParser
 from datetime import datetime as dt
 from os.path import dirname, abspath, normpath
 
@@ -29,32 +29,6 @@ class MouseData:
     def set_paradigm(self,paradigm:str) -> None:
         """ """ 
         self.paradigm = paradigm
-    
-    def filter_paradigm(self,paradigm:str) -> pl.DataFrame:
-        """ """
-        if self.cumul_data is not None:
-            paradigm_df = self.cumul_data.filter(pl.col('paradigm')==self.paradigm)
-            
-    def filter_dates(self,dateinterval:list=None) -> pl.DataFrame:
-        """ Filters the behavior data to analyze only the data in the date range """
-         # dateinterval is a list of two date strings e.g. ['200127','200131']
-        if isinstance(dateinterval,str):
-            dateinterval = [dateinterval]
-            # add current day as end date
-            dateinterval.append(dt.today().strftime('%y%m%d'))
-        else:
-            assert len(dateinterval)<=2, f'You need to provide a single start(1) or start and end dates(2), got {len(dateinterval)} dates'
-
-        startdate = dt.strptime(dateinterval[0], '%y%m%d')
-        enddate = dt.strptime(dateinterval[1], '%y%m%d')
-
-        display('Retreiving between {0} - {1}'.format(startdate,enddate))
-
-        self.summary_data['dt_date'] = self.summary_data['date'].apply(lambda x: dt.strptime(str(x),'%y%m%d'))
-        self.cumul_data['dt_date'] = self.cumul_data['date'].apply(lambda x: dt.strptime(str(x),'%y%m%d'))
-
-        self.summary_data[(self.summary_data['dt_date'] >= startdate) & (self.summary_data['dt_date'] <= enddate)]
-        self.cumul_data[(self.cumul_data['dt_date'] >= startdate) & (self.cumul_data['dt_date'] <= enddate)]
     
     def append(self,cumul_data_list:list,summary_data_list:list) -> None:
         """ Appends new data to the existing data """
@@ -84,10 +58,16 @@ class MouseData:
             except pl.SchemaError:
                 raise pl.SchemaError('WEIRDNESS WITH COLUMNS')
             
+        #sort both by date 
+        self.cumul_data = self.cumul_data.sort('date')
+        self.summary_data = self.summary_data.sort('date')
+        
+        # remove duplicates
+        
         if 'cumul_trial_no' in self.cumul_data.columns:
             self.cumul_data = self.cumul_data.drop('cumul_trial_no')
-        self.cumul_data = self.cumul_data.with_row_count('cumul_trial_no',offset=1)
-    
+        self.cumul_data = self.cumul_data.with_row_count('cumul_trial_no',offset=1) 
+        
     
     def save(self,save_path:str) -> None:
         """ Saves the data in the given location"""
@@ -135,12 +115,17 @@ class Mouse:
     """
     def __init__(self,
                  animalid:str,
-                 paradigm:str=None) -> None:
+                 paradigm:str=None,
+                 dateinterval:list|str=None) -> None:
         self.animalid = animalid
         self.init_data_paths()
         self.data = MouseData()
         self.all_sessions = self.get_sessions()
+        # set paradigm also filters the sessions list to only desired paradigm sessions
         self.set_paradigm(paradigm)
+        if dateinterval is not None:
+            self.filter_dates(dateinterval)
+        
         self.read_googlesheet()
         self.load_modes = ['no_load','reanalyze','load_and_and','last_saved']
         
@@ -155,7 +140,25 @@ class Mouse:
             # set paradigm in the data class
             self.data.set_paradigm(self.paradigm)
             display(f'Set the data analysis paradigm to {self.paradigm}',color='cyan')
+    
+    def filter_dates(self,date_interval:list) -> None:
+        """ Filters the """
+        # dateinterval is a list of two date strings e.g. ['200127','200131']
+        if isinstance(date_interval,str):
+            date_interval = [date_interval]
+            # add current day as end date
+            date_interval.append(dt.today().strftime('%y%m%d'))
+        else:
+            assert len(date_interval)<=2, f'You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates'
+
+        startdate = dt.strptime(date_interval[0], '%y%m%d')
+        enddate = dt.strptime(date_interval[1], '%y%m%d')
         
+        self.session_list = self.session_list.filter((pl.col('date')>=startdate) &
+                                                     (pl.col('date')<=enddate))
+
+        display('Retreiving between {0} - {1}'.format(startdate,enddate))
+    
     def init_data_paths(self) -> None:
         """ Initializes data paths """
         config = parseConfig()
@@ -181,7 +184,7 @@ class Mouse:
             dates.append(dt.strptime(s.split('_')[0], '%y%m%d'))
             
             if 'training' in sesh:
-                types.append('trianing')
+                types.append('training')
             else:
                 if '1P' in s:
                     if 'opto' in s:
@@ -192,6 +195,8 @@ class Mouse:
                     types.append('2P')
                 elif 'opto' in sesh:
                     types.append('opto')
+                else:
+                    types.append(None)
 
             sessions.append(s)
             
@@ -308,7 +313,6 @@ class Mouse:
                 sheet_stats[key] = row[c].values[0]
             else:
                 sheet_stats[key] = None
-            
         return sheet_stats
     
     #TODO:
@@ -429,9 +433,9 @@ def main():
         \n'last_saved' = loads only the last analyzed data, doesn't analyze and add new sessions since last analysis\n
         \n'load_and_add' = loads all the data and adds new sessions to the loaded data\n
         \n'reanalyze' = loads the session data and reanalyzes the behavior data from that\n
-        \n'no_load' = doesn't load anything reanalyzes the sessions data from scratch
+        \n'no_load' = doesn't load anything reanalyzes the sessions data from scratch\n
     """
-    parser = ArgumentParser(description='Mouse Behavior Data Parsing Tool')
+    parser = argparse.ArgumentParser(description='Mouse Behavior Data Parsing Tool')
 
     parser.add_argument('id',metavar='animalid',
                         type=str,help='Animal ID (e.g. KC133)')
@@ -439,17 +443,22 @@ def main():
                         type=str,help='Behavior paradigm(e.g. detection)')
     parser.add_argument('-l','--load',metavar='load_type',
                         type=str,help=load_help_str)
+    parser.add_argument('-d','--date',metavar='dateinterval',
+                        type=str,default=None,help='Analysis start date (e.g. 231124)')
+    parser.add_argument('-s','--save',metavar='save_behavior',action=argparse.BooleanOptionalAction,
+                        type=str,default=True,help='Save behavior data or not')
     
     '''
-    mouseparse -p detection -l no_load KC133
+    mouseparse -p detection -l no_load -d 231124 KC133
     '''
 
     opts = parser.parse_args()
 
     display(f'Reading {opts.paradigm} Behavior for {opts.id}')
-    m = Mouse(animalid=opts.id,paradigm=opts.paradigm)
+    m = Mouse(animalid=opts.id,paradigm=opts.paradigm,dateinterval=opts.date)
     m.gather_data(load_type=opts.load)
-    m.save()
+    if opts.save:
+        m.save()
 
 if __name__ == '__main__':
     main()
