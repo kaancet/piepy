@@ -13,15 +13,15 @@
             "linestyle":":"
         },
         "0.08cpd_2.0Hz_-1": {
-            "color":"tab:green",
+            "color":"#2BA02B",
             "linestyle":"-"
         },
         "0.08cpd_2.0Hz_0": {
-            "color":"deepskyblue",
+            "color":"#03BFFF",
             "linestyle":"--"
         },
         "0.08cpd_2.0Hz_1": {
-            "color":"deepskyblue",
+            "color":"#03BFFF",
             "linestyle":":"
         },
         "0.16cpd_0.5Hz_-1": {
@@ -37,53 +37,53 @@
             "linestyle":":"
         },
         "0.1cpd_4.0Hz_-1":{
-            "color":"tab:gray",
+            "color":"#7F7F7F",
             "linestyle":"-"
         },
         "0.1cpd_4.0Hz_0":{
-            "color":"aqua",
+            "color":"#03FFFF",
             "linestyle":"--"
         },
         "0.1cpd_4.0Hz_1":{
-            "color":"midnightblue",
+            "color":"#191970",
             "linestyle":":"
         },
         "0.1cpd_4.0Hz_grating_-1":{
-            "color":"tab:gray",
+            "color":"#7F7F7F",
             "linestyle":"-"
         },
         "0.1cpd_4.0Hz_grating_0":{
-            "color":"aqua",
+            "color":"#03FFFF",
             "linestyle":"--"
         },
         "0.1cpd_4.0Hz_grating_1":{
-            "color":"midnightblue",
+            "color":"#191970",
             "linestyle":":"
         },
         "all":{
-            "color":"k",
+            "color":"#000000",
             "linestyle":"-"
         }
     },
     "contrast":{
-        "1.0":{"color":"teal"},
-        "0.5":{"color":"darkgoldenrod"},
-        "0.25":{"color":"turquoise"},
-        "0.125":{"color":"limegreen"},
-        "0.0625":{"color":"indigo"},
-        "0.03125":{"color":"hotpink"},
-        "0.0":{"color":"black"},
-        "-1":{"color":"silver"},
-        "100.0":{"color":"teal"},
-        "50.0":{"color":"darkgoldenrod"},
-        "25.0":{"color":"turquoise"},
-        "12.5":{"color":"limegreen"},
-        "6.25":{"color":"indigo"},
-        "3.125":{"color":"hotpink"}
+        "1.0":{"color":"#008080"},
+        "0.5":{"color":"#B8860B"},
+        "0.25":{"color":"#40E0D0"},
+        "0.125":{"color":"#33CD32"},
+        "0.0625":{"color":"#4B0082"},
+        "0.03125":{"color":"#FF68B4"},
+        "0.0":{"color":"#000000"},
+        "-1":{"color":"#C0C0C0"},
+        "100.0":{"color":"#008080"},
+        "50.0":{"color":"#B8860B"},
+        "25.0":{"color":"#40E0D0"},
+        "12.5":{"color":"#33CD32"},
+        "6.25":{"color":"#4B0082"},
+        "3.125":{"color":"#FF68B4"}
     },
     "outcome":{
         "1":{"color":"#009714"},
         "0":{"color":"#ca0000"},
-        "-1":{"color":"k"}
+        "-1":{"color":"#000000"}
     }
 }
