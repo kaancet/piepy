@@ -92,27 +92,36 @@ class PerformancePlotter(BasePlotter):
 
         return ax
 
-    def plot(self, ax:plt.axes=None, plot_in_time:bool=False, seperate_by:str=None, **kwargs) -> plt.axes:
+    def plot(self, 
+             ax:plt.axes=None, 
+             plot_in_time:bool=False, 
+             seperate_by:str=None, 
+             running_window:int=20,
+             **kwargs) -> plt.axes:
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
                 
         if seperate_by is not None:
             if seperate_by not in self.plot_data.columns:
                 raise ValueError(f'Cannot seperate the data by {seperate_by}')
-            seperate_vals = self.plot_data.select(pl.col(seperate_by)).unique().to_series().to_numpy()
+            seperate_vals = self.plot_data[seperate_by].unique().to_numpy()
         else:
             seperate_vals = [-1] # dummy value        
         
         for sep in seperate_vals:
             if seperate_by is not None:
                 data2plot = self.plot_data.filter(pl.col(seperate_by)==sep)
+                if 'stim' in seperate_by:
+                    clr = self.color.stim_keys[sep]
+                elif seperate_by == 'contrast':
+                    clr = self.color.contrast_keys[str(sep)]
+                else:
+                    clr = {}
             else:
                 data2plot = self.plot_data.select(pl.col('*'))
             
-            y_axis = get_fraction(data2plot['outcome'].to_numpy(),fraction_of=1,window_size=20,min_period=10)
+            y_axis = get_fraction(data2plot['outcome'].to_numpy(),fraction_of=1,window_size=running_window,min_period=10)
             
             if plot_in_time:
                 x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
@@ -123,6 +132,7 @@ class PerformancePlotter(BasePlotter):
 
             ax = self.__plot__(ax,x_axis_,y_axis,
                                 label = f'{sep}',
+                                **clr,
                                 **kwargs)
                 
         # prettify
@@ -154,27 +164,57 @@ class ResponseTimePlotter(BasePlotter):
         ax.plot(x, y,linewidth=kwargs.get('linewidth',5),**kwargs)
         return ax
         
-    def plot(self, ax:plt.axes=None,plot_in_time:bool=False,running_window:int=20,**kwargs) -> plt.axes:
+    def plot(self, 
+             ax:plt.axes=None,
+             seperate_by:str=None,
+             reaction_of:str='state',
+             plot_in_time:bool=False,
+             running_window:int=None,
+             **kwargs) -> plt.axes:
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
         
-        data2plot = self.plot_data.with_columns(pl.col('response_latency').rolling_median(running_window).alias('running_response_latency'))
-        
-        if plot_in_time:
-            x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
-            x_label_ = 'Time (mins)'
+        if seperate_by is not None:
+            if seperate_by not in self.plot_data.columns:
+                raise ValueError(f'Cannot seperate the data by {seperate_by}')
+            seperate_vals = self.plot_data[seperate_by].unique().to_numpy()
         else:
-            x_axis_ = data2plot['trial_no'].to_numpy()
-            x_label_ = 'Trial No'
+            seperate_vals = [-1] # dummy value
         
-        y_axis_ = data2plot['running_response_latency'].to_numpy()
+        if reaction_of == 'state':
+            reaction_of = 'response_latency'
+        elif reaction_of in ['pos','speed','rig']:
+            reaction_of = reaction_of + '_reaction_time'
+            
+        for sep in seperate_vals:
+            if seperate_by is not None:
+                data2plot = self.plot_data.filter(pl.col(seperate_by)==sep)
+                if 'stim' in seperate_by:
+                    clr = self.color.stim_keys[sep]
+                elif seperate_by == 'contrast':
+                    clr = self.color.contrast_keys[str(sep)]
+                else:
+                    clr = {}
+            else:
+                data2plot = self.plot_data.select(pl.col('*'))
+            
+            if running_window is not None:
+                data2plot = data2plot.with_columns(pl.col(reaction_of).rolling_median(running_window).alias('running_reaction_time'))
+                y_axis_ = data2plot['running_reaction_time'].to_numpy()
+            else:
+                y_axis_ = data2plot[reaction_of].to_numpy()
+                
+            if plot_in_time:
+                x_axis_ = data2plot['openstart_absolute'].to_numpy() / 60000
+                x_label_ = 'Time (mins)'
+            else:
+                x_axis_ = data2plot['trial_no'].to_numpy()
+                x_label_ = 'Trial No'
         
-        ax = self.__plot__(ax,x_axis_,y_axis_,
-                           label=self.stimkey,
-                           **self.color.stim_keys[self.stimkey])
+            ax = self.__plot__(ax,x_axis_,y_axis_,
+                            label=self.stimkey,
+                            **clr)
 
         # prettify
         fontsize = kwargs.get('fontsize',20)
@@ -347,6 +387,7 @@ class ReactionCumulativePlotter(BasePlotter):
                             ax.tick_params(labelsize=fontsize,which='both',axis='both')
                             ax.grid(alpha=0.5,axis='both')  
 
+
 class ResponseTimeDistributionPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
@@ -425,20 +466,23 @@ class ResponseTimeDistributionPlotter(BasePlotter):
              t_cutoff:float=1_000,
              cloud_width:float=0.33,
              xaxis_type:str='linear_spaced',
-             wheel_time:bool = True,
+             reaction_of:str = 'state',
              **kwargs):
         
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
             
         data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
         
         # do cutoff
-        data = data.with_columns([pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'),
-                                  pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_wheel_reaction_times')])
+        # data = data.with_columns([pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'),
+        #                           pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_wheel_reaction_times')])
+        
+        if reaction_of == 'state':
+            reaction_of = 'response_times'
+        elif reaction_of in ['pos','speed','rig']:
+            reaction_of = reaction_of + '_reaction_time'
         
         # get uniques
         u_stimkey = data['stimkey'].unique().to_numpy()
@@ -456,14 +500,13 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                                           (pl.col('signed_contrast')==c))
                     
                     if not filt_df.is_empty():
-                        if wheel_time:
-                            resp_times = filt_df[0,'cutoff_wheel_reaction_times'].to_numpy()
-                        else:
-                            resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
+
+                        resp_times = filt_df[0,reaction_of].to_numpy()
+
                         # do cutoff, default is 10_000 to involve everything
                         
-                        response_times = self.time_to_log(resp_times)
-                        response_times = self.add_jitter_to_misses(response_times)
+                        # response_times = self.time_to_log(resp_times)
+                        response_times = self.add_jitter_to_misses(resp_times)
                         
                         x_dots,y_dots = self.make_dot_cloud(response_times,cpos[c],cloud_width)
                         median = np.median(response_times)
@@ -485,15 +528,8 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                 elif len(pfilt_df)>=2:
                     
                     for k in range(1,len(pfilt_df)):
-                        if wheel_time:
-                            p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_wheel_reaction_times'].to_numpy(),
-                                                                            pfilt_df[k,'cutoff_wheel_reaction_times'].to_numpy())            
-                        else:
-                            if len(pfilt_df[k,'cutoff_response_times'].to_numpy()) >0:
-                                p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
-                                                                                pfilt_df[k,'cutoff_response_times'].to_numpy())   
-                            else:
-                                p = 1         
+                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,reaction_of].to_numpy(),
+                                                                        pfilt_df[k,reaction_of].to_numpy())        
                         stars = ''
                         if p < 0.001:
                             stars = '***'
