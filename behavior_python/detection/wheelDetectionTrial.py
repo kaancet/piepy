@@ -114,7 +114,7 @@ class WheelDetectionTrial(Trial):
                 display(f'No stimend signal from screen data, using corrected state timing!',color='yellow')
                 window_end = self.data['state'].filter(pl.col('transition').str.contains('stimend'))[0,'corrected_elapsed']
         
-        time_window = [self.t_trialinit, window_end]
+        time_window = [time_anchor, window_end]
         
         #initialize the trace
         traj.init_trace(time_anchor=time_anchor)
@@ -224,7 +224,7 @@ class WheelDetectionTrial(Trial):
                 if temp_resp <= 150:
                     # this is actually early
                     state_log_data['state_outcome'] = -1
-                    state_log_data['response_latency'] = state_log_data['t_trialinit'] + temp_resp
+                    state_log_data['response_latency'] = state_log_data['t_blank_dur'] + temp_resp
                 elif 150 < temp_resp <1000:
                     # This should not happen
                     # DISCARD TRIAL
