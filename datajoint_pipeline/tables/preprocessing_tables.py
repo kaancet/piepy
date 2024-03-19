@@ -34,14 +34,14 @@ class Preprocessing(dj.Computed):
 
         # TODO move several of these fields to a lookup table
         server_local_list = [(DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_local_24"').fetch1('path_to_data')]#r"\\nerffs17\boninlabwip2023\data"
-        server_nerfcluster_list = [(DataPaths & 'data_type = "server_nerfcluster_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_nerfcluster_23"').fetch1('path_to_data')]#r"/mnt/boninlab/boninlabwip2023/data"
+        server_nerfcluster_list = [(DataPaths & 'data_type = "server_nerfcluster_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_nerfcluster_24"').fetch1('path_to_data')]#r"/mnt/boninlab/boninlabwip2023/data"
         print(server_local_list)
 
         rec_name = (Recording & key).fetch1('recording_name')
-        if os.path.isdir(os.path.join(server_local_list[0], rec_name)):
+        if os.path.isdir(os.path.join(server_local_list[0],'2photon', "raw", rec_name)):
             server_local = server_local_list[0]
             server_nerfcluster = server_nerfcluster_list[0]
-        elif os.path.isdir(os.path.join(server_local_list[1], rec_name)):
+        elif os.path.isdir(os.path.join(server_local_list[1],'2photon', "raw", rec_name)):
             server_local = server_local_list[1]
             server_nerfcluster = server_nerfcluster_list[1]
         else:
@@ -60,6 +60,8 @@ class Preprocessing(dj.Computed):
         recording_root = os.path.join(server_nerfcluster, '2photon/raw', rec_name).replace("\\","/") 
         rec_root_local = os.path.join(server_local, '2photon/raw', rec_name)
         sess_dir = [f.name for f in os.scandir(rec_root_local) if f.is_dir() and 'run' in f.name]
+
+        # TODO: Need to accomodate for more than one run in the same session. 
         sess_file = [f.name for f in os.scandir(os.path.join(rec_root_local, sess_dir[0])) if '.sbx' in f.name]
         recording_path = os.path.join(recording_root, sess_dir[0]).replace("\\","/")
 
@@ -141,8 +143,14 @@ class BasicRecordingData(dj.Computed):
         # Get the major paths from the lookup table for the data we will need
 
         # TODO: correct for the fact that there is more than one fileserver
-        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), r'2photon\reg')
-        reg_data_path = os.path.join(core_reg_path, (Preprocessing & key).fetch1('reg_file_name'), 'suite2p')
+        server_local_list = [(DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_local_24"').fetch1('path_to_data')]
+        reg_dir = (Preprocessing & key).fetch1('reg_file_name')
+        if os.path.isdir(os.path.join(server_local_list[0], r'2photon\reg', reg_dir)):
+            core_reg_path = os.path.join(server_local_list[0], r'2photon\reg')
+        elif os.path.isdir(os.path.join(server_local_list[1], r'2photon\reg', reg_dir)):
+            core_reg_path = os.path.join(server_local_list[1], r'2photon\reg')
+
+        reg_data_path = os.path.join(core_reg_path, reg_dir, 'suite2p')
         
         # Get the paths to the suite2p output for each plane for this recording and find the number of planes
         # TODO add sanity check that the number of planes in the suite2p folder matches the number of planes marked for the recording
@@ -185,10 +193,16 @@ class Plane(dj.Imported):
     """
 
     def make(self, key):
-        #TODO: also correct the paths here
+        #TODO: also correct the paths here - Turn it into a function
         # Get the major paths from the lookup table for the data we will need
-        core_reg_path = os.path.join((DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), r'2photon\reg')
-        reg_data_path = os.path.join(core_reg_path, (Preprocessing & key).fetch1('reg_file_name'), 'suite2p')
+        server_local_list = [(DataPaths & 'data_type = "server_local_23"').fetch1('path_to_data'), (DataPaths & 'data_type = "server_local_24"').fetch1('path_to_data')]
+        reg_dir = (Preprocessing & key).fetch1('reg_file_name')
+        if os.path.isdir(os.path.join(server_local_list[0], r'2photon\reg', reg_dir)):
+            core_reg_path = os.path.join(server_local_list[0], r'2photon\reg')
+        elif os.path.isdir(os.path.join(server_local_list[1], r'2photon\reg', reg_dir)):
+            core_reg_path = os.path.join(server_local_list[1], r'2photon\reg')
+
+        reg_data_path = os.path.join(core_reg_path, reg_dir, 'suite2p')
         
         # Get the paths to the suite2p output for each plane for this recording and find the number of planes
         # TODO add sanity check that the number of planes in the suite2p folder matches the number of planes marked for the recording
