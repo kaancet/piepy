@@ -2,14 +2,13 @@ import time
 from PIL import Image
 import tifffile as tf
 import scipy.stats as st
+from tabulate import tabulate
 from os.path import join as pjoin
 
-from tabulate import tabulate
-from ..core.logger import Logger
 from ..core.session import Session
-from .wheelDetectionTrial import *
 from ..core.run import RunData, Run, RunMeta
 from ..core.pathfinder import PathFinder
+from .wheelDetectionTrial import *
 
 
 class WheelDetectionRunMeta(RunMeta):

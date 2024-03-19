@@ -2,9 +2,12 @@ import scipy.io as sio
 from os.path import join as pjoin
 from collections import namedtuple
 from os.path import exists as exists
+
 from ..utils import *
-from .pathfinder import PathFinder
+from .exceptions import *
 from .logger import Logger
+from .pathfinder import PathFinder
+
 
 class RunMeta:
     def __init__(self, prot_file:str) -> None:
@@ -180,8 +183,10 @@ class Run:
             return False
         
         # do the translation
-        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
-        
+        try:
+            self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
+        except:
+            raise WrongSessionTypeError(f'Unable to translate state changes to valid transitions. Make sure you are using the correct session type to analyze your data!')
         # rename cycle to 'trialNo for semantic reasons
         self.rawdata['statemachine'] = self.rawdata['statemachine'].rename({"cycle":"trialNo"})
         
