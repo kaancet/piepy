@@ -76,6 +76,10 @@ class WheelDetectionExperiment:
                 list_df = pl.DataFrame(non_lit)
                 temp_df = pl.concat([temp_df,list_df],how='horizontal')
                 
+                #if there are columns that are not in df add them
+                for c in temp_df.columns:
+                    if c not in df.columns:
+                        df = df.with_columns(pl.lit(None).alias(c))
                 
                 temp_df = temp_df.select(df.columns)
                 # fixing column datatypes

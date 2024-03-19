@@ -48,6 +48,11 @@ class MouseData:
             cumul_data_list = cumul_data_list[1:]
             
         for new_cumul in cumul_data_list:
+            #if there are columns that are not in df add them with None
+            for c in new_cumul.columns:
+                if c not in self.cumul_data.columns:
+                    self.cumul_data = self.cumul_data.with_columns(pl.lit(None).alias(c))
+                    
             #sorting the columns
             new_cumul = new_cumul.select(self.cumul_data.columns)
             # fixing column datatypes
