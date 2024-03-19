@@ -1,7 +1,7 @@
 import os
 from os.path import join as pjoin
 from os.path import exists as exists
-from ..utils import parseConfig, display
+from ..utils import parseConfig
 
 
 class PathFinder:

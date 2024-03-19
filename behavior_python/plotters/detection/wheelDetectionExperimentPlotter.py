@@ -11,7 +11,10 @@ ANIMAL_COLORS = {'KC139' : '#332288',
                  'KC143' : '#AA4499',
                  'KC144' : '#882255',
                  'KC145' : '#88CCEE',
-                 'KC146' : '#275D6D'}
+                 'KC146' : '#275D6D',
+                 'KC147' : '#F57A6C',
+                 'KC148' : '#ADFA9A',
+                 'KC149' : '#A45414'}
 
 
 class ComparisonLinePlotter:
@@ -63,7 +66,8 @@ class ComparisonLinePlotter:
         fontsize = kwargs.pop('fontsize',30)
         linewidth = kwargs.pop('linewidth',3)
     
-        uniq_contrast = self.plot_data['contrast_difficulty'].unique().sort().to_numpy()
+        uniq_contrast = self.plot_data['contrast_difficulty'].unique().sort(descending=True).to_numpy()
+        uniq_contrast = np.roll(uniq_contrast,1) # roll to have the order [catch, hard, easy]
         n_contrast = len(uniq_contrast) - 1 # remove 0
         uniq_stims = self.plot_data['stim_type'].unique().sort().to_numpy()
         n_stim = len(uniq_stims)
@@ -185,7 +189,8 @@ class ComparisonLinePlotter:
         fontsize = kwargs.pop('fontsize',30)
         linewidth = kwargs.pop('linewidth',3)
     
-        uniq_contrast = self.plot_data['contrast_difficulty'].unique().to_numpy()
+        uniq_contrast = self.plot_data['contrast_difficulty'].unique().sort(descending=True).to_numpy()
+        uniq_contrast = np.roll(uniq_contrast,1) # roll to have the order [catch, hard, easy]
         n_contrast = len(uniq_contrast) - 1 # remove 0
         uniq_stims = self.plot_data['stim_type'].unique().sort().to_numpy()
         n_stim = len(uniq_stims)

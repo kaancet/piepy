@@ -21,10 +21,8 @@ class DetectionTrialPlotter:
     def plot(self,ax:plt.Axes=None,trial_no:int=3,t_lim:list=None,**kwargs):
         fontsize = kwargs.pop('fontsize',25)
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(15,8)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(15,8)))
             ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
                 
         if t_lim is None:
             t_lim = [-500,1200]
@@ -38,7 +36,9 @@ class DetectionTrialPlotter:
         self.trial_data = self.trial_data.with_columns([
             (pl.col('t_trialstart') - pl.col(time_anchor)).suffix('_reset'),
             (pl.col('t_stimstart_absolute') - pl.col(time_anchor)).suffix('_reset'),
-            (pl.when(pl.col('t_stimstart_rig').is_not_null()).then(pl.col('t_stimstart_rig') - pl.col(time_anchor)).otherwise(pl.col('t_blank_dur'))).alias('t_stimstart_rig_reset'),
+            (pl.when(pl.col('t_stimstart_rig').is_not_null())
+             .then(pl.col('t_stimstart_rig') - pl.col(time_anchor))
+             .otherwise(pl.col('t_blank_dur'))).alias('t_stimstart_rig_reset'),
             (pl.col('t_stimend_rig') - pl.col(time_anchor)).suffix('_reset')
             ])
 

@@ -7,7 +7,7 @@ import json
 import sys
 import time
 from ast import literal_eval
-
+from colorama import Fore, Style
 from tqdm import tqdm
 from datetime import datetime as dt
 try:
@@ -18,8 +18,20 @@ except:
     except ImportError:
         from io import StringIO
 
-def display(msg):
-    sys.stdout.write('['+dt.today().strftime('%y-%m-%d %H:%M:%S')+'] - ' + msg + '\n')
+
+
+
+def display(*msgs:str,color:str='white',timestamp:bool=True):
+    try:
+        fg_color = getattr(Fore, color.upper())
+    except AttributeError:
+        fg_color = Fore.WHITE
+    msg = fg_color
+    if timestamp:
+        msg += f"[{dt.today().strftime('%y-%m-%d %H:%M:%S')}] - "
+    msg += f"{''.join(msgs)}\n"
+    msg += Style.RESET_ALL
+    sys.stdout.write(msg)
     sys.stdout.flush()
     
 def unique_except(x,exceptions:list):
@@ -307,15 +319,12 @@ def parseStimpyLog(fname):
         
         logdata = q.select(
             [
-                pl.col("code").str.strip("["),
+                pl.col("code").str.strip("[").str.strip(" ").cast(pl.Int64,strict=False),
                 pl.col("timereceived"),
                 pl.col("duinotime"),
-                pl.col("value").str.strip("]"),
+                pl.col("value").str.strip("]").str.strip(" ").cast(pl.Int64,strict=False),
             ]
         ).collect()
-        logdata = logdata.with_columns(
-            pl.col("*").str.strip(" ").cast(pl.Float32, strict=False)
-        )
         
     elif fname.endswith('.stimlog'):
         display('Parsing stimlog...')

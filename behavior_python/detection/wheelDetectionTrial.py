@@ -44,7 +44,9 @@ class WheelDetectionTrial(Trial):
                       'temporal_freq' : None,
                       'stim_pos' : None,
                       'opto_pattern' : None,
-                      'prob': None}
+                      'prob' : None,
+                      'rig_reaction_time' : None,
+                      'rig_reaction_tick' : None}
         
         if early_flag!=-1:
             vstim_dict['contrast'] = 100*temp_dict['contrast_r'] if temp_dict['correct'] else 100*temp_dict['contrast_l']
@@ -62,6 +64,17 @@ class WheelDetectionTrial(Trial):
 
             if vstim_dict['contrast'] == 0:
                 vstim_dict['stim_pos'] = 0 # no meaningful side when 0 contrast
+                
+            #
+            if 'rig_react_t' in vstim.columns:
+                rig_react = vstim.filter((pl.col('rig_react_t').is_not_null()) & (pl.col('rig_react_t') != -1))
+                if len(rig_react):
+                    if len(rig_react.unique('rig_react_t'))==1:
+                        # should be only one unique value in rig react gotten from the vstim log
+                        vstim_dict['rig_reaction_time'] = rig_react[0,'rig_react_t']*1000 - self.t_stimstart_rig #ms 
+                        vstim_dict['rig_reaction_tick'] = np.abs(rig_react[0,'rig_react_diff'])
+                    else:
+                        raise ValueError(f"!!!Whoa there cowboy this shouldn't happen with rig_react_t!!!!")
                 
         self._attrs_from_dict(vstim_dict)      
         return vstim_dict
@@ -97,6 +110,9 @@ class WheelDetectionTrial(Trial):
         else:
             time_anchor = self.t_stimstart_rig
             window_end = self.t_stimend_rig
+            if window_end is None:
+                display(f'No stimend signal from screen data, using corrected state timing!',color='yellow')
+                window_end = self.data['state'].filter(pl.col('transition').str.contains('stimend'))[0,'corrected_elapsed']
         
         time_window = [self.t_trialinit, window_end]
         

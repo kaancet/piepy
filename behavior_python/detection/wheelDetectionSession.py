@@ -234,6 +234,7 @@ class WheelDetectionRun(Run):
         
         trials = np.unique(self.rawdata['statemachine']['trialNo'])
         pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
+        did_append = False
         for t in pbar:
             # instantiate a trial      
             temp_trial = WheelDetectionTrial(trial_no = int(t),
@@ -245,8 +246,9 @@ class WheelDetectionRun(Run):
             
             if trial_row['state_outcome'] is not None:
                 self.trial_list.append(temp_trial)
-                if t == 1:
+                if not did_append:
                     data_to_append = {k:[v] for k,v in trial_row.items()}
+                    did_append = True
                 else:
                     for k,v in trial_row.items():
                         data_to_append[k].append(v)
