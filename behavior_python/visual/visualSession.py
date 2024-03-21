@@ -80,13 +80,30 @@ class VisualRun(Run):
              
     def translate_transition(self,oldState,newState) -> dict:
         """ A function to be called that add the meaning of state transitions into the state DataFrame """
-        curr_key = '{0}->{1}'.format(int(oldState), int(newState))
+        curr_key = f'{int(oldState)}->{int(newState)}'
         state_keys = {'0->1' : 'trialstart',
                       '1->2' : 'stimstart',
+                      '2->0' : 'stimtrialend',
                       '2->3' : 'stimend',
                       '3->0' : 'trialend'}
         
         return state_keys[curr_key]
+    
+    def extract_trial_count(self,num_state_changes:int):
+        """ Extracts the trial no from state changes, this works for stimpy for now"""
+        display('Trial increment faulty, extracting from state changes...',color='yellow')
+        
+        trialends = self.rawdata['statemachine'].with_columns(pl.when(pl.col('transition').str.contains('trialend')).then(1).otherwise(0).alias('end_flag'))
+        
+        trial_no = []
+        t_cntr = 1
+        for i in trialends['end_flag'].to_list():
+            trial_no.append(t_cntr)
+            if i:
+                t_cntr += 1
+                      
+        new_trial_no = pl.Series('trialNo',trial_no)
+        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(new_trial_no)
 
 class VisualSession(Session):
     def __init__(self, sessiondir, load_flag=False, save_mat=False):

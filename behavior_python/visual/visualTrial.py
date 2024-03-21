@@ -10,25 +10,33 @@ class VisualTrial(Trial):
     def get_vstim_properties(self,ignore:list=None) -> dict:
         """ Extracts the necessary properties from vstim data """
         if ignore is None:
-            ignore = []
+            ignore = ['code','presentTime','stim_idx','duinotime','photo']
         
         vstim = self.data['vstim']
-        # vstim = vstim.drop_nulls(subset=['prob'])
-        # this is an offline fix for a vstim logging issue where time increment messes up vstim logging
+        
+        
+        vstim = vstim.filter((pl.col('corrected_presentTime'))<self.t_stimend_rig)
         vstim = vstim[:-1]
         
         vstim_dict = {}
         for col in vstim.columns:
             if col in ignore:
                 continue
-            if len(vstim.select(col).unique()) == 1:
+            
+            _entries = vstim[col].drop_nulls().to_list()
+            
+            if len(np.unique(_entries)) == 1:
                 # if a column has all the same values, take the first entry of the column as the value
                 # sf, tf, contrast, stim_side, correct, opto, opto_pattern should run through here
-                vstim_dict[col] = vstim[0,col]
-            elif len(vstim.select(col).unique()) > 1:
+                vstim_dict[col] = _entries[0]
+            elif len(np.unique(_entries)) > 1:
                 # if different values exist in the column, take it as a list
-                self.logger.error(f"{col} has multiple unique entries ({len(vstim.select(col).unique())}). This shouldn't be the case")
-                vstim_dict[col] = vstim[col].to_list()
+                # self.logger.error(f"{col} has multiple unique entries ({len(vstim.select(col).unique())}). This shouldn't be the case")
+                if col in ['iStim','ori','sf','phase']:
+                    # these values differ in trial because they change after stimend....
+                    vstim_dict[col] = _entries[0]
+                else:
+                    vstim_dict[col] = _entries
             else:
                 vstim_dict[col] = None
         
@@ -47,15 +55,21 @@ class VisualTrial(Trial):
         
         state_log_data = {**empty_log_data}
         # in the beginning check if state data is complete
-        if 'trialend' not in self.data['state']['transition'].to_list():
+        if 'trialend' not in self.data['state']['transition'].to_list() and 'stimtrialend' not in self.data['state']['transition'].to_list():
             self._attrs_from_dict(empty_log_data)
             return empty_log_data
         
         # get time changes from statemachine
-        state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition')=='stimstart')[0,'corrected_elapsed']
-        state_log_data['t_stimend'] = self.data['state'].filter(pl.col('transition')=='stimend')[0,'corrected_elapsed']
-        state_log_data['t_trialend'] = self.t_trialend
+        state_log_data['t_stimstart'] = self.data['state'].filter(pl.col('transition')=='stimstart')[0,'elapsed']
+        state_log_data['t_stimend'] = self.data['state'].filter((pl.col('transition')=='stimend') | 
+                                                                (pl.col('transition')=='stimtrialend'))[0,'elapsed']
         
+        state_log_data['t_trialend'] = self.data['state'].filter((pl.col('transition')=='trialend') | 
+                                                                 (pl.col('transition')=='stimtrialend'))[0,'elapsed']
+        
+        
+        if 't_trialend' not in state_log_data.keys():
+            print('iuasdfdfsdfasdf')
         self._attrs_from_dict(state_log_data)
         return state_log_data
         

@@ -15,8 +15,6 @@ class Trial:
         self.reward_ms_per_ul = 0
         self.logger.set_msg_prefix(f'trial-[{self.trial_no}]')
         
-        config = parseConfig()
-        
     def __repr__(self) -> str:
         rep = f"""Trial No :{self.trial_no}
         {self.data['state']}"""
@@ -38,19 +36,23 @@ class Trial:
         screen = rawdata['screen']
     
         state_slice = states.filter(pl.col('trialNo')==self.trial_no)
-        vstim_slice = vstim.filter(pl.col('iTrial')==self.trial_no)        
-        
+              
         if use_state:
-            state_start = state_slice[0,'elapsed']
-            state_end = state_slice[-1,'elapsed']
+            _start = state_slice[0,'elapsed']
+            _end = state_slice[-1,'elapsed']
         
-            screen_slice = screen.filter((pl.col('duinotime') >= state_start) &
-                                        ((pl.col('duinotime') <= state_end)))
+            screen_slice = screen.filter((pl.col('duinotime') >= _start) &
+                                        ((pl.col('duinotime') <= _end)))
+
         else:
             # there should be exactly 2x trial count screen events
             # idx = 1 if screen[0,'value'] == 0 else 0 # sometimes screen events have a 0 value entry at the beginning
             screen_slice = screen.filter(pl.col('value') == self.trial_no)
-        
+            _start = screen_slice[0,'duinotime'] - self.meta.blankDuration*1000 # ms
+            _end = screen_slice[1,'duinotime']
+            
+        vstim_slice = vstim.filter((pl.col('presentTime')>=_start) & 
+                                   (pl.col('presentTime')<=_end))  
         if len(screen_slice):
             #there is an actual screen event
             rig_onset = screen_slice[0,'duinotime']
@@ -231,6 +233,11 @@ class Trial:
         frame_ids = []
         if not self.meta.imaging_mode is None:
             if get_from in self.data.keys():
+                """
+                NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving), 
+                if there is onepcam frame TTL signals coming into the Arduino it will save them.
+                This will lead to having onepcam_frame_ids column to be created but there will be no actual tiff files.
+                """
                 rig_frames_data = self.data[get_from] # this should already be the frames of trial dur
 
                 if self.t_stimstart_rig is not None:

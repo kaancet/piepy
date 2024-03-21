@@ -224,6 +224,10 @@ class Run:
         trial_cnt = int(len(self.rawdata['statemachine'])/num_state_changes)
         trial_no = np.repeat(np.arange(1,trial_cnt+1),num_state_changes)
         
+        if len(trial_no) != len(self.rawdata['statemachine']):
+            len_diff = len(self.rawdata['statemachine']) - len(trial_no)
+            trial_no = np.append(trial_no,trial_no[-1]*len_diff)
+            
         new_trial_no = pl.Series('trialNo',trial_no)
         self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(new_trial_no)
             
