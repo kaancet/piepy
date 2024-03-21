@@ -20,7 +20,7 @@ class RunMeta:
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
                   'progressWindow', 'debiasingWindow', 'decimationRatio']
         self.opto = False
-        self.opts,self.params = parseProtocolFile(self.prot_file)
+        self.opts,self.params,_ = parseProtocolFile(self.prot_file)
         # put all of the options into meta attributes
         for k, v in self.opts.items():
             if k not in ignore:
@@ -31,8 +31,6 @@ class RunMeta:
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
-                elif k == 'contrastVector':
-                    v = [float(i) for i in v.strip('] [').strip(' ').split(',')]
                 setattr(self, k, v)
 
         if self.opto:
