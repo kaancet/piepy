@@ -82,7 +82,7 @@ class Trial:
         self.t_trialstart = state_slice['corrected_elapsed'][0]
         self.t_trialend = state_slice['corrected_elapsed'][-1]
     
-    def get_data_slices(self,rawdata:dict,use_state:bool=False) -> pl.DataFrame:
+    def get_data_slices(self,rawdata:dict,use_state:bool=False) -> None:
         """
         Extracts the relevant portion from each data 
         

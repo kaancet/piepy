@@ -16,7 +16,7 @@ class VisualTrial(Trial):
         
         
         vstim = vstim.filter((pl.col('corrected_presentTime'))<self.t_stimend_rig)
-        vstim = vstim[:-1]
+        vstim = vstim[:-5] # 5 is arbitrary to make sure no extra rows from next trial due to timing imperfections
         
         vstim_dict = {}
         for col in vstim.columns:
