@@ -109,15 +109,23 @@ class Behaviour(dj.Imported):
         #base_recording_name = rec_name[:rec_name.find('_s2p')]
 
         # behave_session_dir = (DataPaths & 'data_type = "behave_data"').fetch1('path_to_data')
-        behave_session_dir = r'\\10.86.3.20\data_on_50TB\presentation'
-        key['behave_session_path'] = os.path.join(behave_session_dir, rec_name)
+        
+        #TODO: seems like we don't need the full path anymore - did Kaan change something? 
+        # Can update or remove from the pipeline.
+        #behave_session_dir = r'\\10.86.3.20\data_on_50TB\presentation'
+        #key['behave_session_path'] = os.path.join(behave_session_dir, rec_name)
+        key['behave_session_path'] = rec_name
 
         #key['base_sess_name'] = base_recording_name
         # Process the session so that it can be loaded in later
         print(key['behave_session_path'])
-        w = WheelDetectionSession(sessiondir=key['behave_session_path'], load_flag=True)
+        w = WheelDetectionSession(sessiondir=key['behave_session_path'], load_flag=True, skip_google=True)
         behave_df = w.data.data
-        stim_details = behave_df.drop_nulls('stim_start').select(['stim_start', 'contrast', 'spatial_freq', 'temporal_freq', 'stim_pos'])
+        try:
+            stim_details = behave_df.drop_nulls('stim_start').select(['stim_start', 'contrast', 'spatial_freq', 'temporal_freq', 'stim_pos'])
+        except:
+            stim_details = behave_df.drop_nulls('t_stimstart_rig').select(['t_stimstart_rig', 'contrast', 'spatial_freq', 'temporal_freq', 'stim_pos'])
+        
 
         key['n_trials'] = behave_df.shape[0]
         self.insert1(key)

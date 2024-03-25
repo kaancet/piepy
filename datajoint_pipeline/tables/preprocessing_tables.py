@@ -47,6 +47,15 @@ class Preprocessing(dj.Computed):
         else:
             print('Uh-oh')
 
+        # TODO: Making some temporary changes to see how the suite2p cluster code handles the paths
+        # TODO: Need to formally handle the case with more than one recording on the same day
+        recording_root = os.path.join(server_nerfcluster, '2photon/raw', rec_name).replace("\\","/") 
+        rec_root_local = os.path.join(server_local, '2photon/raw', rec_name)
+        sess_dir = [f.name for f in os.scandir(rec_root_local) if f.is_dir() and 'run' in f.name]
+
+
+        # bash_filename = f'preprocessing_{rec_name}{sess_dir[0]}.sh'
+        # bash_path = os.path.join('2photon', "raw", rec_name, sess_dir[0], bash_filename)
         bash_filename = f'preprocessing_{rec_name}.sh'
         bash_path = os.path.join('2photon', "raw", rec_name, bash_filename)
 
@@ -54,12 +63,11 @@ class Preprocessing(dj.Computed):
         bash_path_nerfcluster = os.path.join(server_nerfcluster, bash_path).replace("\\","/")    
         suite2p_json_path = os.path.join(server_nerfcluster, r"user/Dylan/2photon/test_suite2p_settings.json").replace("\\","/") 
         scratch_dir = (DataPaths & 'data_type = "scratch_dir"').fetch1('path_to_data')
+        # mnt_dir = os.path.join(server_nerfcluster, '2photon/reg', rec_name, sess_dir[0]).replace("\\","/") 
         mnt_dir = os.path.join(server_nerfcluster, '2photon/reg').replace("\\","/") 
 
 
-        recording_root = os.path.join(server_nerfcluster, '2photon/raw', rec_name).replace("\\","/") 
-        rec_root_local = os.path.join(server_local, '2photon/raw', rec_name)
-        sess_dir = [f.name for f in os.scandir(rec_root_local) if f.is_dir() and 'run' in f.name]
+        
 
         # TODO: Need to accomodate for more than one run in the same session. 
         sess_file = [f.name for f in os.scandir(os.path.join(rec_root_local, sess_dir[0])) if '.sbx' in f.name]
