@@ -15,6 +15,10 @@ class BasePlotter:
         set_style('analysis')
         self.color = Color()
         
+         #check color definitions
+        self.color.check_stim_colors(self.data['stimkey'].drop_nulls().unique().to_list())
+        self.color.check_contrast_colors(self.data['contrast'].drop_nulls().unique().to_list())
+        
     @staticmethod
     def select_stim_data(data_in:pl.DataFrame, stimkey:str=None, drop_early:bool=True) -> dict:
         """ Returns the selected stimulus type from session data
@@ -77,10 +81,6 @@ class PerformancePlotter(BasePlotter):
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
 
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
@@ -153,11 +153,7 @@ class ResponseTimePlotter(BasePlotter):
     __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self,data,stimkey:str=None,**kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data,self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
+        self.plot_data,self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)   
         
     @staticmethod
     def __plot__(ax,x,y,**kwargs):
@@ -240,13 +236,7 @@ class ReactionCumulativePlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
-        
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
-
     
     @staticmethod
     def time_to_log(time_data_arr:np.ndarray) -> np.ndarray:
@@ -392,11 +382,6 @@ class ResponseTimeDistributionPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
-        
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
     
     @staticmethod      
@@ -456,6 +441,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
     @staticmethod
     def add_jitter_to_misses(resp_times,jitter_lims=[0,100]):
         """ Adds jitter in y-dimension to missed trial dot"""
+        resp_times = np.array(resp_times) #polars returns an immutable numpy array, this changes that
         miss_locs = np.where(resp_times>=1000)[0]
         if len(miss_locs):
             jitter = np.random.choice(np.arange(jitter_lims[0],jitter_lims[1]),len(miss_locs),replace=True)
@@ -475,14 +461,13 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             
         data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
         
-        # do cutoff
-        # data = data.with_columns([pl.col('response_times').apply(lambda x: [i for i in x if i<t_cutoff]).alias('cutoff_response_times'),
-        #                           pl.col('wheel_reaction_time').apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_wheel_reaction_times')])
-        
         if reaction_of == 'state':
             reaction_of = 'response_times'
         elif reaction_of in ['pos','speed','rig']:
             reaction_of = reaction_of + '_reaction_time'
+            
+        # do cutoff
+        data = data.with_columns(pl.col(reaction_of).apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_response_times'))
         
         # get uniques
         u_stimkey = data['stimkey'].unique().to_numpy()
@@ -501,7 +486,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                     
                     if not filt_df.is_empty():
 
-                        resp_times = filt_df[0,reaction_of].to_numpy()
+                        resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
 
                         # do cutoff, default is 10_000 to involve everything
                         
@@ -528,8 +513,8 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                 elif len(pfilt_df)>=2:
                     
                     for k in range(1,len(pfilt_df)):
-                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,reaction_of].to_numpy(),
-                                                                        pfilt_df[k,reaction_of].to_numpy())        
+                        p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
+                                                                        pfilt_df[k,'cutoff_response_times'].to_numpy())        
                         stars = ''
                         if p < 0.001:
                             stars = '***'
@@ -547,6 +532,9 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         ax.set_ylim([90,1500])
         ax.plot([0,0],ax.get_ylim(),color='gray',linewidth=2,alpha=0.5)
         
+        # miss line
+        ax.axhline(1000,color='r',linewidth=1.5,linestyle=':')
+        
         fontsize = kwargs.get('fontsize',20)
         ax.set_xlabel('Stimulus Contrast (%)', fontsize=fontsize)
         ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
@@ -561,7 +549,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         
         
         ax.xaxis.set_major_locator(ticker.FixedLocator(list(cpos.values())))
-        ax.xaxis.set_major_formatter(ticker.FixedFormatter([int(i) for i in cpos.keys()]))
+        ax.xaxis.set_major_formatter(ticker.FixedFormatter([i for i in cpos.keys()]))
             
         ax.grid(alpha=0.5,axis='both')
         
@@ -665,10 +653,6 @@ class ResponseTimeHistogramPlotter(BasePlotter):
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
      
     @staticmethod
     def bin_times(time_arr,bin_width=50,bins:np.ndarray=None):
@@ -709,10 +693,6 @@ class ResponseTypeBarPlotter(BasePlotter):
         super().__init__(data=data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
         
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
-        
     @staticmethod    
     def __plot__(ax,x_locs,bar_heights,**kwargs):
         ax.bar(x_locs,bar_heights,**kwargs)
@@ -724,10 +704,6 @@ class LickPlotter(BasePlotter):
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
-        self.color.check_stim_colors(self.plot_data.keys())
-        
-        c_list = nonan_unique(self.plot_data[list(self.plot_data.keys())[0]]['contrast'])
-        self.color.check_contrast_colors(c_list)
         
     def pool_licks(self):
         
@@ -792,10 +768,6 @@ class LickScatterPlotter(BasePlotter):
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
     
     @staticmethod
     def __plot_scatter__(ax,t,lick_arr,**kwargs):
@@ -838,10 +810,6 @@ class WheelTrajectoryPlotter(BasePlotter):
         super().__init__(data, **kwargs)
         self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,
                                                                              drop_early=kwargs.pop('drop_early',True))
-        
-        #check color definitions
-        self.color.check_stim_colors(self.uniq_keys)
-        self.color.check_contrast_colors(nonan_unique(self.plot_data['contrast'].to_numpy()))
         
     @staticmethod
     def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):

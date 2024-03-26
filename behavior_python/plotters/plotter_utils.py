@@ -143,7 +143,7 @@ class Color:
         cfg = parseConfig()
         self.colorkey_path = cfg['colors'][0]
         self.read_colors()
-        
+    
     
     def read_colors(self) -> None:
         """ Reads the colorkey.json and returns a dict of color keys for different sftf and contrast values"""
@@ -160,7 +160,8 @@ class Color:
             if k not in self.stim_keys:
                 print(f'Stim key {k} not present in colors, generating random color...')
                 colors = {**mcolors.BASE_COLORS, **mcolors.CSS4_COLORS}
-                new_colors[k] = {'color':np.random.choice(list(colors.keys()),replace=False,size=1)[0]}
+                new_colors[k] = {'color':np.random.choice(list(colors.keys()),replace=False,size=1)[0],
+                                 'linestyle':np.random.choice([':','--','-.','-'],replace=False,size=1)[0]}
         if len(new_colors):
             self.stim_keys = {**self.stim_keys, **new_colors}
         else:
