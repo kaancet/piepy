@@ -567,23 +567,46 @@ def remove_brackets(x,convert_flag=True):
 
 def parseProtocolFile(protfile):
     options = {}
+    comments = []
     with open(protfile,'r') as fid:
         string = fid.read().split('\n')
         for i,s in enumerate(string):
+            if s.startswith('#'):
+                # it's a comment 
+                comments.append(s.strip('#').strip(' '))
+                continue
+            elif s == '':
+                continue
             tmp = s.split('=')
             tmp = [t.strip(' ') for t in tmp]
             # Because the first lines are always like this...
             if len(tmp)>1:
                 if "#" in tmp[1]:
-                    tmp[1] = tmp[1].split('#')[0]
-                options[tmp[0]] = tmp[1].replace('\r','')
-                try:
-                    options[tmp[0]] = int(options[tmp[0]])
-                except:
+                    _t = tmp[1].split('#')
+                    tmp[1] = _t[0]
+                    comments.append(_t[1])
+                opt_val = tmp[1].replace('\r','')
+                if '[' in opt_val:
+                    # parse list
+                    opt_val = [float(i) for i in opt_val.strip('] [').strip(' ').split(',')]
+                else:
                     try:
-                        options[tmp[0]] = float(options[tmp[0]])
+                        # try to parse as int
+                        opt_val = int(opt_val)
                     except:
-                        pass
+                        try:
+                            # try to parse as float
+                            opt_val = float(opt_val)
+                        except:
+                            # try boolean
+                            if opt_val == 'True':
+                                opt_val = True
+                            elif opt_val == 'False':
+                                opt_val = False
+                            else:
+                                # no luck, go on as string
+                                pass
+                options[tmp[0]] = opt_val
             else:
                 break
         tmp = string[i::]
@@ -595,4 +618,4 @@ def parseProtocolFile(protfile):
                                     delimiter=';')
         except pd.io.common.EmptyDataError:
             params = None
-    return options,params
+    return options,params,comments

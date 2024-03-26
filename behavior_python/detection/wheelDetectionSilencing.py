@@ -1,5 +1,5 @@
 from .wheelDetectionSession import *
-
+from scipy.optimize import curve_fit
 
 class WheelDetectionExperiment:
     def __init__(self,exp_list:list,load_sessions:bool=False) -> None:
@@ -12,6 +12,24 @@ class WheelDetectionExperiment:
         else:
             self.data = self.parse_sessions(load_sessions=self.load_sessions)
         self.summary_data = self.make_summary_data()
+        
+    def transform_to_rig_time(self) -> None:
+        """ Transforms the reaction time of trials that dont't have rig_reaction_time to that time frame """
+        with_rig_time = self.data.drop_nulls('rig_reaction_time')
+        resp_time = with_rig_time['response_latency']
+        rig_time = with_rig_time['rig_reaction_time']
+        
+        def m1_func(x,a):
+            m = 1
+            return m*x + a
+        
+        popt,pcov = curve_fit(m1_func,resp_time,rig_time) #popt[0] is the time diff intercept
+        
+        all_resp_time = self.data['response_latency']
+        new_rig_times = m1_func(all_resp_time,*popt)
+
+        tmp = pl.Series('transformed_response_times',new_rig_times)
+        self.data = self.data.with_columns(tmp)
     
     @staticmethod
     def parse_session_name(exp_dir) -> dict:
@@ -76,6 +94,10 @@ class WheelDetectionExperiment:
                 list_df = pl.DataFrame(non_lit)
                 temp_df = pl.concat([temp_df,list_df],how='horizontal')
                 
+                #if there are columns that are not in df add them
+                for c in temp_df.columns:
+                    if c not in df.columns:
+                        df = df.with_columns(pl.lit(None).alias(c))
                 
                 temp_df = temp_df.select(df.columns)
                 # fixing column datatypes

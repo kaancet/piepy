@@ -2,9 +2,12 @@ import scipy.io as sio
 from os.path import join as pjoin
 from collections import namedtuple
 from os.path import exists as exists
+
 from ..utils import *
-from .pathfinder import PathFinder
+from .exceptions import *
 from .logger import Logger
+from .pathfinder import PathFinder
+
 
 class RunMeta:
     def __init__(self, prot_file:str) -> None:
@@ -17,7 +20,7 @@ class RunMeta:
         ignore = ['picsFolder', 'picsNameFormat', 'shuffle', 'mask', 'nTrials',
                   'progressWindow', 'debiasingWindow', 'decimationRatio']
         self.opto = False
-        self.opts,self.params = parseProtocolFile(self.prot_file)
+        self.opts,self.params,_ = parseProtocolFile(self.prot_file)
         # put all of the options into meta attributes
         for k, v in self.opts.items():
             if k not in ignore:
@@ -28,8 +31,6 @@ class RunMeta:
                 if k == 'controller':
                     if 'Opto' in v:
                         self.opto = True
-                elif k == 'contrastVector':
-                    v = [float(i) for i in v.strip('] [').strip(' ').split(',')]
                 setattr(self, k, v)
 
         if self.opto:
@@ -180,8 +181,10 @@ class Run:
             return False
         
         # do the translation
-        self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
-        
+        try:
+            self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(pl.struct(['oldState','newState']).apply(lambda x: self.translate_transition(x['oldState'],x['newState'])).alias('transition'))
+        except:
+            raise WrongSessionTypeError(f'Unable to translate state changes to valid transitions. Make sure you are using the correct session type to analyze your data!')
         # rename cycle to 'trialNo for semantic reasons
         self.rawdata['statemachine'] = self.rawdata['statemachine'].rename({"cycle":"trialNo"})
         
@@ -221,6 +224,10 @@ class Run:
         trial_cnt = int(len(self.rawdata['statemachine'])/num_state_changes)
         trial_no = np.repeat(np.arange(1,trial_cnt+1),num_state_changes)
         
+        if len(trial_no) != len(self.rawdata['statemachine']):
+            len_diff = len(self.rawdata['statemachine']) - len(trial_no)
+            trial_no = np.append(trial_no,trial_no[-1]*len_diff)
+            
         new_trial_no = pl.Series('trialNo',trial_no)
         self.rawdata['statemachine'] = self.rawdata['statemachine'].with_columns(new_trial_no)
             
