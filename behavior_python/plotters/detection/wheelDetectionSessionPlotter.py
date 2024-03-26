@@ -57,7 +57,8 @@ class DetectionPsychometricPlotter(BasePlotter):
                 if not p_side.is_empty():
                     self.p_vals = pl.concat([self.p_vals,p_side])
 
-        q = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto_pattern'],descending=True)
+        nonearly_data = self.stat_analysis.agg_data.drop_nulls('contrast')
+        q = nonearly_data.sort(['stimkey','opto_pattern'],descending=True)
         
         # get uniques
         u_stimkey = q['stimkey'].unique().to_numpy()
@@ -98,19 +99,19 @@ class DetectionPsychometricPlotter(BasePlotter):
         
         if xaxis_type == 'log':
             ax.set_xscale('symlog')
-            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            x_ticks = nonearly_data['signed_contrast'].unique().sort().to_numpy()
             ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
             ax.xaxis.set_minor_locator(ticker.LogLocator(base=10.0,subs=np.linspace(0.1,1,9,endpoint=False)))
             x_t = {t:t for t in x_ticks}
         
         elif xaxis_type=='linear':
-            x_ticks = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            x_ticks = nonearly_data['signed_contrast'].unique().sort().to_numpy()
             ax.set_xticks(x_ticks)
             ax.set_xlim([x_ticks[0]-10,x_ticks[-1]+10])
             x_t = {t:t for t in x_ticks}
         
         elif xaxis_type=='linear_spaced':
-            temp = self.stat_analysis.agg_data.drop_nulls()['signed_contrast'].unique().sort().to_numpy()
+            temp = nonearly_data['signed_contrast'].unique().sort().to_numpy()
             x_ticks = np.arange(-(len(temp)-1)/2,(len(temp)-1)/2+1)
             x_t = {temp[i]:t for i,t in enumerate(x_ticks)}
             ax.set_xticks(x_ticks)

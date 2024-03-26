@@ -1,10 +1,11 @@
-from .plotter_utils import *
-from os.path import join as pjoin
-from ..wheelUtils import *
 from scipy import stats
-import copy
+from os.path import join as pjoin
 import matplotlib.patheffects as pe
-from behavior_python.detection.wheelDetectionAnalysis import DetectionAnalysis
+
+from ..wheelUtils import *
+from .plotter_utils import *
+from ..core.exceptions import *
+from ..detection.wheelDetectionAnalysis import DetectionAnalysis
 
 
 class BasePlotter:
@@ -459,7 +460,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             self.fig = plt.figure(figsize = kwargs.pop('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
             
-        data = self.stat_analysis.agg_data.drop_nulls().sort(['stimkey','opto'],descending=True)
+        data = self.stat_analysis.agg_data.drop_nulls('contrast').sort(['stimkey','opto'],descending=True)
         
         if reaction_of == 'state':
             reaction_of = 'response_times'
@@ -467,7 +468,10 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             reaction_of = reaction_of + '_reaction_time'
             
         # do cutoff
-        data = data.with_columns(pl.col(reaction_of).apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_response_times'))
+        try:
+            data = data.with_columns(pl.col(reaction_of).apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_response_times'))
+        except:
+            raise NoRigReactionTimeError(f"No rig time for the session!! Try 'state', 'pos' or 'speed'")
         
         # get uniques
         u_stimkey = data['stimkey'].unique().to_numpy()
