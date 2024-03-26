@@ -49,7 +49,13 @@ class WheelDetectionTrial(Trial):
                       'rig_reaction_tick' : None}
         
         if early_flag!=-1:
-            vstim_dict['contrast'] = 100*temp_dict['contrast_r'] if temp_dict['correct'] else 100*temp_dict['contrast_l']
+            contrast_temp = 100*round(temp_dict['contrast_r'],5) if temp_dict['correct'] else 100*round(temp_dict['contrast_l'],5)
+            if contrast_temp % 1 == 0:
+                contrast_temp = round(contrast_temp,1)
+            else:
+                contrast_temp = round(contrast_temp,2)
+            vstim_dict['contrast'] = contrast_temp
+            
             vstim_dict['spatial_freq'] = round(temp_dict['sf_r'],2) if temp_dict['correct'] else round(temp_dict['sf_l'],2)
             vstim_dict['temporal_freq'] = round(temp_dict['tf_r'],2) if temp_dict['correct'] else round(temp_dict['tf_l'],2)
             vstim_dict['stim_pos'] = temp_dict['posx_r'] if temp_dict['correct'] else temp_dict['posx_l']
