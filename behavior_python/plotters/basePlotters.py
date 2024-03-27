@@ -477,6 +477,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         u_stimkey = data['stimkey'].unique().to_numpy()
         u_stimtype = data['stim_type'].unique().to_numpy()
         u_stim_side = data['stim_side'].unique().to_numpy()
+        u_stim_side = [i for i in u_stim_side if i != 'catch']
         u_scontrast = data['signed_contrast'].unique().sort().to_numpy()
         
         cpos = self._make_contrast_axis(u_scontrast)
@@ -504,6 +505,20 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                                                    color=self.color.stim_keys[k]['color'],
                                                    label=filt_df[0,'stim_label'] if s=='contra' and c==12.5 else '_',
                                                    **kwargs)
+        
+        #baseline
+        baseline = data.filter((pl.col('stim_side')=='catch') & (pl.col('opto')==False))
+        if len(baseline):
+            catch_resp_times = baseline['cutoff_response_times'].explode().to_numpy()
+            catch_resp_times = self.add_jitter_to_misses(catch_resp_times)
+            x_dots,y_dots = self.make_dot_cloud(catch_resp_times,cpos[0],cloud_width/2)
+            median = np.median(catch_resp_times)
+            ax = self.__plot_scatter__(ax,x_dots,y_dots,median,cpos[0],cloud_width/2,
+                                        s=200,
+                                        color="#909090",
+                                        label="Catch Trials",
+                                        **kwargs)
+            
                     
         p_data = data.sort(["stim_type","contrast","stim_side"])
         

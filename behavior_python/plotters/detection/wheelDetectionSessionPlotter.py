@@ -63,6 +63,7 @@ class DetectionPsychometricPlotter(BasePlotter):
         # get uniques
         u_stimkey = q['stimkey'].unique().to_numpy()
         u_stim_side = q['stim_side'].unique().to_numpy()
+        u_stim_side = [i for i in u_stim_side if i!='catch']
         
         for k in u_stimkey:
             for s in u_stim_side:
@@ -86,16 +87,27 @@ class DetectionPsychometricPlotter(BasePlotter):
                                     contrast+jittered_offset,
                                     hr,
                                     confs,
-                                    label=f"{stim_label[0]}{self._makelabel(_contrast,count)}" if s!='catch' else '_',
+                                    label=f"{stim_label[0]}{self._makelabel(_contrast,count)}",
                                     marker = 'o',
                                     markersize=18,
                                     color = self.color.stim_keys[k]['color'] if color is None else color,
                                     linestyle = self.color.stim_keys[k]['linestyle'],
                                     **kwargs)
-                
-                    if s == 'catch' and filt_df[0,'opto'] == 0:
-                        # draw the baseline only on non-opto
-                        ax.plot([-100, 100], [hr, hr], 'k', linestyle=':', linewidth=2,alpha=0.7)
+        
+        #baseline
+        baseline = q.filter((pl.col('stim_side')=='catch') & (pl.col('opto')==False))
+        if len(baseline):
+            cnt = baseline['count'].to_numpy()
+            base_hr = np.sum(baseline['correct_count'].to_numpy()) / np.sum(cnt)
+            base_conf = 1.96 * np.sqrt((base_hr*(1.0 - base_hr)) / np.sum(cnt))
+            self.__plot__(ax,
+                          0, 100*base_hr, 100*base_conf,
+                          label=f"Catch Trials{self._makelabel([0],cnt)}",
+                          marker = 'o',
+                          markersize=18,
+                          color = '#909090',
+                          **kwargs)
+            ax.axhline(100*base_hr, color='k', linestyle=':', linewidth=2,alpha=0.7)
         
         if xaxis_type == 'log':
             ax.set_xscale('symlog')
