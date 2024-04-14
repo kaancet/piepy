@@ -77,7 +77,10 @@ class WheelDetectionTrial(Trial):
                 if len(rig_react):
                     if len(rig_react.unique('rig_react_t'))==1:
                         # should be only one unique value in rig react gotten from the vstim log
-                        vstim_dict['rig_reaction_time'] = rig_react[0,'rig_react_t']*1000 - self.t_stimstart_rig #ms 
+                        try:
+                            vstim_dict['rig_reaction_time'] = rig_react[0,'rig_react_t']*1000 - self.t_stimstart_rig #ms 
+                        except:
+                            vstim_dict['rig_reaction_time'] = rig_react[0,'rig_react_t']*1000 - self.t_stimstart #ms
                         vstim_dict['rig_reaction_tick'] = np.abs(rig_react[0,'rig_react_diff'])
                     else:
                         raise ValueError(f"!!!Whoa there cowboy this shouldn't happen with rig_react_t!!!!")
@@ -262,7 +265,44 @@ class WheelDetectionTrial(Trial):
         self._attrs_from_dict(state_log_data)
         return state_log_data
     
-    def trial_data_from_logs(self,**wheel_kwargs) -> dict:
+    def get_frames(self, get_from: str = None, **kwargs) -> dict:
+        """ Gets the frame ids for stimstart and stimend for trials with visual stimulus(hit or miss)
+            for early trials gets the frame ids of trialinit and "response_latency" aka when the animal gave a response to blank screen at wait period """
+        frame_ids = []
+        if not self.meta.imaging_mode is None:
+            if get_from in self.data.keys():
+                """
+                NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving), 
+                if there is onepcam frame TTL signals coming into the Arduino it will save them.
+                This will lead to having onepcam_frame_ids column to be created but there will be no actual tiff files.
+                """
+                rig_frames_data = self.data[get_from] # this should already be the frames of trial dur
+
+                if self.state_outcome != -1:
+                    if self.t_stimstart_rig is not None:
+                        # get stim present slice
+                        rig_frames_data = rig_frames_data.filter((pl.col('duinotime') >= self.t_stimstart_rig) & 
+                                                                (pl.col('duinotime') <= self.t_stimend_rig))
+                        
+                        if len(rig_frames_data):
+                            frame_ids = [int(rig_frames_data[0,'value']), int(rig_frames_data[-1,'value'])]
+                    
+                        else:
+                            self.logger.critical(f'{get_from} no camera pulses recorded during stim presentation!!! THIS IS BAD!')
+                else:
+                    # if there is no strimstart_rig(meaning no stimulus shown) then take the frames between trial_init and trial_init + response_time
+                    rig_frames_data = rig_frames_data.filter((pl.col('duinotime') >= self.t_trialinit) & 
+                                                            (pl.col('duinotime') <= (self.t_trialinit + self.response_latency)))
+                    
+                    if len(rig_frames_data):
+                        frame_ids = [int(rig_frames_data[0,'value']), int(rig_frames_data[-1,'value'])]
+                    
+        
+        frames_dict = {f'{get_from}_frame_ids':frame_ids}
+        self._attrs_from_dict(frames_dict)
+        return frames_dict
+     
+    def trial_data_from_logs(self,**wheel_kwargs) -> tuple[list,list]:
         """ 
         :return: A dictionary to be appended in the session dataframe
         """

@@ -1,12 +1,11 @@
 import scipy.io as sio
 from os.path import join as pjoin
-from collections import namedtuple
 from os.path import exists as exists
 
 from ..utils import *
 from .exceptions import *
 from .logger import Logger
-from .pathfinder import PathFinder
+from .pathfinder import *
 
 
 class RunMeta:
@@ -94,14 +93,12 @@ class Run:
         self.run_no = run_no
         self.init_run_paths(_path)
                 # initialize the logger(only log at one analysis location, currently arbitrary)
+        # self.logger = Logger(log_path=self.paths.save[0])
         self.logger = Logger(log_path=self.paths.save[0])
     
     def init_run_paths(self,path_finder:PathFinder) -> None:
         """ Sets the paths related to the run"""
-        tmp_dict = {name:(path[self.run_no] if isinstance(path,list) 
-                    else path) for name,path in path_finder.all_paths.items()}
-        tmp_paths = namedtuple("Paths", list(tmp_dict.keys()))
-        self.paths = tmp_paths(**tmp_dict)
+        self.paths = Paths(path_finder.all_paths,self.run_no)
         
         # create save paths
         for s_path in self.paths.save:
@@ -153,6 +150,11 @@ class Run:
         # stimlog and camlog
         rawdata, self.comments = self.read_combine_logs(self.paths.stimlog,self.paths.riglog)
         self.rawdata = extrapolate_time(rawdata)
+        
+        # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry:
+        if len(self.rawdata['screen']):
+            if self.rawdata['screen'][0,'value']==0:
+                self.rawdata['screen'] = self.rawdata['screen'].slice(1)
         
         # onep or two depending on imaging mode
         if self.meta.imaging_mode == '1P':

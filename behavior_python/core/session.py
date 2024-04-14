@@ -1,7 +1,7 @@
 from os.path import exists as exists
 
+from .run import *
 from ..utils import *
-from .run import Run, RunMeta
 from .pathfinder import PathFinder
 from ..gsheet_functions import GSheet
 from .dbinterface import DataBaseInterface

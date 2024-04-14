@@ -1,41 +1,43 @@
 import os
 from os.path import join as pjoin
 from os.path import exists as exists
-from ..utils import parseConfig
+from .config import config as cfg
+from .exceptions import *
 
+
+class Paths:
+    def __init__(self,paths_dict:dict,path_idx:int=None) -> None:
+        for name,path in paths_dict.items():
+            if isinstance(path,list):
+                if len(path) == 1:
+                    setattr(self,name,path[0])
+                else:
+                    #TODO: MULTIPLE STIMLOG RIGLOG STITCHING HERE?
+                    if path_idx is None:
+                        raise PathSettingError(f"Multiple runs exist in {path}, specify the run to get the path")
+                    else:
+                        # run no given
+                        try:
+                            ret = path[path_idx]
+                            setattr(self,name,ret)
+                        except:
+                            raise IndexError(f"Run no {path_idx} is larger than number of runs present in {name} location: {len(path)}")                      
+
+            else:
+                setattr(self,name,path)
 
 class PathFinder:
     def __init__(self,sessiondir:str) -> None:
         self.sessiondir = sessiondir
-        self.config = parseConfig()
+        self.config_paths = cfg.paths
         self.init_directories_from_config()
         self.set_log_paths()
-        
-    def get_path(self,path_name:str,run_no:int=None) -> str:
-        """ Gets the specified path from class attributes"""
-        p = getattr(self,path_name)
-        if run_no is None:
-            # run_not given
-            if len(p) == 1:
-                # only single run, so return it
-                ret = p[0]
-            else:
-                # multiple runs, prompt user to specify with error
-                raise ValueError(f"Multiple runs exist in {p}, specify the run to get the path")
-        else:
-            # run no given
-            try:
-                ret = p[run_no]
-            except:
-                raise IndexError(f"Run no {run_no} is larger than number of runs present in {path_name} location: {len(p)}")
-                
-        return ret
         
     def init_directories_from_config(self) -> None:
         """ Initializes different experiment related paths from the config file """
         tmp_runs = None
         self.all_paths = {}
-        for name, path in self.config.items():
+        for name, path in self.config_paths.items():
             # multiple path options, try each one
             if name == 'analysis':
                 continue
@@ -71,11 +73,11 @@ class PathFinder:
             save_paths = []
             if tmp_runs is not None:
                 for t in tmp_runs:
-                    save_paths.append([pjoin(pp,self.sessiondir,t) for pp in self.config['analysis']])
+                    save_paths.append([pjoin(pp,self.sessiondir,t) for pp in self.config_paths['analysis']])
                     # self.all_paths['analysis'].append([self.config['analysis']])
             else:
                 # self.all_paths['analysis'] = [self.config['analysis']]
-                save_paths = [[pjoin(pp,self.sessiondir) for pp in self.config['analysis']]]
+                save_paths = [[pjoin(pp,self.sessiondir) for pp in self.config_paths['analysis']]]
             self.all_paths['save'] = save_paths
             
         if self.all_paths['presentation'] is None and self.all_paths['training'] is None:

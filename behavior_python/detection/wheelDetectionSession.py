@@ -2,12 +2,16 @@ import time
 from PIL import Image
 import tifffile as tf
 import scipy.stats as st
+import multiprocessing
+from multiprocessing import Pool
 from tabulate import tabulate
 from os.path import join as pjoin
+from tqdm.contrib.concurrent import process_map
+
 
 from ..core.session import Session
 from ..core.run import RunData, Run, RunMeta
-from ..core.pathfinder import PathFinder
+from ..core.pathfinder import *
 from .wheelDetectionTrial import *
 
 
@@ -175,7 +179,10 @@ class WheelDetectionStats:
         ## performance on easy trials
         easy_data = data.filter(pl.col('contrast').is_in([100,50])) # earlies can't be easy or hard
         easy_correct_count = len(easy_data.filter(pl.col('outcome')==1))
-        self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
+        if len(easy_data):
+            self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
+        else:
+            self.easy_hit_rate = 0
         
         # median response time
         self.median_response_time = round(stim_data.filter(pl.col('outcome')==1)['response_latency'].median(),3)
@@ -205,10 +212,10 @@ class WheelDetectionRun(Run):
         self.trial_list = []
         self.data = WheelDetectionRunData()
         
-    def analyze_run(self):
+    def analyze_run(self) -> None:
         """ """
         self.read_run_data()
-        run_data = self.get_run_trials_from_data()
+        run_data = self.get_all_trials()
         
         # set the data object
         self.data.set_data(run_data)
@@ -220,60 +227,75 @@ class WheelDetectionRun(Run):
         self.data.set_outcome('state')
         self.stats = WheelDetectionStats(data_in=self.data)
         
-    def init_run_meta(self):
+    def init_run_meta(self) -> None:
         """ Initializes the metadata for the run """
         self.meta = WheelDetectionRunMeta(self.paths.prot)
-    
-    def get_run_trials_from_data(self) -> pl.DataFrame:
-        """ Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial """
-        data_to_append = []
         
+    def get_all_trials(self) -> pl.DataFrame | None:
+        """ """
         if not self.check_and_translate_state_data():
             return None
         
-        trials = np.unique(self.rawdata['statemachine']['trialNo'])
-        pbar = tqdm(trials,desc='Extracting trial data:',leave=True,position=0)
-        did_append = False
-        for t in pbar:
-            # instantiate a trial      
-            temp_trial = WheelDetectionTrial(trial_no = int(t),
-                                             meta = self.meta,
-                                             logger = self.logger)
-            # get the data slice using state changes
-            temp_trial.get_data_slices(self.rawdata,use_state=True)
-            trial_row = temp_trial.trial_data_from_logs()
+        trial_nos = np.unique(self.rawdata['statemachine']['trialNo'])
+        trial_nos = [int(t) for t in trial_nos]     
+        
+        if cfg.multiprocess['enable']:
+            mngr = multiprocessing.Manager()
+            self.queue = mngr.Queue(-1)
+            self._list_data = mngr.list()
             
-            if trial_row['state_outcome'] is not None:
-                self.trial_list.append(temp_trial)
-                if not did_append:
-                    data_to_append = {k:[v] for k,v in trial_row.items()}
-                    did_append = True
-                else:
-                    for k,v in trial_row.items():
-                        data_to_append[k].append(v)
-            else:
-                if t != len(trials):
-                    self.logger.critical("NO TRIAL DATA")
-                else:
-                    self.logger.info("Discarded the last trial...")
+            listener = multiprocessing.Process(
+                target=self.logger.listener_process, args=(self.queue,)
+            )
+            listener.start()
+            
+            process_map(self._get_trial, trial_nos, max_workers=cfg.multiprocess['cores'],chunksize=100)
+            
+        else:
+            self.logger.listener_configurer()
+            self._list_data = []
+            pbar = tqdm(trial_nos,desc='Extracting trial data:',leave=True,position=0)
+            for t in pbar:
+                self._get_trial(t)
+                
+        # convert list of dicts to dict of lists
+        data_to_frame = {k:[v] for k,v in self._list_data[0].items()}
+        for i in range(1,len(self._list_data)):
+            for k,v in self._list_data[i].items():
+                data_to_frame[k].append(v)
+        
+        r_data = pl.DataFrame(data_to_frame)
+        # order by trial no
+        r_data = r_data.sort('trial_no')
 
-            pbar.update()        
-        
-        self.logger.set_msg_prefix('session')
-        r_data = pl.DataFrame(data_to_append)
-        
         # add contrast titration boolean
         uniq_stims = nonan_unique(r_data['contrast'].to_numpy())
         isTitrated = 0
         if len(uniq_stims) > len(self.meta.contrastVector):
             isTitrated = 1
         r_data = r_data.with_columns([pl.lit(isTitrated).cast(pl.Boolean).alias('isTitrated')])
-        
+
         if r_data.is_empty():
             self.logger.error("THERE IS NO SESSION DATA !!!", cml=True)
             return None
         else:
             return r_data
+
+    def _get_trial(self,trial_no:int) -> pl.DataFrame | None:
+        """ Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial """
+        # self.logger.attach_to_queue(self.log_queue)
+        if cfg.multiprocess['enable']:
+            self.logger.worker_configurer(self.queue)
+        
+        temp_trial = WheelDetectionTrial(trial_no = trial_no,
+                                         meta = self.meta,
+                                         logger = self.logger)
+        # get the data slice using state changes
+        temp_trial.get_data_slices(self.rawdata,use_state=True)
+        _trial_data = temp_trial.trial_data_from_logs()
+        
+        if _trial_data['state_outcome'] is not None:
+            self._list_data.append(_trial_data)
     
     def translate_transition(self,oldState,newState) -> dict:
         """ 
