@@ -53,7 +53,7 @@ class DetectionAnalysis:
         df = q.collect()
         return df
 
-    def get_deltahits(self):
+    def get_deltahits(self) -> pl.DataFrame:
         """Return the delta between the hitrates of a given contrast """
         q = (
                 self.agg_data.lazy()
@@ -63,7 +63,7 @@ class DetectionAnalysis:
                     [   
                         (pl.col("hit_rate").first()).alias('base_HR'),
                         (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'),
-                        (pl.col("median_response_time").last()-pl.col("median_response_time").first()).alias('delta_resp'),
+                        # (pl.col("median_response_time").last()-pl.col("median_response_time").first()).alias('delta_resp'),
                     ]
                 ).sort(["stim_type","contrast","stim_side"])
             )
@@ -71,6 +71,28 @@ class DetectionAnalysis:
         df = q.collect()
         return df
     
+    def get_baseline_normalized_suppression_index(self) -> pl.DataFrame:
+        """ Returns the baseline normalized suppression index, SI = (HRnonopto-HRopto)/(HRnonopto-HRopto)"""
+        b = self.agg_data.filter((pl.col('contrast')==0) & (pl.col('opto_pattern')==-1)).sum()
+        baseline_hr = b[0,'correct_count']/b[0,'count']
+        baseline_normalized = self.agg_data.filter(pl.col('contrast')!=0).with_columns((pl.col('hit_rate')-baseline_hr).alias('norm_hit_rate'))
+        
+        q = (
+            self.agg_data.lazy()
+            .sort("opto_pattern")
+            .group_by(["stim_type","contrast","stim_side"])
+            .agg(
+                [   
+                    (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'),
+                    ((pl.col("norm_hit_rate").first()-baseline_hr)/(pl.col("norm_hit_rate").last()-baseline_hr)).alias('norm_SI'),
+                    pl.col('count').sum()
+                ]
+            ).sort(["stim_type","contrast","stim_side"])
+        )
+
+        df = q.collect()
+        return df
+                    
     def get_hitrate_pvalues_exact(self,side:str='contra', method:str='barnard') -> pl.DataFrame:
         """ Calculates the p-values for each contrast in different stim datasets"""
         q = (
