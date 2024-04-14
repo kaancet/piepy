@@ -19,8 +19,6 @@ except:
         from io import StringIO
 
 
-
-
 def display(*msgs:str,color:str='white',timestamp:bool=True):
     try:
         fg_color = getattr(Fore, color.upper())
@@ -129,19 +127,6 @@ def load_json_dict(path: str) -> dict:
     """
     with open(path) as f_in:
         return json.load(f_in)
-
-#TODO: there is definetly a better way to do this?
-def parseConfig():
-    # set the directory paths and animal ids
-    config_dir = os.path.dirname(os.path.abspath(__file__))
-    while True:
-        try:
-            config = parsePref(os.path.join(config_dir,'config.json'))
-            break
-        except:
-            config_dir = os.path.dirname(config_dir)
-
-    return config
 
 def parsePref(preffile):
     with open(preffile, 'r') as infile:

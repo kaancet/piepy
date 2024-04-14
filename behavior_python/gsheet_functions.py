@@ -1,14 +1,14 @@
-from matplotlib.pyplot import get
 import pandas as pd
 import gspread
 from googleapiclient import discovery
 from oauth2client.service_account import ServiceAccountCredentials
-from .utils import display, parseConfig
 
+from .core.config import config as cfg
+from .utils import display
 # define the scope
 scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
-config = parseConfig()
-cred_path = config['gsheet'][0]
+
+cred_path = cfg.paths['gsheet'][0]
 
 
 class GSheet:

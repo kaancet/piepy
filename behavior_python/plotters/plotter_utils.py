@@ -12,7 +12,7 @@ from behavior_python.utils import display
 import matplotlib.ticker as ticker
 from matplotlib.ticker import MaxNLocator,MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from ..utils import *
+from ..core.config import config as cfg
 import colorsys
 
 

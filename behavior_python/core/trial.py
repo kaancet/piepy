@@ -1,6 +1,5 @@
 import polars as pl
 import numpy as np
-from ..utils import parseConfig
 
 
 class Trial:

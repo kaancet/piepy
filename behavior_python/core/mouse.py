@@ -12,7 +12,8 @@ from collections import namedtuple
 from datetime import datetime as dt
 from os.path import dirname, abspath, normpath
 
-from ..utils import parseConfig, display, timeit
+from ..core.config import config as cfg
+from ..utils import display, timeit
 from ..gsheet_functions import GSheet
 
 
@@ -37,7 +38,7 @@ class MouseData:
         tmp = pl.DataFrame(summary_data_list)
         if self.summary_data is not None:
             if self.summary_data.dtypes != tmp.dtypes:
-                self.summary_data = self.summary_data.with_columns([pl.col(n).cast(t) for n,t in zip(self.summary_data.columns,tmp.dtypes) if t!=pl.Null])
+                self.summary_data = self.summary_data.with_columns([pl.col(n).cast(t,strict=False) for n,t in zip(self.summary_data.columns,tmp.dtypes) if t!=pl.Null])
             self.summary_data = pl.concat([self.summary_data,tmp])
         else:
             self.summary_data = tmp
@@ -46,6 +47,9 @@ class MouseData:
             # if no cumulative data exists, make one from the first in list and iterate over the rest
             self.cumul_data = cumul_data_list[0]
             cumul_data_list = cumul_data_list[1:]
+            
+        if 'cumul_trial_no' in self.cumul_data.columns:
+            self.cumul_data = self.cumul_data.drop('cumul_trial_no')
             
         for new_cumul in cumul_data_list:
             #if there are columns that are not in df add them with None
@@ -57,20 +61,18 @@ class MouseData:
             new_cumul = new_cumul.select(self.cumul_data.columns)
             # fixing column datatypes
             if self.cumul_data.dtypes != new_cumul.dtypes:
-                self.cumul_data = self.cumul_data.with_columns([pl.col(n).cast(t) for n,t in zip(self.cumul_data.columns,new_cumul.dtypes) if t!=pl.Null])
+                try:
+                    self.cumul_data = self.cumul_data.with_columns([pl.col(n).cast(t) for n,t in zip(self.cumul_data.columns,new_cumul.dtypes) if t!=pl.Null])
+                except:
+                    print('jlsdiobjsdf')
             try:
                 self.cumul_data = pl.concat([self.cumul_data,new_cumul])
             except pl.SchemaError:
                 raise pl.SchemaError('WEIRDNESS WITH COLUMNS')
             
         #sort both by date 
-        self.cumul_data = self.cumul_data.sort('date')
+        self.cumul_data = self.cumul_data.sort(['date','trial_no'])
         self.summary_data = self.summary_data.sort('date')
-        
-        # remove duplicates
-        
-        if 'cumul_trial_no' in self.cumul_data.columns:
-            self.cumul_data = self.cumul_data.drop('cumul_trial_no')
         self.cumul_data = self.cumul_data.with_row_count('cumul_trial_no',offset=1) 
         
     
@@ -132,7 +134,7 @@ class Mouse:
             self.filter_dates(dateinterval)
         
         self.read_googlesheet()
-        self.load_modes = ['no_load','reanalyze','load_and_and','last_saved']
+        self.load_modes = ['no_load','reanalyze','load_and_add','last_saved']
         
     def set_paradigm(self,paradigm:str) -> None:
         """ Sets the paradigm of which the read sessions will be analysed in, eg. detection task"""
@@ -166,10 +168,11 @@ class Mouse:
     
     def init_data_paths(self) -> None:
         """ Initializes data paths """
-        config = parseConfig()
+
+        paths = cfg.paths
         # excepy for analysis, take the first pathway present in config
         # only take the necessary things from config
-        config = {n:p for n,p in config.items() if n in ['analysis','presentation','training','gsheet','colors','database']}
+        config = {n:p for n,p in paths.items() if n in ['analysis','presentation','training','gsheet','colors','database']}
         tmp_dict = {name:path[0] for name,path in config.items()}
         tmp_paths = namedtuple("Paths", list(tmp_dict.keys()))
         self.paths = tmp_paths(**tmp_dict)
@@ -396,7 +399,7 @@ class Mouse:
             if is_saved:
                 display(f'Found behavior data at {self.saved_dir}',color='cyan')
                 reverse_session_list = self.session_list.reverse() #this will have sessions listed from new to old for ease of search
-                _until = np.where(reverse_session_list['sessiondir'].to_numpy() == self.saved_dir)[0]
+                _until = np.where(reverse_session_list['sessiondir'].to_numpy() == self.saved_dir)[0][0]
                 missing_sessions = reverse_session_list[:_until] 
                 missing_sessions = missing_sessions.reverse() # reverse again to have sessions added from old to new(chronological order)
                 display(f'Adding {len(missing_sessions)} missing sessions to last analysis data',color='cyan')

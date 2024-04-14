@@ -7,3 +7,4 @@ boninbehavior.egg-info/*
 /.vscode
 config.json
 behavior_python/.vscode
+behavior_python/240327_FWO_notebooks
