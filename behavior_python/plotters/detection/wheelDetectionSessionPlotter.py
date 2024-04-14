@@ -5,28 +5,16 @@ from scipy.stats import fisher_exact, barnard_exact
 
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data:pl.DataFrame, **kwargs) -> None:
-        super().__init__(data,**kwargs)
+        super().__init__(data,**kwargs) 
         self.stat_analysis = DetectionAnalysis(data=data)
+        self.integrate_linear_contrast_axis()
         
-    @staticmethod
-    def __plot__(ax,x,y,err,**kwargs):
-        """ Private function that plots a psychometric curve with the given 
-        x,y and err values are used to plot the points and 
-        x_fit and y_fit values are used to plot the fitted curve
-        """
-        if 'fontsize' in kwargs.keys():
-            kwargs.pop('fontsize')
+    def integrate_linear_contrast_axis(self) -> None:
+        """ Puts the inearly spaced x-axis location for the contrast as a new column to the data """
+        contrast_axis = self.make_linear_contrast_axis(self.plot_data)
+        contrast_idx = pl.Series('linear_contrast_idx',[float(contrast_axis[x]) if x is not None else None for x in self.stat_analysis.agg_data['signed_contrast'].to_list()])
+        self.stat_analysis.agg_data = self.stat_analysis.agg_data.with_columns(contrast_idx)
         
-        ax.errorbar(x, y, err,
-                    linewidth=2,
-                    markeredgecolor=kwargs.get('markeredgecolor','w'),
-                    markeredgewidth=kwargs.get('markeredgewidth',2),
-                    elinewidth=kwargs.get('elinewidth',3),
-                    capsize=kwargs.get('capsize',0),
-                    **kwargs)
-
-        return ax
-    
     @staticmethod
     def _makelabel(name:np.ndarray,count:np.ndarray) -> str:
         ret = f'''\nN=['''
@@ -35,78 +23,73 @@ class DetectionPsychometricPlotter(BasePlotter):
         ret = ret[:-2] # remove final space and comma
         ret += ''']'''
         return ret
-                   
+    
     def plot(self,ax:plt.Axes=None,
-             jitter:int=2,
+             jitter:float=None,
              xaxis_type:str='linear_spaced',
              doP:bool = True,
-             color=None,
-             **kwargs):
-        """ Plots the hit rates with 95% confidence intervals"""
+             color:str = None,
+             **kwargs) -> plt.Axes:
+        """ Plots the hit rates with 95% confidence intervals 
+        
+        Parameters:
+        ax (plt.axes) : An axes object to place to plot,default is None, which creates the axes
+        jitter (float) : Amopunt of jitter to add to different hitrate values for the same contrast
+        xaxis_type (str): The type of xaxis, mainly adjusts spacing
+        doP (bool) : Flag to do p-value analysis
+        color (str) : hex color code to overwrite the stimulus type color coding
+        
+        Returns:
+        plt.axes: Axes object
+        """
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(8,8)))
+            self.fig = plt.figure(figsize=kwargs.pop('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
-            if 'figsize' in kwargs:
-                kwargs.pop('figsize')
-
-        if doP:
-        # get the p-values
-            self.p_vals = pl.DataFrame()
-            for side in ['ipsi','contra','catch']:
-                p_side = self.stat_analysis.get_hitrate_pvalues_exact(side=side)
-                if not p_side.is_empty():
-                    self.p_vals = pl.concat([self.p_vals,p_side])
 
         nonearly_data = self.stat_analysis.agg_data.drop_nulls('contrast')
         q = nonearly_data.sort(['stimkey','opto_pattern'],descending=True)
         
-        # get uniques
-        u_stimkey = q['stimkey'].unique().to_numpy()
-        u_stim_side = q['stim_side'].unique().to_numpy()
-        u_stim_side = [i for i in u_stim_side if i!='catch']
-        
-        for k in u_stimkey:
-            for s in u_stim_side:
-                filt_df = q.filter((pl.col('stimkey')==k) &
-                                   (pl.col('stim_side')==s))
+        for filt_tup in self.subsets(q,['stimkey','stim_side']):
+            filt_df = filt_tup[-1]
+            filt_key = filt_tup[0]
+            if not filt_df.is_empty():
+                if filt_tup[1] == 'catch' and not filt_df[0,'opto']:
+                    continue
+                #x-axis selection
+                contrast = filt_df['signed_contrast'].to_numpy()
+                contrast_label = filt_df['signed_contrast'].to_numpy()
+                if xaxis_type == 'linear_spaced':
+                    contrast = filt_df['linear_contrast_idx'].to_numpy() 
                 
-                if not filt_df.is_empty():
-                    _contrast = filt_df['signed_contrast'].to_numpy()
-                    if xaxis_type == 'linear_spaced':
-                        contrast = np.arange(1,len(_contrast)+1) if len(_contrast)>1 else [0]  
-                    contrast = -1*contrast if s=='ipsi' else contrast
-                    
-                    confs = 100*filt_df['confs'].to_numpy()
-                    count = filt_df['count'].to_numpy()
-                    hr = 100*filt_df['hit_rate'].to_numpy()
-                    stim_label = filt_df['stim_label'].unique().to_numpy()                    
-                    
+                confs = 100*filt_df['confs'].to_numpy()
+                count = filt_df['count'].to_numpy()
+                hr = 100*filt_df['hit_rate'].to_numpy()
+                stim_label = filt_df['stim_label'].unique().to_numpy()                    
+                
+                if jitter is not None:
                     jittered_offset = np.array([np.random.uniform(0,jitter)*c for c in contrast])
                     jittered_offset[0] += np.random.uniform(0,jitter)/100
-                    ax = self.__plot__(ax,
-                                    contrast+jittered_offset,
-                                    hr,
-                                    confs,
-                                    label=f"{stim_label[0]}{self._makelabel(_contrast,count)}",
-                                    marker = 'o',
-                                    markersize=18,
-                                    color = self.color.stim_keys[k]['color'] if color is None else color,
-                                    linestyle = self.color.stim_keys[k]['linestyle'],
-                                    **kwargs)
-        
+                    contrast = contrast+jittered_offset
+                    
+                ax.errorbar(contrast, hr,confs,
+                            marker='o',
+                            label=f"{stim_label[0]}{self._makelabel(contrast_label,count)}",
+                            color = self.color.stim_keys[filt_key]['color'] if color is None else color,
+                            linewidth=plt.rcParams['lines.linewidth']*2,
+                            elinewidth=plt.rcParams['lines.linewidth'],
+                            linestyle = self.color.stim_keys[filt_key]['linestyle'],
+                            **kwargs)
         #baseline
         baseline = q.filter((pl.col('stim_side')=='catch') & (pl.col('opto')==False))
         if len(baseline):
             cnt = baseline['count'].to_numpy()
             base_hr = np.sum(baseline['correct_count'].to_numpy()) / np.sum(cnt)
             base_conf = 1.96 * np.sqrt((base_hr*(1.0 - base_hr)) / np.sum(cnt))
-            self.__plot__(ax,
-                          0, 100*base_hr, 100*base_conf,
-                          label=f"Catch Trials{self._makelabel([0],cnt)}",
-                          marker = 'o',
-                          markersize=18,
-                          color = '#909090',
-                          **kwargs)
+            ax.errorbar(0, 100*base_hr, 100*base_conf,
+                        marker='o',
+                        label=f"Catch Trials{self._makelabel([0],cnt)}",
+                        color = '#909090',
+                        **kwargs)
             ax.axhline(100*base_hr, color='k', linestyle=':', linewidth=2,alpha=0.7)
         
         if xaxis_type == 'log':
@@ -132,6 +115,13 @@ class DetectionPsychometricPlotter(BasePlotter):
             
         # put the significance starts
         if doP:
+            # get the p-values
+            self.p_vals = pl.DataFrame()
+            for side in ['ipsi','contra','catch']:
+                p_side = self.stat_analysis.get_hitrate_pvalues_exact(side=side)
+                if not p_side.is_empty():
+                    self.p_vals = pl.concat([self.p_vals,p_side])
+            
             for i in range(len(self.p_vals)):
                 p = self.p_vals[i,'p_values']
                 c = self.p_vals[i,'contrast']
@@ -145,30 +135,16 @@ class DetectionPsychometricPlotter(BasePlotter):
                     stars = '*'
                 else:
                     continue
-            
-                ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'], fontsize=30)
+                ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'])
     
-        # prettify
-        fontsize = kwargs.get('fontsize',25)
         ax.set_ylim([0,110])
         ax.set_yticklabels(int(i) for i in ax.get_yticks())
-        ax.set_xlabel('Stimulus Contrast (%)', fontsize=fontsize)
-        ax.set_ylabel('Hit Rate (%)',fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize)
-        
-        ax.spines['left'].set_bounds(0, 100) 
-        # ax.spines['bottom'].set_bounds(0, 1)
-        ax.spines['bottom'].set_position(('outward', 10))
-        ax.spines['left'].set_position(('outward', 10))
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        
-        ax.grid(alpha=0.4)
-        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
-        
+        ax.set_xlabel('Stimulus Contrast (%)')
+        ax.set_ylabel('Hit Rate (%)')
+        ax.grid()
+        # ax.legend(loc='center left',bbox_to_anchor=(1,0.5),frameon=False)
         return ax
-
-
+                   
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
     def __init__(self,data:pl.DataFrame,stimkey:str=None,**kwargs):
@@ -301,12 +277,18 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         
     
 class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
-    __slots__ = []
+    """ Plots the hit and miss counts per stimulus condition and earlies as a bar plot"""
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, stimkey, **kwargs)
     
-    def make_agg_data(self,remove_early:bool=False):
-        """ Aggregates the data"""
+    def make_agg_data(self,remove_early:bool=False) -> pl.DataFrame:
+        """ Aggregates the data 
+        
+        Parameters:
+        remove_early (bool) : Flag to remove early trials
+        
+        Returns:
+        pl.DataFrame: Dataframe of aggregated values"""
         q = self.plot_data.lazy()
         if remove_early:
             q = q.filter(pl.col('outcome')!=-1)
@@ -323,16 +305,26 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
         df = q.collect()
         return df
     
-    def plot(self,ax:plt.Axes=None,bar_width=0.4,**kwargs):
+    def plot(self,ax:plt.Axes=None,bar_width:float=0.4,**kwargs) -> plt.Axes:
+        """ Plots the hit and miss counts per stimulus condition and earlies as a bar plot
+        
+        Parameters:
+        ax (plt.axes) : An axes object to place to plot,default is None, which creates the axes
+        bar_width (float) : width of the bars
+        
+        Returns:
+        plt.axes: Axes object
+        """
         if ax is None:
-            self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
         # do early first
         early_data = self.plot_data.filter(pl.col('outcome')==-1)
         ax = self.__plot__(ax,1,len(early_data),
                            width=bar_width,
-                           color='r',linewidth=2,edgecolor='k')
+                           color=self.color.outcome_keys[str(-1)]['color'],
+                           linewidth=2,edgecolor='k')
         
         self.plot_data = self.make_agg_data(remove_early=True)
         
@@ -347,20 +339,18 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
             bars = filt_df['count'].to_list() #ordered by miss,correct
             
             label = filt_df[0,'stim_label']
-            ax = self.__plot__(ax,bar_locs,bars,width=0.4,
-                               color=['#333333','#32a852'],
-                               linewidth=2,
-                               edgecolor='k')
+            ax = self.__plot__(ax,bar_locs,bars,width=bar_width,
+                               color=[self.color.outcome_keys[str(0)]['color'],
+                                      self.color.outcome_keys[str(1)]['color']])
 
             label_dict[i] = label
   
-        fontsize = kwargs.get('fontsize',25)
-        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize-5,frameon=False)
-        ax.set_ylabel('Counts', fontsize=fontsize)
+        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),frameon=False)
+        ax.set_ylabel('Counts')
         ax.set_xticks(list(label_dict.keys()))
-        ax.set_xticklabels(list(label_dict.values()))
-        ax.tick_params(labelsize=fontsize)
-        ax.grid(alpha=0.5,axis='y')
+        ax.set_xticklabels(list(label_dict.values()),ha='right')
+        ax.tick_params(axis='x',rotation=45)
+        ax.grid()
         
         return ax
     

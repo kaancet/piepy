@@ -1,104 +1,102 @@
+import itertools
+import polars as pl
 from scipy import stats
 from os.path import join as pjoin
 import matplotlib.patheffects as pe
 
 from ..wheelUtils import *
+from ..wheelTrace import *
 from .plotter_utils import *
 from ..core.exceptions import *
 from ..detection.wheelDetectionAnalysis import DetectionAnalysis
 
 
 class BasePlotter:
-    __slots__ = ['data','fig','color']
+    """ Base plotter class that has some utility methods """
+    __slots__ = ['plot_data','fig','color']
     def __init__(self,data:pl.DataFrame,**kwargs):
-        self.data = data
+        self.plot_data = data
         self.fig = None
-        set_style('analysis')
+        set_style(kwargs.pop('style','presentation'))
         self.color = Color()
         
          #check color definitions
-        self.color.check_stim_colors(self.data['stimkey'].drop_nulls().unique().to_list())
-        self.color.check_contrast_colors(self.data['contrast'].drop_nulls().unique().to_list())
-        
-    @staticmethod
-    def select_stim_data(data_in:pl.DataFrame, stimkey:str=None, drop_early:bool=True) -> dict:
-        """ Returns the selected stimulus type from session data
-            data_in : 
-            stimkey : Dictionary key that corresponds to the stimulus type (e.g. lowSF_highTF)
-        """
-        # drop early trials
-        if drop_early:
-            data = data_in.filter(pl.col('outcome')!=-1)
-        else:
-            data = data_in.select(pl.col('*'))
-        
-        #should be no need for drop_nulls, but for extra failsafe
-        uniq_keys = data.select(pl.col('stimkey')).drop_nulls().unique().to_series().to_numpy()
-        
-        if stimkey is not None and stimkey not in uniq_keys and stimkey != 'all':
-            raise KeyError(f'{stimkey} not in stimulus data, try one of these: {uniq_keys}')
-        
-        if stimkey is None:
-            if len(uniq_keys) == 1:
-                # if there is only one key just take the data
-                key = uniq_keys[0]
-            elif len(uniq_keys) > 1:
-                # if there is more than one stimkey , take all the data
-                key = 'all'
-            else:
-                # this should not happen
-                raise ValueError('There is no stimkey in the data, this should not be the case. Check your data!')
-        else:
-            # this is the condition that is filtering the dataframe by stimkey
-            key = stimkey
-            data = data.filter(pl.col('stimkey') == stimkey)
-        return data, key, uniq_keys
+        self.color.check_stim_colors(self.plot_data['stimkey'].drop_nulls().unique().to_list())
+        self.color.check_contrast_colors(self.plot_data['contrast'].drop_nulls().unique().to_list())
     
     @staticmethod
-    def _make_contrast_axis(contrast_arr:np.ndarray,center0:bool=True)->dict:
-        """ Makes an array of sequential numbers to be used in the xaxis_ticks
-            This is used in linear spacing mode""" 
-        if center0:
-            if 0 not in contrast_arr:
-                contrast_arr = np.append(contrast_arr,0)
-                contrast_arr = np.sort(contrast_arr)
-            l = len(contrast_arr)
-            return {c:i for i,c in enumerate(contrast_arr,start=int(-(l-1)/2))}
+    def subsets(data:pl.DataFrame,col_name:str|list,no_nan:bool=True,do_sort:bool=True):
+        """ Generates subsets of the data given the col names"""
+        if isinstance(col_name,str):
+            col_name = [col_name]
+        
+        temp = []
+        for c in col_name:
+            if c not in data.columns:
+                raise ValueError(f'No column name {c} in data')
+        
+            col_data = data[c]
+            if no_nan:
+                col_data = col_data.drop_nulls()
+            uniq_col = col_data.unique()
+        
+            if do_sort:
+                uniq_col = uniq_col.sort()
+            
+            temp.append(uniq_col.to_list())
+        
+        for u in list(itertools.product(*temp)):
+            yield (*u,data.filter([pl.col(col_name[i])==j for i,j in enumerate(u)]))
+        
+    @staticmethod
+    def make_linear_contrast_axis(data) -> dict:
+        """ Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis """
+        pos_contrast = data.filter(pl.col('stim_side')=='contra')['contrast'].drop_nulls().unique().sort().to_numpy()
+        neg_contrast = data.filter(pl.col('stim_side')=='ipsi')['signed_contrast'].drop_nulls().unique().sort().to_numpy()
+        
+        pos_part = {c:idx for c,idx in zip(pos_contrast,np.linspace(1,len(pos_contrast),len(pos_contrast)))}
+        neg_part = {c:idx for c,idx in zip(neg_contrast,np.linspace(-len(neg_contrast),-1,len(neg_contrast)))}
+        return {**neg_part, 0:0, **pos_part}
 
-    def save(self,saveloc,date,animalid):
+    def save(self,saveloc:str,save_format:str='pdf') -> None:
+        """ Saves the figure in given location
+        
+        Parameters:
+        saveloc (str): Path of saving location
+        save_format(str): extension of saved figure, e.g. pdf,png,jpg
+        """
+        animalid = self.plot_data[0,'animalid']
+        date = self.plot_data[0,'baredate']
+        
         if self.fig is not None:
             saveloc = pjoin(saveloc,'figures')
             if not os.path.exists(saveloc):
                 os.mkdir(saveloc)
-            savename = f'{date}_{self.__class__.__name__}_{animalid}.pdf'
+            savename = f'{date}_{self.__class__.__name__}_{animalid}.{save_format}'
             saveloc = pjoin(saveloc,savename)
-            self.fig.suptitle(f'{date}_{animalid}',fontsize=23)
+            self.fig.suptitle(f'{date}_{animalid}')
             self.fig.savefig(saveloc)
-            display(f'Saved {savename} plot')
+            display(f'Saved {savename} plot', color='green')
 
 
 class PerformancePlotter(BasePlotter):
+    """ Plots the performance progression through the session """
     __slots__ = ['stimkey','plot_data','uniq_keys']
-    def __init__(self,data,stimkey:str=None,**kwargs):
+    def __init__(self,data,**kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
 
-    @staticmethod
-    def __plot__(ax,x,y,**kwargs):
-        """ Private function that plots a performance graph with the given 
-        x,y and err values are used to plot the points and 
-        x_fit and y_fit values are used to plot the fitted curve
+    def plot(self, ax:plt.axes=None, plot_in_time:bool=False, seperate_by:str=None, running_window:int=20,**kwargs) -> plt.axes:
+        """ Plots the performance progression through the session 
+        
+        Parameters:
+        ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
+        plot_int_time (bool): whether or not x_axis is time (True) or trial number(False)
+        seperate_by (str): string that indicate sthe column name to seperate the data by, e.g, contrast,stimkey
+        running_window (int): Window width for running average
+        
+        Returns:
+        plt.axes: Axes object
         """
-        ax.plot(x,y * 100,linewidth=kwargs.get('linewidth',5),**kwargs)
-
-        return ax
-
-    def plot(self, 
-             ax:plt.axes=None, 
-             plot_in_time:bool=False, 
-             seperate_by:str=None, 
-             running_window:int=20,
-             **kwargs) -> plt.axes:
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
@@ -130,44 +128,44 @@ class PerformancePlotter(BasePlotter):
             else:
                 x_axis_ = data2plot['trial_no'].to_numpy()
                 x_label_ = 'Trial No'
+            
+            ax.plot(x_axis_,y_axis,label = f'{sep}',**clr,**kwargs)
 
-            ax = self.__plot__(ax,x_axis_,y_axis,
-                                label = f'{sep}',
-                                **clr,
-                                **kwargs)
-                
-        # prettify
-        fontsize = kwargs.get('fontsize',20)
         ax.set_ylim([0, 100])
-        ax.set_xlabel(x_label_, fontsize=fontsize)
-        ax.set_ylabel('Accuracy(%)', fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize)
-        ax.grid(alpha=0.5,axis='both')
+        ax.set_xlabel(x_label_)
+        ax.set_ylabel('Accuracy(%)')
+
         if seperate_by is not None:
             if len(seperate_by) > 1:
-                ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=fontsize,frameon=False)
+                ax.legend(loc='center left',bbox_to_anchor=(1,0.5),frameon=False)
         
         return ax
     
     
 class ResponseTimePlotter(BasePlotter):
     __slots__ = ['stimkey','plot_data','uniq_keys']
-    def __init__(self,data,stimkey:str=None,**kwargs):
+    def __init__(self,data,**kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data,self.stimkey,self.uniq_keys = self.select_stim_data(self.data,stimkey)   
-        
-    @staticmethod
-    def __plot__(ax,x,y,**kwargs):
-        ax.plot(x, y,linewidth=kwargs.get('linewidth',5),**kwargs)
-        return ax
-        
+ 
     def plot(self, 
-             ax:plt.axes=None,
+             ax:plt.axes=None, 
+             plot_in_time:bool=False,
              seperate_by:str=None,
              reaction_of:str='state',
-             plot_in_time:bool=False,
              running_window:int=None,
              **kwargs) -> plt.axes:
+        """ Plots the response time progression through the session 
+        
+        Parameters:
+        ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
+        plot_int_time (bool): whether or not x_axis is time (True) or trial number(False)
+        seperate_by (str): string that indicate sthe column name to seperate the data by, e.g, contrast,stimkey
+        reaction_of (str): What reaction time value to use for plotting, e.g 'rig', 'pos', 'speed', 'state
+        running_window (int): Window width for running average
+        
+        Returns:
+        plt.axes: Axes object
+        """
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,8)))
             ax = self.fig.add_subplot(1,1,1)
@@ -208,17 +206,11 @@ class ResponseTimePlotter(BasePlotter):
             else:
                 x_axis_ = data2plot['trial_no'].to_numpy()
                 x_label_ = 'Trial No'
-        
-            ax = self.__plot__(ax,x_axis_,y_axis_,
-                            label=self.stimkey,
-                            **clr)
 
-        # prettify
-        fontsize = kwargs.get('fontsize',20)
-       
-        ax.set_xlabel(x_label_, fontsize=fontsize)
-        ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize)
+            ax.plot(x_axis_,y_axis_,label=self.stimkey,**clr,**kwargs)
+
+        ax.set_xlabel(x_label_)
+        ax.set_ylabel('Response Time (ms)')
         
         ax.set_yscale('symlog')
         minor_locs = [200,400,600,800,2000,4000,6000,8000]
@@ -226,41 +218,38 @@ class ResponseTimePlotter(BasePlotter):
         ax.yaxis.set_minor_formatter(plt.FormatStrFormatter('%d'))
         ax.yaxis.set_major_locator(ticker.FixedLocator([100,1000,10000]))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
-
-        # ax.set_yticklabels([format(y,'.0f') for y in ax.get_yticks()])
-        ax.grid(alpha=0.5,axis='both')
-        
         return ax
 
 
 class ReactionCumulativePlotter(BasePlotter):
-    def __init__(self, data: pl.DataFrame, stimkey:str=None, **kwargs):
+    def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
-    
-    @staticmethod
-    def time_to_log(time_data_arr:np.ndarray) -> np.ndarray:
-        response_times = np.log10(time_data_arr/1000)
-        response_times = 1000 * np.power(10,response_times)
-        response_times = response_times.astype(int)
-        return response_times
-    
+ 
     @staticmethod
     def get_cumulative(time_data_arr:np.ndarray,bin_edges:np.ndarray) -> np.ndarray:
-        """ Gets the cumulative distribution"""
+        """ Gets the cumulative distribution """
         sorted_times = np.sort(time_data_arr)
         counts,_ = np.histogram(sorted_times,bins=bin_edges)
         pdf =  counts/np.sum(counts)
         cum_sum = np.cumsum(pdf)
         return cum_sum
     
-    def plot(self,compare_by:str='stim_type',
+    def plot(self,seperate_by:str='stim_type',
                   bin_width:int=50,
                   from_wheel:bool=False,
                   first_move:bool=False,**kwargs) -> plt.Axes:
+        """ Plots the response time progression through the session 
         
-        fontsize = kwargs.pop('fontsize',25)
+        Parameters:
+        ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
+        seperate_by (str): string that indicate sthe column name to seperate the data by, e.g, contrast,stimkey
+        reaction_of (str): What reaction time value to use for plotting, e.g 'rig', 'pos', 'speed', 'state
+        running_window (int): Window width for running average
+        
+        Returns:
+        plt.axes: Axes object
+        """
         # make the bin edges array
         bin_edges = np.arange(0,2000,bin_width)
                 
@@ -270,7 +259,6 @@ class ReactionCumulativePlotter(BasePlotter):
         data = data.with_columns(pl.col('response_times').apply(lambda x: [i for i in x if i<1000]).alias('cutoff_response_times'))
         
         # get uniques
-        
         u_stimtype = data['stim_type'].unique().sort().to_numpy()
         n_stim = len(u_stimtype)
         
@@ -281,7 +269,7 @@ class ReactionCumulativePlotter(BasePlotter):
         u_contrast = u_contrast[1:] # remove 0 contrast, we dont care about it here
         n_contrast = len(u_contrast)
         
-        if compare_by == 'stim_type':
+        if seperate_by == 'stim_type':
             self.fig, axes = plt.subplots(ncols=n_contrast,# remove 0 contrast
                                       nrows=n_opto,
                                       constrained_layout=True,
@@ -323,18 +311,17 @@ class ReactionCumulativePlotter(BasePlotter):
                             ax.set_ylim([-0.01,1.05])
                             ax.set_xlim([-1,1100])
                             if o:
-                                ax.set_title(f"Opto c={c}%", fontsize=fontsize,pad=3)
+                                ax.set_title(f"Opto c={c}%",pad=3)
                             else:
-                                ax.set_title(f"Non-Opto c={c}%", fontsize=fontsize,pad=3)
+                                ax.set_title(f"Non-Opto c={c}%",pad=3)
                             if i == n_opto-1:
-                                ax.set_xlabel('Time from Stim Onset (ms)', fontsize=fontsize)
+                                ax.set_xlabel('Time from Stim Onset (ms)')
                             if j==0:
-                                ax.set_ylabel('Probability', fontsize=fontsize)
-                            ax.tick_params(labelsize=fontsize,which='both',axis='both')
+                                ax.set_ylabel('Probability')
                             ax.grid(alpha=0.5,axis='both')
                         
                         # ax.legend(loc='center left',bbox_to_anchor=(0.98,0.5),fontsize=fontsize-5,frameon=False)
-        elif compare_by == 'opto':
+        elif seperate_by == 'opto':
             self.fig, axes = plt.subplots(ncols=n_contrast,# remove 0 contrast
                                           nrows=n_stim,
                                           constrained_layout=True,
@@ -370,30 +357,35 @@ class ReactionCumulativePlotter(BasePlotter):
                             
                             ax.set_ylim([-0.01,1.05])
                             ax.set_xlim([-1,1100])
-                            ax.set_title(f"{filt_df[0,'stim_label']} c={c}%", fontsize=fontsize,pad=3)
+                            ax.set_title(f"{filt_df[0,'stim_label']} c={c}%",pad=3)
                             if i == n_stim-1:
-                                ax.set_xlabel('Response Time (ms)', fontsize=fontsize)
+                                ax.set_xlabel('Response Time (ms)')
                             if j==0:
-                                ax.set_ylabel('Probability', fontsize=fontsize)
-                            ax.tick_params(labelsize=fontsize,which='both',axis='both')
+                                ax.set_ylabel('Probability')
                             ax.grid(alpha=0.5,axis='both')  
 
 
 class ResponseTimeDistributionPlotter(BasePlotter):
+    """ Plots the response times as a distribution """
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
-    
-    @staticmethod      
-    def time_to_log(time_data_arr:np.ndarray) -> np.ndarray:
-        response_times = np.log10(time_data_arr/1000)
-        response_times = 1000 * np.power(10,response_times)
-        response_times = response_times.astype(int)
-        return response_times
+        contrast_axis = self.make_linear_contrast_axis(self.plot_data)
+        contrast_idx = pl.Series('linear_contrast_idx',[float(contrast_axis[x]) if x is not None else None for x in self.stat_analysis.agg_data['signed_contrast'].to_list()])
+        self.stat_analysis.agg_data = self.stat_analysis.agg_data.with_columns(contrast_idx)
     
     @staticmethod
-    def make_dot_cloud(response_times,pos,cloud_width):
+    def make_dot_cloud(response_times:ArrayLike,pos:float,cloud_width:float=0.33) -> tuple[list,list]:
+        """ Makes a dot cloud by adding random jitter to inidividual points
+        
+        Parameters:
+        response_times (ArrayLike): Response times as an array
+        pos (float) : Center position to make the dot cloud
+        cloud_width (float) : Determines how wide the dot cloud is
+        
+        Returns:
+        tuple(list,list): x and y coordinates of the dots
+        """
         counts,bin_edges = np.histogram(response_times,bins=5)
 
         part_x = []
@@ -414,9 +406,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
     @staticmethod
     def __plot_scatter__(ax,contrast,time,median,pos,cloud_width,**kwargs):
         """ Plots the trial response times as a scatter cloud plot """
-        if 'fontsize' in kwargs.keys():
-            kwargs.pop('fontsize')
-        ax.scatter(contrast,time,alpha=0.6,linewidths=0,**kwargs)
+        ax.scatter(contrast,time,alpha=0.6,linewidths=0,s=(plt.rcParams['lines.markersize']**2)/2,**kwargs)
         
         #median
         ax.plot([pos-cloud_width/2,pos+cloud_width/2],[median,median],linewidth=3,
@@ -440,8 +430,16 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         return ax
     
     @staticmethod
-    def add_jitter_to_misses(resp_times,jitter_lims=[0,100]):
-        """ Adds jitter in y-dimension to missed trial dot"""
+    def add_jitter_to_misses(resp_times:ArrayLike,jitter_lims:list=[0,100]) ->np.ndarray:
+        """ Adds jitter in y-dimension to missed trial dots
+        
+        Parameters:
+        resp_times (ArrayLike) : Response times as an array
+        jitter_lims (list) : The jitter range in ms 
+        
+        Returns:
+        np.ndarray: response times
+        """
         resp_times = np.array(resp_times) #polars returns an immutable numpy array, this changes that
         miss_locs = np.where(resp_times>=1000)[0]
         if len(miss_locs):
@@ -452,60 +450,52 @@ class ResponseTimeDistributionPlotter(BasePlotter):
     def plot_scatter(self,ax:plt.Axes=None,
              t_cutoff:float=1_000,
              cloud_width:float=0.33,
-             xaxis_type:str='linear_spaced',
              reaction_of:str = 'state',
-             **kwargs):
+             color:str=None,
+             **kwargs) -> plt.Axes:
+        """ Plots the distribution as a scatter cloud plot
         
+        Parameters:
+        t_cutoff (float) : Cutoff response time value in ms, the values larger than this will be discarded
+        cloud_width (float) : Determines how wide the dot cloud is
+        reaction_of (str) : What reaction time value to use for plotting, e.g 'rig', 'pos', 'speed', 'state
+        xaxis_type (str): The type of xaxis, mainly adjusts spacing
+        
+        Returns:
+        plt.axes: Axes object
+        """
         if ax is None:
             self.fig = plt.figure(figsize = kwargs.pop('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
             
-        data = self.stat_analysis.agg_data.drop_nulls('contrast').sort(['stimkey','opto'],descending=True)
-        
         if reaction_of == 'state':
             reaction_of = 'response_times'
         elif reaction_of in ['pos','speed','rig']:
             reaction_of = reaction_of + '_reaction_time'
             
+        data = self.stat_analysis.agg_data.drop_nulls('contrast').sort(['stimkey','opto'],descending=True)    
+            
         # do cutoff
-        try:
-            data = data.with_columns(pl.col(reaction_of).apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_response_times'))
-        except:
-            raise NoRigReactionTimeError(f"No rig time for the session!! Try 'state', 'pos' or 'speed'")
-        
-        # get uniques
-        u_stimkey = data['stimkey'].unique().to_numpy()
-        u_stimtype = data['stim_type'].unique().to_numpy()
-        u_stim_side = data['stim_side'].unique().to_numpy()
-        u_stim_side = [i for i in u_stim_side if i != 'catch']
-        u_scontrast = data['signed_contrast'].unique().sort().to_numpy()
-        
-        cpos = self._make_contrast_axis(u_scontrast)
-        
-        for k in u_stimkey:
-            for s in u_stim_side:
-                for c in u_scontrast:
-                    filt_df = data.filter((pl.col('stimkey')==k) &
-                                          (pl.col('stim_side')==s) &
-                                          (pl.col('signed_contrast')==c))
-                    
-                    if not filt_df.is_empty():
+        data = data.with_columns(pl.col(reaction_of).apply(lambda x: [i for i in x if i is not None and i<t_cutoff]).alias('cutoff_response_times'))
+        # make a key,value pair from signed_contrast and linear_contrast_idx
+        cpos = self.make_linear_contrast_axis(data)    
+        for filt_tup in self.subsets(data, ['stimkey','stim_side', 'signed_contrast']):
+            filt_df = filt_tup[-1]
+            if not filt_df.is_empty():
+                if filt_tup[1] == 'catch':
+                    continue
+                
+                resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
 
-                        resp_times = filt_df[0,'cutoff_response_times'].to_numpy()
-
-                        # do cutoff, default is 10_000 to involve everything
-                        
-                        # response_times = self.time_to_log(resp_times)
-                        response_times = self.add_jitter_to_misses(resp_times)
-                        
-                        x_dots,y_dots = self.make_dot_cloud(response_times,cpos[c],cloud_width)
-                        median = np.median(response_times)
-                        ax = self.__plot_scatter__(ax,x_dots,y_dots,median,cpos[c],cloud_width,
-                                                   s=200,
-                                                   color=self.color.stim_keys[k]['color'],
-                                                   label=filt_df[0,'stim_label'] if s=='contra' and c==12.5 else '_',
-                                                   **kwargs)
-        
+                response_times = self.add_jitter_to_misses(resp_times)
+                
+                x_dots,y_dots = self.make_dot_cloud(response_times,cpos[filt_tup[2]],cloud_width)
+                median = np.median(response_times)
+                
+                ax = self.__plot_scatter__(ax,x_dots,y_dots,median,cpos[filt_tup[2]],cloud_width,
+                                            color=self.color.stim_keys[filt_tup[0]]['color'] if color is None else color,
+                                            label=filt_df[0,'stim_label'] if filt_tup[1]=='contra' and filt_tup[2]==12.5 else '_',
+                                            **kwargs)
         #baseline
         baseline = data.filter((pl.col('stim_side')=='catch') & (pl.col('opto')==False))
         if len(baseline):
@@ -514,24 +504,20 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             x_dots,y_dots = self.make_dot_cloud(catch_resp_times,cpos[0],cloud_width/2)
             median = np.median(catch_resp_times)
             ax = self.__plot_scatter__(ax,x_dots,y_dots,median,cpos[0],cloud_width/2,
-                                        s=200,
                                         color="#909090",
                                         label="Catch Trials",
                                         **kwargs)
-            
-                    
+                  
         p_data = data.sort(["stim_type","contrast","stim_side"])
-        
-        for j,s_t in enumerate(u_stimtype):
-            for c in u_scontrast:
-                pfilt_df = p_data.filter((pl.col('stim_type')==s_t) &
-                                         (pl.col('signed_contrast')==c))
-                
-                if len(pfilt_df)<2:
-                    continue
-                elif len(pfilt_df)>=2:
-                    
-                    for k in range(1,len(pfilt_df)):
+        for i,filt_tup in enumerate(self.subsets(p_data, ['stim_type','signed_contrast'])):
+            pfilt_df = filt_tup[-1]
+            if len(pfilt_df)<2:
+                continue
+            elif len(pfilt_df)>=2:
+                pfilt_df = pfilt_df.sort('opto_pattern')
+                for k in range(1,len(pfilt_df)):
+                    if len(pfilt_df[k,'cutoff_response_times'].to_numpy()):
+                        
                         p = self.stat_analysis.get_pvalues_nonparametric(pfilt_df[0,'cutoff_response_times'].to_numpy(),
                                                                         pfilt_df[k,'cutoff_response_times'].to_numpy())        
                         stars = ''
@@ -542,22 +528,19 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                         elif 0.01 < p < 0.05:
                             stars = '*'
                             
-                        ax.text(cpos[c], 1100+j*200+k*100, stars,color=self.color.stim_keys[pfilt_df[k,'stimkey']]['color'], fontsize=30)
-                else:
-                    raise ValueError(f'WEIRD DATA FRAME FOR P-VALUE ANALYSIS!')
+                        ax.text(cpos[filt_tup[1]], 1100+i*200+k*100, stars,color=self.color.stim_keys[pfilt_df[k,'stimkey']]['color'])
+            else:
+                raise ValueError(f'WEIRD DATA FRAME FOR P-VALUE ANALYSIS!')
                 
         # mid line
-        fontsize = kwargs.get('fontsize',25)
         ax.set_ylim([90,1500])
         ax.plot([0,0],ax.get_ylim(),color='gray',linewidth=2,alpha=0.5)
         
         # miss line
         ax.axhline(1000,color='r',linewidth=1.5,linestyle=':')
         
-        fontsize = kwargs.get('fontsize',20)
-        ax.set_xlabel('Stimulus Contrast (%)', fontsize=fontsize)
-        ax.set_ylabel('Response Time (ms)', fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize,which='both',axis='both')
+        ax.set_xlabel('Stimulus Contrast (%)')
+        ax.set_ylabel('Response Time (ms)')
         
         ax.set_yscale('symlog')
         minor_locs = [200,400,600,800,2000,4000,6000,8000]
@@ -565,24 +548,14 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         ax.yaxis.set_minor_formatter(plt.FormatStrFormatter('%d'))
         ax.yaxis.set_major_locator(ticker.FixedLocator([100,1000,10000]))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%d'))
-        
-        
         ax.xaxis.set_major_locator(ticker.FixedLocator(list(cpos.values())))
         ax.xaxis.set_major_formatter(ticker.FixedFormatter([i for i in cpos.keys()]))
-            
-        ax.grid(alpha=0.5,axis='both')
-        
-        ax.spines['bottom'].set_position(('outward', 10))
-        ax.spines['left'].set_position(('outward', 10))
-        
-        ax.legend(loc='center left',bbox_to_anchor=(0.98,0.5),fontsize=fontsize-5,frameon=False)
-        
+        ax.grid()
+        # ax.legend(loc='center left',bbox_to_anchor=(0.98,0.5),fontsize=fontsize-5,frameon=False)
         return ax    
     
     def plot_line(self,ax:plt.Axes=None,
                   t_cutoff:float=10_000,
-                  jitter:int=2,
-                  xaxis_type:str='linear_spaced',
                   **kwargs):
         
         if ax is None:
@@ -669,9 +642,8 @@ class ResponseTimeDistributionPlotter(BasePlotter):
 
 class ResponseTimeHistogramPlotter(BasePlotter):
     __slots__ = ['stimkey','plot_data','uniq_keys']
-    def __init__(self, data, stimkey:str=None, **kwargs):
+    def __init__(self, data, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
      
     @staticmethod
     def bin_times(time_arr,bin_width=50,bins:np.ndarray=None):
@@ -710,7 +682,6 @@ class ResponseTypeBarPlotter(BasePlotter):
     __slots__ = ['stimkey','plot_data','uniq_keys']
     def __init__(self, data, stimkey:str=None, **kwargs):
         super().__init__(data=data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey, drop_early=False)
         
     @staticmethod    
     def __plot__(ax,x_locs,bar_heights,**kwargs):
@@ -722,7 +693,6 @@ class LickPlotter(BasePlotter):
     __slots__ =['stimkey','plot_data']
     def __init__(self, data: dict, stimkey:str=None, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
         
     def pool_licks(self):
         
@@ -784,9 +754,8 @@ class LickPlotter(BasePlotter):
     
 class LickScatterPlotter(BasePlotter):
     """ Lick scatters for each trial, wrt reward or response time"""
-    def __init__(self, data: dict, stimkey:str=None, **kwargs):
+    def __init__(self, data: dict, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey)
     
     @staticmethod
     def __plot_scatter__(ax,t,lick_arr,**kwargs):
@@ -827,8 +796,6 @@ class LickScatterPlotter(BasePlotter):
 class WheelTrajectoryPlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey, self.uniq_keys = self.select_stim_data(self.data,stimkey,
-                                                                             drop_early=kwargs.pop('drop_early',True))
         
     @staticmethod
     def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
@@ -891,6 +858,8 @@ class WheelTrajectoryPlotter(BasePlotter):
                                       nrows=n_stim,
                                       constrained_layout=True,
                                       figsize=kwargs.pop('figsize',(15,15)))
+        
+        traj = WheelTrace()
 
         for i,opto in enumerate(uniq_opto):
             for j,stim in enumerate(uniq_stims):
@@ -907,6 +876,9 @@ class WheelTrajectoryPlotter(BasePlotter):
                         if len(filt_data):
                             wheel_time = filt_data['wheel_time'].to_numpy()
                             wheel_pos = filt_data['wheel_pos'].to_numpy()
+                            
+                            traj.set_trace_data(tick_t=wheel_time,tick_pos=wheel_pos)
+                            
                         
                             t_interp = np.linspace(-2000, 2000,n_interp)
                             wheel_all_cond = np.zeros((len(wheel_time),n_interp))
