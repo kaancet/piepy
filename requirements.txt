@@ -1,0 +1,28 @@
+bokeh
+scipy
+pandas
+colorama
+ffmpeg
+pillow
+google-api-python-client
+google-auth-oauthlib
+oauth2client
+google-auth
+gspread
+ipykernel
+jupyter
+pystackreg
+tabulate
+tifffile
+scikit-learn
+pre-commit
+
+# ================= #
+# Version Sensitive #
+# ================= #
+
+numpy == 1.23.0
+matplotlib == 3.9.0
+polars == 0.20.2
+pyarrow == 13.0.0
+tqdm == 4.65.1

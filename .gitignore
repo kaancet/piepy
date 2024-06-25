@@ -1,11 +1,8 @@
 *.pyc
-boninbehavior.egg-info/*
+piepy.egg-info/*
 *.DS_Store
 *.ipynb_checkpoints
-/behavior_python/notebooks
-/behavior_python/figure_notebooks
+/piepy/notebooks
 /.vscode
 config.json
-behavior_python/.vscode
-behavior_python/240327_FWO_notebooks
-behavior_python/240531_NERF_retreat_figures
+piepy/.vscode
