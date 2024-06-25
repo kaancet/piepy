@@ -879,107 +879,121 @@ class WheelTrajectoryPlotter(BasePlotter):
              
     def plot(self,
              seperate_by:str='contrast',
+             anchor_by:str='t_stimstart',
+             include_misses:bool=True,
              time_lims:list=None,
              traj_lims:list=None,
-             trace_type:str='sem',
              n_interp:int=3000,
              **kwargs):
         
-        fontsize = kwargs.pop('fontsize',20)
         if time_lims is None:
             time_lims = [-200,1500]
         if traj_lims is None:
             traj_lims = [-75,75]
+            
+        if include_misses:
+            data = self.plot_data.filter(pl.col('outcome')!=-1)
+        else:
+            data = self.plot_data.filter(pl.col('outcome')==1)
         
-        uniq_opto = self.plot_data['opto_pattern'].unique().sort().to_list()
+        uniq_opto = data['opto_pattern'].drop_nulls().unique().sort().to_list()
         n_opto = len(uniq_opto)
-        uniq_stims = self.plot_data['stim_type'].unique().sort().to_list()
-        n_stim = len(uniq_stims)
         
-        uniq_sides  = self.plot_data['stim_pos'].unique().sort().to_list()
+        uniq_stim = data['stim_type'].drop_nulls().unique().sort().to_list()
+        n_stim = len(uniq_stim)
         
-        # this could be contrast, answer 
-        uniq_sep = self.plot_data[seperate_by].unique().sort().to_list()
         if seperate_by == 'contrast':
             color = self.color.contrast_keys
         elif seperate_by == 'outcome':
             color = self.color.outcome_keys
         
-        self.fig, axes = plt.subplots(ncols=n_opto,
-                                      nrows=n_stim,
+        self.fig, axes = plt.subplots(ncols=n_stim,
+                                      nrows=n_opto,
                                       constrained_layout=True,
-                                      figsize=kwargs.pop('figsize',(15,15)))
+                                      figsize=kwargs.pop('figsize',(20,15)))
         
-        traj = WheelTrace()
-
-        for i,opto in enumerate(uniq_opto):
-            for j,stim in enumerate(uniq_stims):
-                for side in uniq_sides:
-                    for sep in uniq_sep:
-                        try:
-                            ax = axes[i][j] 
-                        except:
-                            ax=axes[i]
-                        filt_data = self.plot_data.filter((pl.col('opto_pattern')==opto) &
-                                                          (pl.col('stim_type')==stim) &
-                                                          (pl.col('stim_pos')==side) & 
-                                                          (pl.col(seperate_by)==sep))
-                        if len(filt_data):
-                            wheel_time = filt_data['wheel_time'].to_numpy()
-                            wheel_pos = filt_data['wheel_pos'].to_numpy()
-                            
-                            traj.set_trace_data(tick_t=wheel_time,tick_pos=wheel_pos)
-                            
-                        
-                            t_interp = np.linspace(-2000, 2000,n_interp)
-                            wheel_all_cond = np.zeros((len(wheel_time),n_interp))
-                            wheel_all_cond[:] = np.nan
-                            for i_t,trial in enumerate(wheel_time):
-    
-                                pos_interp = interp1d(trial,wheel_pos[i_t],fill_value="extrapolate")(t_interp)
-                                wheel_all_cond[i_t,:] = pos_interp
-                                
-                                if trace_type == 'indiv':
-                                    ax.plot(t_interp,pos_interp+side,
-                                                color = color[str(sep)]['color'],
-                                                linewidth=0.8,
-                                                alpha=0.5)
-                                
-                            avg = np.nanmean(wheel_all_cond,axis=0)
-                            sem = stats.sem(wheel_all_cond,axis=0)    
-                            if trace_type=='sem':
-                                ax.fill_between(t_interp,avg+sem,avg-sem,
-                                            alpha=0.2,
-                                            color=color[str(sep)]['color'],
-                                            linewidth=0)
-                            
-                            
-                            ax = self.__plot__(ax,t_interp,avg,
-                                                color=color[str(sep)]['color'],
-                                                label=sep if side>=0 else '_', #only put label for 0 and right side(where opto is mostly present)
-                                                **kwargs) 
-                    
-                        ax.set_xlim(time_lims)
-                        ax.set_ylim(traj_lims)
-                        
-                        # closed loop start line
-                        ax.axvline(0,color='k',linewidth=2,alpha=0.6)
-                        
-                        # stim end
-                        ax.axvline(1000,color='k',linestyle=':',linewidth=2,alpha=0.6)
-                        
-                        #5*((3*2*np.pi*31.2)/1024) where 5 is the tick difference to detect answer
-                        # ax.axhline(side+2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
-                        # ax.axhline(side-2.871,color='r',linestyle="--",linewidth=2,alpha=0.6)
-
-                        ax.set_title(f'{stim}_{opto}')
-                        ax.set_ylabel('Wheel Rotation (cm)', fontsize=fontsize)
-                        ax.set_xlabel('Time(ms)', fontsize=fontsize)
-                        
-                        # make it pretty
-                        ax.spines['bottom'].set_visible(False)
-                        ax.spines['left'].set_visible(False)
+        # make sure axes is a list of lists so indexing during looper is standardized for different experiment conditions
+        while True:
+            _tmp = None
+            try:
+                _tmp = axes[0][0]
+                if _tmp is not None:
+                    break
+            except:
+                axes = [axes]
+                       
+        # dummy variables to control axis switching
+        _target_id = uniq_opto[0]
+        _stim_name = uniq_stim[0]
+        ax_row = 0
+        ax_col = 0
+        # loop through all subsets of data (N=multiplication of the number of unique elements in each column)
+        for filt_tup in self.subsets(data,['opto_pattern','stim_type',seperate_by]):
+            filt_df = filt_tup[-1]
+            sep = filt_tup[2]
+            
+            if filt_tup[0]!=_target_id:
+                ax_row += 1
+                _target_id = filt_tup[0]
+                # everytime row is updated, column needs to be reset
+                ax_col = 0
+                _stim_name = uniq_stim[0]
                 
-                        ax.tick_params(labelsize=fontsize)
-                        ax.grid(axis='y')
-                        ax.legend(frameon=False,fontsize=14)
+            if filt_tup[1] != _stim_name:
+                ax_col += 1
+                _stim_name = filt_tup[1]
+            ax = axes[ax_row][ax_col]
+
+            if 'stimstart' in anchor_by:
+                filt_df = filt_df.filter(pl.col('state_outcome')!=-1)
+            
+            if len(filt_df):
+                t_interp = np.linspace(-500, 2000,n_interp)
+                wheel_all_cond = np.zeros((len(filt_df),n_interp))                
+                wheel_all_cond[:] = np.nan
+                for i,trial in enumerate(filt_df.iter_rows(named=True)):
+                    wheel_time = trial['wheel_time']
+                    wheel_pos = trial['wheel_pos']
+                    
+                    if len(wheel_time)>2:
+                    # relative time
+                        wheel_time = np.array(wheel_time) - trial[anchor_by]
+                        
+                        pos_interp = interp1d(wheel_time,wheel_pos,fill_value="extrapolate")(t_interp)
+                        
+                        # relative position
+                        pos_at0 = interp1d(wheel_time,wheel_pos,fill_value="extrapolate")(0)
+                        pos_interp = pos_interp - pos_at0
+                    
+                        wheel_all_cond[i,:] = pos_interp
+                
+                avg = np.nanmean(wheel_all_cond,axis=0)
+                sem = stats.sem(wheel_all_cond,axis=0)    
+                
+                ax.fill_between(t_interp,avg-sem,avg+sem,
+                                color=color[str(sep)]['color'],
+                                alpha=0.2,
+                                linewidth=0)
+
+                ax.plot(t_interp, avg,
+                        **color[str(sep)],**kwargs)
+                
+            ax.set_xlim(time_lims)
+            # ax.set_ylim(traj_lims)
+            
+            # anchor line(stimstart init start)
+            ax.axvline(0,color='k',linewidth=0.5,alpha=0.6)
+            
+            # stim end
+            ax.axvline(1000,color='k',linewidth=0.5,alpha=0.6)
+
+            ax.set_title(f'{filt_tup[0]} {filt_tup[1]}')
+            ax.set_ylabel('Wheel\nmovement (cm)')
+            ax.set_xlabel('Time from stim onset (ms)')
+            
+            # make it pretty
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+
+            ax.grid(axis='y')
+            ax.legend(frameon=False)

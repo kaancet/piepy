@@ -560,25 +560,23 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     def plot(self,ax:plt.Axes=None,
              time_lims:list=None,
              traj_lims:list=None,
-             trace_type:str='sem',
              bin_width:int=None,**kwargs):
         
         ax = super().plot(time_lims=time_lims,
                           traj_lims=traj_lims,
-                          trace_type=trace_type,
                           **kwargs)
         
-        if bin_width is not None:
-            bins = np.arange(0,time_lims[-1],bin_width,dtype='int')
+        # if bin_width is not None:
+        #     bins = np.arange(0,time_lims[-1],bin_width,dtype='int')
             
-            ax_density = ax.inset_axes([0,0,1,0.1],frameon=False,sharex=ax)
+        #     ax_density = ax.inset_axes([0,0,1,0.1],frameon=False,sharex=ax)
             
-            pooled_licks = self.pool_trial_ends()
+        #     pooled_licks = self.pool_trial_ends()
             
-            hist,bins = np.histogram(pooled_licks,bins=bins,range=time_lims)
-            ax_density = self.__plot_density__(ax_density,bins,hist,zorder=2,**kwargs)
-            ax_density.set_yticks([])
-            ax_density.set_yticklabels([])
+        #     hist,bins = np.histogram(pooled_licks,bins=bins,range=time_lims)
+        #     ax_density = self.__plot_density__(ax_density,bins,hist,zorder=2,**kwargs)
+        #     ax_density.set_yticks([])
+        #     ax_density.set_yticklabels([])
         
         return ax
 
