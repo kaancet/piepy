@@ -233,7 +233,7 @@ class WheelDetectionTrial(Trial):
                 if temp_resp <= 150:
                     # this is actually early
                     state_log_data['state_outcome'] = -1
-                    state_log_data['response_latency'] = state_log_data['t_blank_dur'] + temp_resp
+                    state_log_data['response_latency'] = temp_resp
                 elif 150 < temp_resp <1000:
                     # This should not happen
                     # DISCARD TRIAL
