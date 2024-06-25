@@ -4,11 +4,11 @@ from scipy import stats
 from os.path import join as pjoin
 import matplotlib.patheffects as pe
 
-from ..wheelUtils import *
-from ..wheelTrace import *
 from .plotter_utils import *
+from ..psychophysics.wheelUtils import *
+from ..psychophysics.wheelTrace import *
+from ..psychophysics.detection.wheelDetectionAnalysis import DetectionAnalysis
 from ..core.exceptions import *
-from ..behavioural_paradigms.detection.wheelDetectionAnalysis import DetectionAnalysis
 
 
 class BasePlotter:

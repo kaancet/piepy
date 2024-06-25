@@ -1,24 +1,24 @@
 from ...core.session import Session
-from .visualTrial import *
+from .passiveTrial import *
 from ...core.run import RunData, Run, RunMeta
 from ...core.pathfinder import PathFinder
 
 
-class VisualRunMeta(RunMeta):
+class PassiveRunMeta(RunMeta):
     def __init__(self, prot_file: str) -> None:
         super().__init__(prot_file)
 
 
-class VisualRunData(RunData):
+class PassiveRunData(RunData):
     def __init__(self, data: pl.DataFrame = None) -> None:
         super().__init__(data)
 
 
-class VisualRun(Run):
+class PassiveRun(Run):
     def __init__(self, run_no: int, _path: PathFinder) -> None:
         super().__init__(run_no, _path)
         self.trial_list = []
-        self.data = VisualRunData()
+        self.data = PassiveRunData()
 
     def read_run_data(self) -> None:
         """Add experiment specific modifiactins to read data in this method"""
@@ -39,7 +39,7 @@ class VisualRun(Run):
 
     def init_run_meta(self) -> None:
         """Initializes the metadata for the run"""
-        self.meta = VisualRunMeta(self.paths.prot)
+        self.meta = PassiveRunMeta(self.paths.prot)
 
     def get_run_trials_from_data(self) -> pl.DataFrame:
         """Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial"""
@@ -55,7 +55,7 @@ class VisualRun(Run):
         pbar = tqdm(trials, desc="Extracting trial data:", leave=True, position=0)
         for t in pbar:
             # instantiate a trial
-            temp_trial = VisualTrial(trial_no=int(t), meta=self.meta, logger=self.logger)
+            temp_trial = PassiveTrial(trial_no=int(t), meta=self.meta, logger=self.logger)
             # get the data slice using state changes
             temp_trial.get_data_slices(self.rawdata, use_state=False)
             trial_row = temp_trial.trial_data_from_logs()
@@ -117,7 +117,7 @@ class VisualRun(Run):
         )
 
 
-class VisualSession(Session):
+class PassiveSession(Session):
     def __init__(self, sessiondir, load_flag=False, save_mat=False):
         start = time.time()
         super().__init__(sessiondir, load_flag, save_mat)
@@ -136,7 +136,7 @@ class VisualSession(Session):
         self.runs = []
         self.run_count = len(self.paths.all_paths["stimlog"])
         for r in range(self.run_count):
-            run = VisualRun(r, self.paths)
+            run = PassiveRun(r, self.paths)
             run.init_run_meta()
             # transferring some session metadata to run metadata
             run.meta.imaging_mode = self.meta.imaging_mode

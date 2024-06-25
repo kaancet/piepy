@@ -1,5 +1,5 @@
 import cv2
-from .cameraAnalysis import *
+from ..cameraAnalysis import *
 
 
 class OnePAnalysis(CamDataAnalysis):

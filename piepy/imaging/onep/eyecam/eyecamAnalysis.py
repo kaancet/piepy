@@ -1,6 +1,6 @@
-from .cameraAnalysis import *
+from ..cameraAnalysis import *
 
 
-class FaceCamAnalysis(CamDataAnalysis):
+class EyecamAnalysis(CamDataAnalysis):
     def __init__(self, runpath: str, data: DataFrame) -> None:
         super().__init__(runpath, data)
