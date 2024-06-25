@@ -142,7 +142,7 @@ class WheelDetectionRunData(RunData):
 class WheelDetectionStats:
     __slots__ = ['all_count','early_count','stim_count','correct_count','miss_count',
                  'all_correct_percent','hit_rate','easy_hit_rate','false_alarm','nogo_percent',
-                 'median_response_time','d_prime']
+                 'median_response_time','d_prime','nonopto_hit_rate']
     def __init__(self,dict_in:dict=None,data_in:WheelDetectionRunData=None) -> None:
         if data_in is not None:
             self.init_from_data(data_in)
@@ -170,14 +170,21 @@ class WheelDetectionStats:
         self.correct_count = len(correct_data) 
         self.miss_count = len(miss_data)
         
-        # percents
+        # percents from nonoptos
+        nonopto_data = data.filter(pl.col('opto')==0)
+        nonopto_correct = len(nonopto_data.filter(pl.col('outcome')==1))
+        nonopto_miss = len(nonopto_data.filter(pl.col('outcome')==0))
+        self.nonopto_hit_rate = round(100 * nonopto_correct / (nonopto_correct+nonopto_miss), 3)
+        
         self.all_correct_percent = round(100 * self.correct_count / self.all_count, 3)
         self.hit_rate = round(100 * self.correct_count / self.stim_count, 3)
         self.false_alarm = round(100 * self.early_count / (self.early_count + self.correct_count), 3)
         self.nogo_percent = round(100 * self.miss_count / self.stim_count, 3)
         
         ## performance on easy trials
-        easy_data = data.filter(pl.col('contrast').is_in([100,50])) # earlies can't be easy or hard
+        easy_data = data.filter((pl.col('contrast').is_in([100,50])) & 
+                                (pl.col('opto_region')=='nonopto'))
+        
         easy_correct_count = len(easy_data.filter(pl.col('outcome')==1))
         if len(easy_data):
             self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data),3)
@@ -189,14 +196,6 @@ class WheelDetectionStats:
         
         #d prime(?)
         self.d_prime = st.norm.ppf(self.hit_rate/100) - st.norm.ppf(self.false_alarm/100)
-        
-        # if self.all_trials >= 200:
-        #     data200 = data[:200]
-        # else:
-        #     data200 = data
-            
-        # data200_answered = len(data200[data200['answer']!=0])
-        # data200_nogo = len(data200[data200['answer']==0])
         
     def init_from_dict(self,dict_in:dict):
         for k,v in dict_in.items():
