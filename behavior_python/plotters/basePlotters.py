@@ -58,7 +58,7 @@ class BasePlotter:
         neg_part = {c:idx for c,idx in zip(neg_contrast,np.linspace(-len(neg_contrast),-1,len(neg_contrast)))}
         return {**neg_part, 0:0, **pos_part}
 
-    def save(self,saveloc:str,save_format:str='pdf') -> None:
+    def save(self,saveloc:str,extra_desc:str='',save_format:str='pdf') -> None:
         """ Saves the figure in given location
         
         Parameters:
@@ -72,7 +72,7 @@ class BasePlotter:
             saveloc = pjoin(saveloc,'figures')
             if not os.path.exists(saveloc):
                 os.mkdir(saveloc)
-            savename = f'{date}_{self.__class__.__name__}_{animalid}.{save_format}'
+            savename = f'{date}_{self.__class__.__name__}_{animalid}_{extra_desc}.{save_format}'
             saveloc = pjoin(saveloc,savename)
             self.fig.suptitle(f'{date}_{animalid}')
             self.fig.savefig(saveloc)
