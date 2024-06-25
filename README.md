@@ -1,3 +1,4 @@
+![piepy_logo.png](/res/piepy_logo.png)
 
 # PIEPY : **P**sychophysical and **I**maging **E**xperiments **Py**peline #
 
@@ -47,7 +48,9 @@ piepy assumes some BLA for data locations for data in the bkrunch server, more s
 - Stimpy .stimlog and .riglog is in :  **<path_to_dir>/presentation/_your_experiment_name_**
 - Analysed data is saved(and loaded from) : **<path_to_dir>/analysis/_your_experiment_name_**
 
-Currently, the code only works for our in-house wheel detection task.
+Currently, the code only works for our in-house wheel detection task and teh best way to use/tesy is through Jupyter Notebooks:
+
+![example_run](/res/run_example.gif)
 
 ## Code Architecture ##
 
