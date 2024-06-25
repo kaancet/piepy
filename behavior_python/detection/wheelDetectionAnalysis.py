@@ -55,20 +55,41 @@ class DetectionAnalysis:
 
     def get_deltahits(self) -> pl.DataFrame:
         """Return the delta between the hitrates of a given contrast """
-        q = (
-                self.agg_data.lazy()
+        
+        b = self.agg_data.filter((pl.col('contrast')==0) & (pl.col('opto_pattern')==-1)).sum()
+        baseline_hr = b[0,'correct_count']/b[0,'count']
+        baseline_hr_conf = 1.96 * np.sqrt((baseline_hr*(1.0 - baseline_hr)) / b[0,'count'])
+        
+        df = (
+                self.agg_data
                 .sort("opto_pattern")
                 .groupby(["stim_type","contrast","stim_side"])
                 .agg(
                     [   
                         (pl.col("hit_rate").first()).alias('base_HR'),
-                        (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'),
+                        (pl.col("confs").first()).alias('base_HR_err'),
+                        (pl.col("hit_rate").first()-pl.col("hit_rate").last()).alias('delta_HR'), #TODO:ASSUMES ONE TARGET FOR NOW
+                        (pl.col("confs").first() + pl.col("confs").last()).alias('delta_HR_err')
                         # (pl.col("median_response_time").last()-pl.col("median_response_time").first()).alias('delta_resp'),
                     ]
                 ).sort(["stim_type","contrast","stim_side"])
             )
+        
+        # ΔHR as a percentage of nonopto HR (suppression index)
+        df = df.with_columns((pl.col('delta_HR') / (pl.col('base_HR'))).alias('percent_delta_HR'))
+        df = df.with_columns((pl.col('percent_delta_HR') * ((pl.col('delta_HR_err') / pl.col('delta_HR')) + (pl.col('base_HR_err'))/(pl.col('base_HR')))).alias('percent_delta_HR_err'))
+        
+        # ΔHR as a percentage of nonopto HR - baseline (suppression index)
+        df = df.with_columns((pl.col('delta_HR') / (pl.col('base_HR')-baseline_hr)).alias('percent_delta_HR-baseline'))
+        
+        #  ΔHR's ratio to baseline
+        df = df.with_columns((pl.col("delta_HR")/baseline_hr).alias('delta_HR_baseline'))
+        
+        # wtf is this?
+        df = df.with_columns([
+            ((pl.col('delta_HR') / pl.col('base_HR') - baseline_hr/pl.col('base_HR'))/(pl.col('delta_HR') / pl.col('base_HR') + baseline_hr/pl.col('base_HR'))).alias('BN_delta_HR'),
+            pl.lit(baseline_hr).alias('baseline')])
 
-        df = q.collect()
         return df
     
     def get_baseline_normalized_suppression_index(self) -> pl.DataFrame:
@@ -92,6 +113,7 @@ class DetectionAnalysis:
 
         df = q.collect()
         return df
+
                     
     def get_hitrate_pvalues_exact(self,side:str='contra', method:str='barnard') -> pl.DataFrame:
         """ Calculates the p-values for each contrast in different stim datasets"""
