@@ -138,6 +138,7 @@ class DetectionPsychometricPlotter(BasePlotter):
                 ax.text(x_t[c], 102+2*i, stars,color=self.color.stim_keys[s_k]['color'])
     
         ax.set_ylim([0,110])
+        ax.set_yticks([0,25,50,75,100])
         ax.set_yticklabels(int(i) for i in ax.get_yticks())
         ax.set_xlabel('Stimulus Contrast (%)')
         ax.set_ylabel('Hit Rate (%)')
@@ -213,8 +214,8 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
             self.fig = plt.figure(figsize = kwargs.get('figsize',(15,10)))
             ax = self.fig.add_subplot(1,1,1)
         
-        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('outcome')!=-1).then(pl.col('response_latency')+pl.col('blank_time'))
-                                                     .otherwise(-(pl.col('blank_time')-pl.col('response_latency'))).alias("blanked_response_latency"))
+        self.plot_data = self.plot_data.with_columns(pl.when(pl.col('outcome')!=-1).then(pl.col('response_latency'))
+                                                     .otherwise(-(pl.col('t_blank_dur')-pl.col('response_latency'))).alias("blanked_response_latency"))
         
         # first plot the earlies
         early_data = self.plot_data.filter(pl.col('outcome')==-1)

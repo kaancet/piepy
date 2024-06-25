@@ -523,6 +523,8 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             reaction_of = 'response_times'
         elif reaction_of in ['pos','speed','rig']:
             reaction_of = reaction_of + '_reaction_time'
+        elif reaction_of == 'transformed_times':
+            reaction_of = 'transformed_response_times'
             
         data = self.stat_analysis.agg_data.drop_nulls('contrast').sort(['stimkey','opto'],descending=True)    
             
@@ -847,16 +849,6 @@ class LickScatterPlotter(BasePlotter):
 class WheelTrajectoryPlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame,**kwargs) -> None:
         super().__init__(data, **kwargs)
-        
-    @staticmethod
-    def __plot__(ax:plt.Axes,wheel_pos,wheel_t,**kwargs):
-        ax.plot(wheel_pos, wheel_t,
-                linewidth=kwargs.get('linewidth',5),
-                alpha=1,
-                zorder=2,
-                **kwargs)
-        
-        return ax
     
     @staticmethod
     def __plot_density__(ax,x_bins,y_dens,**kwargs): 
