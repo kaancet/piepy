@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import ArrayLike
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 import scipy.interpolate as interpolate

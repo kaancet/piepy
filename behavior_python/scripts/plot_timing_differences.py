@@ -111,6 +111,8 @@ def plot_all_timings(data:pl.DataFrame, only_hit:bool=False) -> None:
         
         if i!=0:
             ax.set_ylabel("")
+        ax.set_xlim([-100,1100])
+        ax.set_ylim([-100,1100])
         
      
     plt.tight_layout()
