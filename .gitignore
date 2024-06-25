@@ -8,3 +8,4 @@ boninbehavior.egg-info/*
 config.json
 behavior_python/.vscode
 behavior_python/240327_FWO_notebooks
+behavior_python/240531_NERF_retreat_figures
