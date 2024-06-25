@@ -159,15 +159,15 @@ class DetectionResponseTimeScatterCloudPlotter(ResponseTimeDistributionPlotter):
 
 class DetectionReactionCumulativePlotter(ReactionCumulativePlotter):
     __slots__ = []
-    def __init__(self, data:pl.DataFrame, stimkey:str=None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data:pl.DataFrame, **kwargs):
+        super().__init__(data, **kwargs)
     
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     """ Plots an histogram of response times, showing earlies and hits"""
     __slots__ = []
-    def __init__(self, data:pl.DataFrame, stimkey: str=None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data:pl.DataFrame, **kwargs):
+        super().__init__(data, **kwargs)
         
     @staticmethod
     def shuffle_times(x_in,n_shuffle:int=1000) -> np.ndarray:
@@ -549,7 +549,7 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
 class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
     def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
-        super().__init__(data, stimkey, **kwargs)
+        super().__init__(data, **kwargs)
 
     def plot(self,ax:plt.Axes=None,
              time_lims:list=None,

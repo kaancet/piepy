@@ -367,7 +367,7 @@ class ReactionCumulativePlotter(BasePlotter):
 
 class ResponseTimeDistributionPlotter(BasePlotter):
     """ Plots the response times as a distribution """
-    def __init__(self, data, stimkey:str=None, **kwargs):
+    def __init__(self, data, stimkey:str=None, **kwargs) -> None:
         super().__init__(data, **kwargs)
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
         contrast_axis = self.make_linear_contrast_axis(self.plot_data)
@@ -641,7 +641,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
          
 
 class ResponseTimeHistogramPlotter(BasePlotter):
-    __slots__ = ['stimkey','plot_data','uniq_keys']
+    __slots__ = ['plot_data','uniq_keys']
     def __init__(self, data, **kwargs):
         super().__init__(data=data, **kwargs)
      
@@ -794,7 +794,7 @@ class LickScatterPlotter(BasePlotter):
     
     
 class WheelTrajectoryPlotter(BasePlotter):
-    def __init__(self, data: pl.DataFrame, stimkey:str=None,**kwargs) -> None:
+    def __init__(self, data: pl.DataFrame,**kwargs) -> None:
         super().__init__(data, **kwargs)
         
     @staticmethod
