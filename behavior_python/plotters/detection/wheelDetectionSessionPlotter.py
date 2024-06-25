@@ -161,6 +161,12 @@ class DetectionReactionCumulativePlotter(ReactionCumulativePlotter):
     __slots__ = []
     def __init__(self, data:pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
+        
+
+class DetectionCumulativeReactionTimePlotter(CumulativeReactionTimePlotter):
+    __slots__ = []
+    def __init__(self, data:pl.DataFrame, **kwargs):
+        super().__init__(data, **kwargs)
     
  
 class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):

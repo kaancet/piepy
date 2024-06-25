@@ -221,6 +221,57 @@ class ResponseTimePlotter(BasePlotter):
         return ax
 
 
+class CumulativeReactionTimePlotter(BasePlotter):
+    def __init__(self, data: pl.DataFrame, **kwargs) -> None:
+        super().__init__(data, **kwargs)
+        
+    @staticmethod
+    def get_cumulative(time_data_arr:np.ndarray,bin_edges:np.ndarray) -> np.ndarray:
+        """ Gets the cumulative distribution """
+        sorted_times = np.sort(time_data_arr)
+        counts,_ = np.histogram(sorted_times,bins=bin_edges)
+        pdf =  counts/np.sum(counts)
+        cum_sum = np.cumsum(pdf)
+        return cum_sum
+        
+    def plot(self,ax:plt.Axes=None,reaction_of:str='state',bin_width:float=10,**kwargs) -> None:
+        
+        if ax is None:
+            self.fig = plt.figure(figsize = kwargs.pop('figsize',(8,8)))
+            ax = self.fig.add_subplot(1,1,1)
+            
+        if reaction_of == 'state':
+            reaction_of = 'response_latency'
+        elif reaction_of in ['pos','speed','rig']:
+            reaction_of = reaction_of + '_reaction_time'
+        
+        sorted_data = self.plot_data.sort(reaction_of)
+        sorted_data = sorted_data.filter(pl.col(reaction_of)!=-1)
+
+        reaction_times = sorted_data[reaction_of].to_numpy()
+        
+        bin_edges_early = np.arange(reaction_times[0],0,bin_width)
+        bin_edges = np.arange(0,1000,bin_width)
+        bin_edges_miss = np.arange(1000,reaction_times[-1],bin_width)
+
+        bin_edges = np.hstack((bin_edges_early,bin_edges,bin_edges_miss))
+        
+        cum_sum = self.get_cumulative(reaction_times,bin_edges)
+        
+        hit_start = np.where(bin_edges>=150)[0][0]
+        hit_end = np.where(bin_edges>=1000)[0][0]
+                
+        ax.plot(bin_edges[0:hit_start],cum_sum[0:hit_start],color="#9c9c9c")
+        ax.plot(bin_edges[hit_start:hit_end],cum_sum[hit_start:hit_end],color="#039612")
+        ax.plot(bin_edges[hit_end-1:-1],cum_sum[hit_end-1:],color="#CA0000")
+        
+        ax.set_ylabel('Fraction of Trials')
+        ax.set_xlabel('Time from Stimulus Onset(ms)')
+        
+        ax.set_xticks([-1000,0,1000])
+        
+        return ax
+
 class ReactionCumulativePlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
