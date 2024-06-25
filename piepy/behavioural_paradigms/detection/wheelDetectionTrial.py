@@ -1,7 +1,7 @@
 import numpy as np
-from ..utils import *
-from ..core.trial import *
-from ..wheelTrace import WheelTrace
+from ...utils import *
+from ...core.trial import *
+from ...wheelTrace import WheelTrace
 
 
 class WheelDetectionTrial(Trial):

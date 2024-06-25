@@ -9,9 +9,9 @@ from os.path import join as pjoin
 from tqdm.contrib.concurrent import process_map
 
 
-from ..core.session import Session
-from ..core.run import RunData, Run, RunMeta
-from ..core.pathfinder import *
+from ...core.session import Session
+from ...core.run import RunData, Run, RunMeta
+from ...core.pathfinder import *
 from .wheelDetectionTrial import *
 
 

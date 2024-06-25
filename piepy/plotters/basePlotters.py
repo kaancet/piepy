@@ -8,7 +8,7 @@ from ..wheelUtils import *
 from ..wheelTrace import *
 from .plotter_utils import *
 from ..core.exceptions import *
-from ..detection.wheelDetectionAnalysis import DetectionAnalysis
+from ..behavioural_paradigms.detection.wheelDetectionAnalysis import DetectionAnalysis
 
 
 class BasePlotter:

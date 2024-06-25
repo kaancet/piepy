@@ -1,6 +1,6 @@
 import numpy as np
-from ..utils import *
-from ..core.trial import *
+from ...utils import *
+from ...core.trial import *
 
 
 class VisualTrial(Trial):

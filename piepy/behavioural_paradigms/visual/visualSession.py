@@ -1,7 +1,7 @@
-from ..core.session import Session
+from ...core.session import Session
 from .visualTrial import *
-from ..core.run import RunData, Run, RunMeta
-from ..core.pathfinder import PathFinder
+from ...core.run import RunData, Run, RunMeta
+from ...core.pathfinder import PathFinder
 
 
 class VisualRunMeta(RunMeta):
