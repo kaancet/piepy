@@ -3,6 +3,7 @@ piepy.egg-info/*
 *.DS_Store
 *.ipynb_checkpoints
 /piepy/notebooks
+/piepy/example_notebooks
 /.vscode
 config.json
 piepy/.vscode
