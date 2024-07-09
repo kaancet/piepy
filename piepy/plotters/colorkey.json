@@ -5,35 +5,39 @@
             "linestyle":"-"
         },
         "0.04cpd_8.0Hz_0": {
-            "color":"#F7C38B",
+            "color":"#F8C28C",
             "linestyle":"--"
         },
         "0.04cpd_8.0Hz_1": {
-            "color":"#D52C8C",
+            "color":"#A31C00",
             "linestyle":":"
         },
-        "0.08cpd_2.0Hz_-1": {
-            "color":"#2BA02B",
+        "0.04cpd_0.5Hz_-1" :{
+            "color":"#73C20F",
             "linestyle":"-"
         },
-        "0.08cpd_2.0Hz_0": {
-            "color":"#03BFFF",
+        "0.04cpd_0.5Hz_0" :{
+            "color":"#C8F09B",
             "linestyle":"--"
         },
-        "0.08cpd_2.0Hz_1": {
-            "color":"#03BFFF",
-            "linestyle":":"
-        },
         "0.16cpd_0.5Hz_-1": {
-            "color":"#5AC1A7",
+            "color":"#0099C2",
             "linestyle":"-"
         },
         "0.16cpd_0.5Hz_0": {
-            "color":"#ABF5E2",
+            "color":"#87DDF5",
             "linestyle":"--"
         },
         "0.16cpd_0.5Hz_1": {
-            "color":"#B92C3B",
+            "color":"#003085",
+            "linestyle":":"
+        },
+        "0.16cpd_8.0Hz_-1": {
+            "color":"#A90AB8",
+            "linestyle":"-"
+        },
+        "0.16cpd_8.0Hz_0": {
+            "color":"#E27FEB",
             "linestyle":":"
         },
         "0.1cpd_4.0Hz_-1":{

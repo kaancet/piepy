@@ -1,7 +1,7 @@
 from typing import Any
 from ..basePlotters import *
-from ...detection.wheelDetectionSilencing import *
-from ...detection.wheelDetectionAnalysis import *
+from ...psychophysics.detection.wheelDetectionSilencing import *
+from ...psychophysics.detection.wheelDetectionAnalysis import *
 
 
 # constant animal colors

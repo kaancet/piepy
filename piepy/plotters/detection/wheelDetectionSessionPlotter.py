@@ -179,15 +179,15 @@ class DetectionPsychometricPlotter(BasePlotter):
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
 
-    def __init__(self, data: pl.DataFrame, stimkey: str = None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data: pl.DataFrame, **kwargs):
+        super().__init__(data, **kwargs)
 
 
 class DetectionResponseTimeScatterCloudPlotter(ResponseTimeDistributionPlotter):
     __slots__ = []
 
-    def __init__(self, data: pl.DataFrame, stimkey: str = None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data: pl.DataFrame, **kwargs):
+        super().__init__(data, **kwargs)
 
 
 class DetectionReactionCumulativePlotter(ReactionCumulativePlotter):
@@ -340,8 +340,8 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
 class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
     """Plots the hit and miss counts per stimulus condition and earlies as a bar plot"""
 
-    def __init__(self, data, stimkey: str = None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data, **kwargs):
+        super().__init__(data, **kwargs)
 
     def make_agg_data(self, remove_early: bool = False) -> pl.DataFrame:
         """Aggregates the data
@@ -433,9 +433,9 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
 class DetectionResponseScatterPlotter(BasePlotter):
     __slots__ = ["stimkey", "plot_data"]
 
-    def __init__(self, data: dict, stimkey: str = None, **kwargs):
+    def __init__(self, data: dict, **kwargs):
         super().__init__(data, **kwargs)
-        self.plot_data, self.stimkey = self.select_stim_data(self.data, stimkey)
+        self.plot_data, self.stimkey = self.select_stim_data(self.data)
 
     @staticmethod
     def __plot_scatter__(ax, t, times_arr, **kwargs):
@@ -554,8 +554,8 @@ class DetectionResponseScatterPlotter(BasePlotter):
 class DetectionLickScatterPlotter(LickScatterPlotter):
     __slots__ = []
 
-    def __init__(self, data, stimkey: str = None, **kwargs):
-        super().__init__(data, stimkey, **kwargs)
+    def __init__(self, data, **kwargs):
+        super().__init__(data, **kwargs)
 
     def plot(
         self,
@@ -684,7 +684,7 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
 class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
 
-    def __init__(self, data: pl.DataFrame, stimkey: str = None, **kwargs) -> None:
+    def __init__(self, data: pl.DataFrame, **kwargs) -> None:
         super().__init__(data, **kwargs)
 
     def plot(
@@ -716,24 +716,21 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
 class DetectionSummaryPlotter:
     __slots__ = ["data", "fig", "plotters", "stimkey"]
 
-    def __init__(self, data, stimkey: str = None, **kwargs):
+    def __init__(self, data, **kwargs):
         self.data = data  # gets the stim data dict
-        self.stimkey = stimkey
         self.fig = None
         self.init_plotters()
 
     def init_plotters(self):
         # TODO: Make this changable
         self.plotters = {
-            "performance": DetectionPerformancePlotter(self.data, stimkey="all"),
-            "responsepertype": DetectionResponseTimeScatterCloudPlotter(
-                self.data, self.stimkey
-            ),
-            "resptype": DetectionResponseTypeBarPlotter(self.data, stimkey="all"),
-            "licktotal": LickPlotter(self.data, stimkey="all"),
-            "resphist": DetectionResponseHistogramPlotter(self.data, stimkey="all"),
-            "respscatter": DetectionResponseScatterPlotter(self.data, stimkey="all"),
-            "lickdist": DetectionLickScatterPlotter(self.data, self.stimkey),
+            "performance": DetectionPerformancePlotter(self.data),
+            "responsepertype": DetectionResponseTimeScatterCloudPlotter(self.data),
+            "resptype": DetectionResponseTypeBarPlotter(self.data),
+            "licktotal": LickPlotter(self.data),
+            "resphist": DetectionResponseHistogramPlotter(self.data),
+            "respscatter": DetectionResponseScatterPlotter(self.data),
+            "lickdist": DetectionLickScatterPlotter(self.data),
         }
 
     def plot(self, **kwargs):

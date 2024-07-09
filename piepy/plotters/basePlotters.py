@@ -148,7 +148,7 @@ class PerformancePlotter(BasePlotter):
         if seperate_by is not None:
             if seperate_by not in self.plot_data.columns:
                 raise ValueError(f"Cannot seperate the data by {seperate_by}")
-            seperate_vals = self.plot_data[seperate_by].unique().to_numpy()
+            seperate_vals = self.plot_data[seperate_by].unique().drop_nulls().to_numpy()
         else:
             seperate_vals = [-1]  # dummy value
 
@@ -178,7 +178,9 @@ class PerformancePlotter(BasePlotter):
                 x_axis_ = data2plot["trial_no"].to_numpy()
                 x_label_ = "Trial No"
 
-            ax.plot(x_axis_, y_axis, label=f"{sep}", **clr, **kwargs)
+            ax.plot(
+                x_axis_, y_axis, label=f'{data2plot[0,"stim_label"]}', **clr, **kwargs
+            )
 
         ax.set_ylim([0, 100])
         ax.set_xlabel(x_label_)
@@ -515,7 +517,7 @@ class ReactionCumulativePlotter(BasePlotter):
 
 
 class ResponseTimeDistributionPlotter(BasePlotter):
-    """Plots the response times as a distribution"""
+    """Plots the reaction times as a dot cloud on x-axis as contrast and y-axis as reaction times"""
 
     def __init__(self, data, stimkey: str = None, **kwargs) -> None:
         super().__init__(data, **kwargs)
@@ -648,7 +650,6 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         t_cutoff (float) : Cutoff response time value in ms, the values larger than this will be discarded
         cloud_width (float) : Determines how wide the dot cloud is
         reaction_of (str) : What reaction time value to use for plotting, e.g 'rig', 'pos', 'speed', 'state
-        xaxis_type (str): The type of xaxis, mainly adjusts spacing
 
         Returns:
         plt.axes: Axes object
@@ -715,7 +716,9 @@ class ResponseTimeDistributionPlotter(BasePlotter):
             (pl.col("stim_side") == "catch") & (pl.col("opto") == False)
         )
         if len(baseline):
-            catch_resp_times = baseline["cutoff_response_times"].explode().to_numpy()
+            catch_resp_times = (
+                baseline["cutoff_response_times"].explode().drop_nulls().to_numpy()
+            )
             catch_resp_times = self.add_jitter_to_misses(catch_resp_times)
             x_dots, y_dots = self.make_dot_cloud(
                 catch_resp_times, cpos[0], cloud_width / 2

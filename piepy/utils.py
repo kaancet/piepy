@@ -72,7 +72,7 @@ def get_fraction(
             for i in window:
                 tmp.append(1 if i == fraction_of else 0)
                 to_append = float(np.mean(tmp))
-        fraction.append(to_append)
+        fraction.append(to_append * 100)
 
     return np.array(fraction)
 
