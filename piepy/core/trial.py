@@ -77,6 +77,10 @@ class Trial:
         vstim_slice = vstim.filter(
             (pl.col("presentTime") >= _start) & (pl.col("presentTime") <= _end)
         )
+        # the logger starts logging the next trial too early, this is a hacky way of getting rid of that
+        if len(vstim_slice["iTrial"].unique()) > 1:
+            vstim_slice = vstim_slice.filter(pl.col("iTrial") == vstim_slice[0, "iTrial"])
+
         if len(screen_slice):
             # there is an actual screen event
             rig_onset = screen_slice[0, "duinotime"]
@@ -106,10 +110,6 @@ class Trial:
         self.state_offset = state_offset
 
         self.data = {"state": state_slice}
-
-        # the logger starts logging the next trial too early, this is a hacky way of getting rid of that
-        if len(vstim_slice["iTrial"].unique()) > 1:
-            vstim_slice = vstim_slice.filter(pl.col("iTrial") == vstim_slice[0, "iTrial"])
 
         self.data["vstim"] = vstim_slice
         self.data["screen"] = screen_slice

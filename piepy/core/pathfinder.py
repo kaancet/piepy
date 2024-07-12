@@ -1,4 +1,5 @@
 import os
+import natsort
 from os.path import join as pjoin
 from os.path import exists as exists
 from .config import config as cfg
@@ -118,6 +119,7 @@ class PathFinder:
                 return None
             else:
                 # there are dedicated run folders return them
+                dirs = natsort.natsorted(dirs)
                 return dirs
 
     def set_log_paths(self) -> None:
