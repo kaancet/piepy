@@ -61,6 +61,15 @@ class Trial:
         else:
             # there should be exactly 2x trial count screen events
             # idx = 1 if screen[0,'value'] == 0 else 0 # sometimes screen events have a 0 value entry at the beginning
+
+            if len(screen) / 2 != self.meta.opts["nTrials"]:
+                # faulty signaling, usually happens at the start of the experiment, # get screen events that are after blank duration
+                screen = screen.filter(
+                    pl.col("duinotime") > self.meta.blankDuration * 1000
+                )
+                # reset the value column
+                screen = screen.with_columns(pl.col("value") - (screen[0, "value"] - 1))
+
             screen_slice = screen.filter(pl.col("value") == self.trial_no)
             _start = screen_slice[0, "duinotime"] - self.meta.blankDuration * 1000  # ms
             _end = screen_slice[1, "duinotime"]
@@ -68,6 +77,10 @@ class Trial:
         vstim_slice = vstim.filter(
             (pl.col("presentTime") >= _start) & (pl.col("presentTime") <= _end)
         )
+        # the logger starts logging the next trial too early, this is a hacky way of getting rid of that
+        if len(vstim_slice["iTrial"].unique()) > 1:
+            vstim_slice = vstim_slice.filter(pl.col("iTrial") == vstim_slice[0, "iTrial"])
+
         if len(screen_slice):
             # there is an actual screen event
             rig_onset = screen_slice[0, "duinotime"]
@@ -97,6 +110,7 @@ class Trial:
         self.state_offset = state_offset
 
         self.data = {"state": state_slice}
+
         self.data["vstim"] = vstim_slice
         self.data["screen"] = screen_slice
 
