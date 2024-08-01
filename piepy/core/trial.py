@@ -1,5 +1,6 @@
 import polars as pl
 import numpy as np
+from .exceptions import *
 
 
 class Trial:
@@ -17,16 +18,16 @@ class Trial:
     ]
 
     def __init__(self, trial_no: int, meta, logger) -> None:
-
         self.trial_no = trial_no
         self.meta = meta
+        self.data = {}
         self.logger = logger
         self.reward_ms_per_ul = 0
-        self.logger.set_msg_prefix(f"trial-[{self.trial_no}]")
+        self.logger.set_msg_prefix(f"TRIAL-[{self.trial_no}]")
 
     def __repr__(self) -> str:
         rep = f"""Trial No :{self.trial_no}
-        {self.data['state']}"""
+        {self.data.get("state",None)}"""
         return rep
 
     def _attrs_from_dict(self, log_data: dict) -> None:
@@ -37,92 +38,46 @@ class Trial:
         for k, v in log_data.items():
             setattr(self, k, v)
 
-    def get_state_slice_and_correct_time_frame(
-        self, rawdata: dict, use_state: bool = False
-    ) -> None:
-        """ """
-        states = rawdata["statemachine"]
-        vstim = rawdata["vstim"]
-        vstim = vstim.with_columns(
-            (pl.col("presentTime") * 1000).alias("presentTime")
-        )  # ms
-        screen = rawdata["screen"]
+    def is_trial_complete(self, rawdata: dict) -> bool:
+        """Sets state data, t_trialstart and t_trialend for data slices to be extracted
+        Returns False if trialend and trialstart not present"""
+        states = rawdata.get("statemachine")
 
-        state_slice = states.filter(pl.col("trialNo") == self.trial_no)
+        self.data["state"] = states.filter(pl.col("trialNo") == self.trial_no)
+        _state_transitions = self.data["state"]["transition"].to_list()
 
-        if use_state:
-            _start = state_slice[0, "elapsed"]
-            _end = state_slice[-1, "elapsed"]
-
-            screen_slice = screen.filter(
-                (pl.col("duinotime") >= _start) & ((pl.col("duinotime") <= _end))
+        # Trial start
+        if "trialstart" not in _state_transitions:
+            raise StateMachineError(
+                f"[Trial {self.trial_no}] NO TRIALSTART FOR STATEMACHINE "
             )
-
         else:
-            # there should be exactly 2x trial count screen events
-            # idx = 1 if screen[0,'value'] == 0 else 0 # sometimes screen events have a 0 value entry at the beginning
+            self.t_trialstart = self.data["state"].filter(
+                pl.col("transition") == "trialstart"
+            )[0, "elapsed"]
 
-            if len(screen) / 2 != self.meta.opts["nTrials"]:
-                # faulty signaling, usually happens at the start of the experiment, # get screen events that are after blank duration
-                screen = screen.filter(
-                    pl.col("duinotime") > self.meta.blankDuration * 1000
-                )
-                # reset the value column
-                screen = screen.with_columns(pl.col("value") - (screen[0, "value"] - 1))
+        # trial end
+        does_trial_end = False
+        if "trialend" in _state_transitions:
+            self.t_trialend = self.data["state"].filter(
+                pl.col("transition") == "trialend"
+            )[0, "elapsed"]
+            does_trial_end = True
+        elif "stimtrialend" in _state_transitions:
+            self.t_trialend = self.data["state"].filter(
+                pl.col("transition") == "stimtrialend"
+            )[0, "elapsed"]
+            does_trial_end = True
 
-            screen_slice = screen.filter(pl.col("value") == self.trial_no)
-            _start = screen_slice[0, "duinotime"] - self.meta.blankDuration * 1000  # ms
-            _end = screen_slice[1, "duinotime"]
+        return does_trial_end
 
-        vstim_slice = vstim.filter(
-            (pl.col("presentTime") >= _start) & (pl.col("presentTime") <= _end)
-        )
-        # the logger starts logging the next trial too early, this is a hacky way of getting rid of that
-        if len(vstim_slice["iTrial"].unique()) > 1:
-            vstim_slice = vstim_slice.filter(pl.col("iTrial") == vstim_slice[0, "iTrial"])
-
-        if len(screen_slice):
-            # there is an actual screen event
-            rig_onset = screen_slice[0, "duinotime"]
-
-            # vstim time
-            vstim_onset = vstim_slice.filter(pl.col("photo") == True)[0, "presentTime"]
-
-            # state time
-            state_onset = state_slice.filter(pl.col("transition") == "stimstart")[
-                0, "elapsed"
-            ]
-
-            vstim_offset = vstim_onset - rig_onset
-            state_offset = state_onset - rig_onset
-        else:
-            vstim_offset = 0
-            state_offset = 0
-
-        vstim_slice = vstim_slice.with_columns(
-            (pl.col("presentTime") - vstim_offset).alias("corrected_presentTime")
-        )
-        state_slice = state_slice.with_columns(
-            (pl.col("elapsed") - state_offset).alias("corrected_elapsed")
-        )
-
-        self.vstim_offset = vstim_offset
-        self.state_offset = state_offset
-
-        self.data = {"state": state_slice}
-
-        self.data["vstim"] = vstim_slice
-        self.data["screen"] = screen_slice
-
-        self.t_trialstart = state_slice["corrected_elapsed"][0]
-        self.t_trialend = state_slice["corrected_elapsed"][-1]
-
-    def get_data_slices(self, rawdata: dict, use_state: bool = False) -> None:
+    def set_data_slices(self, rawdata: dict) -> bool:
         """
-        Extracts the relevant portion from each data
+        Extracts the relevant portion from each data, using the statemachine log
+        WARNING: statemachine log is python timing, so it's likely that it will be not as accurate as the Arduino timing
 
-        :param rawdata: Rawdata dictionary
-        :return: DataFrame slice of corresponding trial no
+        rawdata(dict): Rawdata dictionary including all of the logs
+        Returns: DataFrame slice of corresponding trial no
         """
         rig_cols = [
             "screen",
@@ -140,45 +95,41 @@ class Trial:
             "opto",
         ]
 
-        self.get_state_slice_and_correct_time_frame(rawdata, use_state)
+        if self.is_trial_complete(rawdata):
+            self.correct_timeframes(rawdata)
 
-        # rig and stimlog
-        for k, v in rawdata.items():
-            if k in ["statemachine", "vstim", "screen"]:
-                # skip because already looked into it
-                continue
-            if not v.is_empty():
-                t_start = self.t_trialstart
-                t_end = self.t_trialend
-
-                if k in rig_cols:
-                    temp_v = v.filter(
-                        (pl.col("duinotime") >= self.t_trialstart)
-                        & (pl.col("duinotime") <= self.t_trialend)
-                    )
-
-                if k == "vstim":
-                    # since we don't need any time info from vstim, just get trial no
-                    temp_v = v.filter(pl.col("iTrial") == self.trial_no)
-
-                    # to check timing is good in vstim log
-                    time_col = "presentTime"
-                    t_start = self.t_trialstart / 1000
-                    t_end = self.t_trialend / 1000
-                    fake_v = v.filter(
-                        (pl.col(time_col) >= t_start) & (pl.col(time_col) <= t_end)
-                    )
-                    if len(fake_v["iTrial"].unique()) > 1:
-                        msg = str(fake_v["iTrial"].unique().to_list())
-                        self.logger.warning(
-                            f"The timing of vstim is funky, has multiple trial no's {msg}"
+            # riglog
+            for k, v in rawdata.items():
+                if k in ["statemachine", "screen", "vstim"]:
+                    # skip because already looked into it
+                    continue
+                if not v.is_empty():
+                    if k in rig_cols:
+                        temp_v = v.filter(
+                            (pl.col("duinotime") >= self.t_trialstart)
+                            & (pl.col("duinotime") <= self.t_trialend)
                         )
 
-                self.data[k] = temp_v
+                    self.data[k] = temp_v
+            return True
+        else:
+            return False
 
-    def get_state_changes(self) -> dict:
-        """This depends on the experimetn type at hand so need to be overwritten"""
+    # ======
+    # Abstract methods to be overwritten
+    # ======
+
+    def correct_timeframes(self, rawdata: dict) -> None:
+        """ """
         pass
+
+    def get_state_cahnges(self) -> None:
+        """ """
+        pass
+
+    # ======
+    # Experiment type independentrial event extraction
+    # ======
 
     def get_licks(self) -> dict:
         """Extracts the lick data from slice"""

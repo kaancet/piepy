@@ -8,10 +8,66 @@ class WheelDetectionTrial(Trial):
     def __init__(self, trial_no: int, meta, logger) -> None:
         super().__init__(trial_no, meta, logger)
 
+    def correct_timeframes(self, rawdata: dict) -> None:
+        """Corrects the timing of statemachine and vstim using the stimulus onset in screen log"""
+
+        state = self.data["state"]
+        screen = rawdata["screen"].filter(
+            (pl.col("duinotime") >= self.t_trialstart)
+            & (pl.col("duinotime") <= self.t_trialend)
+        )
+        # use trial no to get vstim data slice
+        vstim = rawdata["vstim"].filter(pl.col("iTrial") == self.trial_no)
+
+        if screen.is_empty():
+            # no screen events to sync timeframes, can happen during training but shouldn't happen during experiments!
+            self.vstim_offset = 0
+            self.state_offset = 0
+        else:
+            # correction can only happen in stim trials
+            if "stimstart" in state["transition"].to_list():
+                rig_stim_onset = screen[0, "duinotime"]
+                state_stim_onset = state.filter(pl.col("transition") == "stimstart")[
+                    0, "elapsed"
+                ]
+
+                try:
+                    vstim_onset = vstim.filter(pl.col("photo") == True)[0, "presentTime"]
+                except:
+                    vstim_onset = vstim.filter(pl.col("presentTime") >= rig_stim_onset)[
+                        0, "presentTime"
+                    ]
+                    self.logger.error(f"No photosensor logged in vstim!!")
+
+                self.vstim_offset = vstim_onset - rig_stim_onset
+                self.state_offset = state_stim_onset - rig_stim_onset
+            else:
+                # no stimulus, meaning early trials
+                self.vstim_offset = 0
+                self.state_offset = 0
+
+        # if offset is negative, that means the rig_onset time happened after the python timing
+        self.data["state"] = state.with_columns(
+            (pl.col("elapsed") - self.state_offset).alias("corrected_elapsed")
+        )
+        self.data["vstim"] = vstim.with_columns(
+            (pl.col("presentTime") - self.vstim_offset).alias("corrected_presentTime")
+        )
+        self.data["screen"] = screen
+
+        # correct the trialstart and end times
+        self.t_trialstart = self.data["state"].filter(
+            pl.col("transition") == "trialstart"
+        )[0, "corrected_elapsed"]
+        self.t_trialend = self.data["state"].filter(pl.col("transition") == "trialend")[
+            0, "corrected_elapsed"
+        ]
+
+    def set_data_slices(self, rawdata: dict) -> bool:
+        return super().set_data_slices(rawdata)
+
     def get_vstim_properties(self) -> dict:
-        """
-        Extracts the necessary properties from vstim data
-        """
+        """Extracts the necessary properties from vstim data"""
         ignore = ["iTrial", "photo", "code", "presentTime"]
 
         vstim = self.data["vstim"]
@@ -360,6 +416,10 @@ class WheelDetectionTrial(Trial):
                             self.logger.critical(
                                 f"{get_from} no camera pulses recorded during stim presentation!!! THIS IS BAD!"
                             )
+                    else:
+                        self.logger.error(
+                            "No rig screen pulses to gather frames in between screen events!!"
+                        )
                 else:
                     # if there is no strimstart_rig(meaning no stimulus shown) then take the frames between trial_init and trial_init + response_time
                     rig_frames_data = rig_frames_data.filter(
@@ -382,6 +442,7 @@ class WheelDetectionTrial(Trial):
 
     def trial_data_from_logs(self, **wheel_kwargs) -> tuple[list, list]:
         """
+        The main loop of parsing previously sliced rawdata to trial events
         :return: A dictionary to be appended in the session dataframe
         """
         trial_log_data = {"trial_no": self.trial_no}

@@ -374,15 +374,15 @@ class WheelDetectionRun(Run):
         if cfg.multiprocess["enable"]:
             self.logger.worker_configurer(self.queue)
 
-        temp_trial = WheelDetectionTrial(
+        _trial = WheelDetectionTrial(
             trial_no=trial_no, meta=self.meta, logger=self.logger
         )
         # get the data slice using state changes
-        temp_trial.get_data_slices(self.rawdata, use_state=True)
-        _trial_data = temp_trial.trial_data_from_logs()
+        if _trial.set_data_slices(self.rawdata):
+            _data = _trial.trial_data_from_logs()
 
-        if _trial_data["state_outcome"] is not None:
-            self._list_data.append(_trial_data)
+            if _data["state_outcome"] is not None:
+                self._list_data.append(_data)
 
     def translate_transition(self, oldState, newState) -> dict:
         """
@@ -497,47 +497,3 @@ def get_running_stats(data_in: pd.DataFrame, window_size: int = 20) -> pd.DataFr
         data_in[key] = get_fraction(data_arr, fraction_of=v)
 
     return data_in
-
-
-def main():
-    from argparse import ArgumentParser
-    import cProfile, pstats
-    from io import StringIO
-
-    parser = ArgumentParser(description="Wheel Detection Session Analysis")
-
-    parser.add_argument(
-        "expname",
-        metavar="expname",
-        type=str,
-        help="Experiment filename (e.g. 200325_KC020_wheel_KC)",
-    )
-    parser.add_argument(
-        "-l",
-        "--load",
-        metavar="load_flag",
-        default=True,
-        type=str,
-        help="Flag for loading existing data",
-    )
-
-    opts = parser.parse_args()
-    expname = opts.expname
-    load_flag = opts.load
-
-    profiler = cProfile.Profile()
-    profiler.enable()
-    print(load_flag)
-    w = WheelDetectionSession(sessiondir=expname, load_flag=False)
-
-    profiler.disable()
-    s = StringIO
-    stats = pstats.Stats(profiler, stream=s)
-    stats.strip_dirs()
-    stats.sort_stats("cumtime")
-    stats.dump_stats(w.data_paths.analysisPath + os.sep + "profile.prof")
-    # stats.print_stats()
-
-
-if __name__ == "__main__":
-    main()

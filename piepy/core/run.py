@@ -195,6 +195,18 @@ class Run:
 
         display("Read rawdata")
 
+    def translate_transition(self, oldState, newState) -> dict:
+        """A function to be called that add the meaning of state transitions into the state DataFrame
+        This is an assumed(placeholder) state transition key, every experiment type should have it's own key defined!
+        """
+        curr_key = f"{int(oldState)}->{int(newState)}"
+        state_keys = {
+            "0->1": "trialstart",
+            "1->2": "stimstart",
+            "2->3": "stimend",
+            "3->0": "trialend",
+        }
+
     def check_and_translate_state_data(self) -> bool:
         """Checks if state data exists and translated the state transitions according to defined translation dictionary
         This function needs the translate transition to be defined beforehand"""
@@ -250,16 +262,39 @@ class Run:
                 display(f"Loaded session data from {d_path}", color="green")
                 break
 
-    def extract_trial_count(self, num_state_changes: int):
+    def add_total_iStim(self):
+        """Adds another column to the DataFrame where iStim increments for each presentation"""
+        display("Adding total iStim column")
+
+        uniq_stim_count = len(self.rawdata["vstim"]["iStim"].drop_nulls().unique())
+        max_stim_id = self.rawdata["vstim"]["iStim"].drop_nulls().max()
+
+        self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+            (
+                uniq_stim_count * pl.col("iTrial") - (pl.col("iStim") - max_stim_id).abs()
+            ).alias("total_iStim")
+        )
+
+    def extract_trial_count(self):
         """Extracts the trial no from state changes, this works for stimpy for now"""
-        display("Trial increment faulty, extracting from state changes...")
+        display(
+            "State machine trial increment faulty, extracting from state changes...",
+            color="yellow",
+        )
 
-        trial_cnt = int(len(self.rawdata["statemachine"]) / num_state_changes)
-        trial_no = np.repeat(np.arange(1, trial_cnt + 1), num_state_changes)
+        trialends = self.rawdata["statemachine"].with_columns(
+            pl.when(pl.col("transition").str.contains("trialend"))
+            .then(1)
+            .otherwise(0)
+            .alias("end_flag")
+        )
 
-        if len(trial_no) != len(self.rawdata["statemachine"]):
-            len_diff = len(self.rawdata["statemachine"]) - len(trial_no)
-            trial_no = np.append(trial_no, trial_no[-1] * len_diff)
+        trial_no = []
+        t_cntr = 1
+        for i in trialends["end_flag"].to_list():
+            trial_no.append(t_cntr)
+            if i:
+                t_cntr += 1
 
         new_trial_no = pl.Series("trialNo", trial_no)
         self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
