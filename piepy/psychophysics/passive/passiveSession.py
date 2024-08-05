@@ -25,9 +25,10 @@ class PassiveRun(Run):
         super().read_run_data()
 
         # sometimes iTrial starts from 0, shift all to start from 1
-        self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
-            (pl.col("iTrial") + 1).alias("iTrial")
-        )
+        if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+                (pl.col("iTrial") + 1).alias("iTrial")
+            )
 
     def analyze_run(self) -> None:
         """ """
@@ -50,14 +51,17 @@ class PassiveRun(Run):
 
         trials = np.unique(self.rawdata["statemachine"]["trialNo"])
         if len(trials) == 1:
-            self.extract_trial_count(num_state_changes=4)
-            trials = self.rawdata["statemachine"]["trialNo"].unique().to_list()
+            self.extract_trial_count()
+
+        self.add_total_iStim()
+
+        trials = self.rawdata["statemachine"]["trialNo"].unique().to_list()
         pbar = tqdm(trials, desc="Extracting trial data:", leave=True, position=0)
         for t in pbar:
             # instantiate a trial
             temp_trial = PassiveTrial(trial_no=int(t), meta=self.meta, logger=self.logger)
             # get the data slice using state changes
-            temp_trial.get_data_slices(self.rawdata, use_state=False)
+            temp_trial.set_data_slices(self.rawdata)
             trial_row = temp_trial.trial_data_from_logs()
 
             self.trial_list.append(temp_trial)
@@ -90,31 +94,6 @@ class PassiveRun(Run):
         }
 
         return state_keys[curr_key]
-
-    def extract_trial_count(self, num_state_changes: int):
-        """Extracts the trial no from state changes, this works for stimpy for now"""
-        display(
-            "Trial increment faulty, extracting from state changes...", color="yellow"
-        )
-
-        trialends = self.rawdata["statemachine"].with_columns(
-            pl.when(pl.col("transition").str.contains("trialend"))
-            .then(1)
-            .otherwise(0)
-            .alias("end_flag")
-        )
-
-        trial_no = []
-        t_cntr = 1
-        for i in trialends["end_flag"].to_list():
-            trial_no.append(t_cntr)
-            if i:
-                t_cntr += 1
-
-        new_trial_no = pl.Series("trialNo", trial_no)
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
-            new_trial_no
-        )
 
 
 class PassiveSession(Session):

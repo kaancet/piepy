@@ -16,3 +16,8 @@ class NoRigReactionTimeError(BaseException):
 class PathSettingError(BaseException):
     def __init__(self, *args: object) -> None:
         super().__init__(*args)
+
+
+class StateMachineError(BaseException):
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)

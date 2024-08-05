@@ -51,7 +51,10 @@ class SessionMeta:
         if "name" in prefs["rig"]:
             self.rig = prefs["rig"]["name"]
         else:
-            self.rig = prefs["tmpFolder"].split(os.sep)[-1]
+            try:
+                self.rig = prefs["tmpFolder"].split(os.sep)[-1]
+            except:
+                self.rig = "N/A"
 
     def set_session_date(self, date_str: str) -> None:
         """Sets various types of date formating in addition to datetime"""
