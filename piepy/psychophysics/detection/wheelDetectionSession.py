@@ -43,8 +43,7 @@ class WheelDetectionRunData(RunData):
             self.data = self.data.with_columns(pl.col(col_name).alias("outcome"))
         else:
             if col_name in self.data.columns:
-                tmp = self.data[col_name]
-                self.data.replace("outcome", tmp)
+                self.data = self.data.with_columns(pl.col(col_name).alias("outcome"))
             else:
                 raise ValueError(
                     f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'."
@@ -54,7 +53,7 @@ class WheelDetectionRunData(RunData):
         """Compares the different outcome types and prints a small summary table"""
         out_cols = [c for c in self.data.columns if "_outcome" in c]
         q = (
-            self.data.groupby(out_cols)
+            self.data.group_by(out_cols)
             .agg([pl.count().alias("count")])
             .sort(["state_outcome"])
         )
@@ -131,12 +130,13 @@ class WheelDetectionRunData(RunData):
                     # add the pattern name depending on pattern id
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
-                        .apply(
+                        .map_elements(
                             lambda x: (
                                 self.pattern_names[x["opto_pattern"]]
                                 if x["state_outcome"] != -1
                                 else None
-                            )
+                            ),
+                            return_dtype=str,
                         )
                         .alias("opto_region")
                     )
@@ -166,8 +166,14 @@ class WheelDetectionRunData(RunData):
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region")).alias("stim_label")
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
+                    "stim_label"
+                )
             )
+
+    @staticmethod
+    def get_pattern_size(pattern_img: np.ndarray) -> float:
+        """Gets the pattern size using the x and y vertices from"""
 
     def get_opto_images(self, get_from: str) -> None:
         """Reads the related run images(window, pattern, etc)
@@ -190,7 +196,7 @@ class WheelDetectionRunData(RunData):
                 elif im.endswith(".bmp"):
                     pattern_id = int(im.split("_")[0])
                     name = im.split("_")[1]
-                    read_bmp = np.array(Image.open(pjoin(get_from, im)))
+                    read_bmp = np.array(Image.open(pjoin(get_from, im)).convert("L"))
                     self.sesh_patterns[name] = read_bmp[::-1, ::-1]
         else:
             self.sesh_imgs = None
@@ -199,22 +205,6 @@ class WheelDetectionRunData(RunData):
 
 
 class WheelDetectionStats:
-    __slots__ = [
-        "all_count",
-        "early_count",
-        "stim_count",
-        "correct_count",
-        "miss_count",
-        "all_correct_percent",
-        "hit_rate",
-        "easy_hit_rate",
-        "false_alarm",
-        "nogo_percent",
-        "median_response_time",
-        "d_prime",
-        "nonopto_hit_rate",
-    ]
-
     def __init__(
         self, dict_in: dict = None, data_in: WheelDetectionRunData = None
     ) -> None:
@@ -224,60 +214,65 @@ class WheelDetectionStats:
             self.init_from_dict(dict_in)
 
     def __repr__(self):
+        stats = self.get_dict()
         rep = """"""
-        for k in self.__slots__:
-            rep += f"""{k} = {getattr(self,k,None)}\n"""
+        for k, v in stats.items():
+            rep += f"""{k} = {v}\n"""
         return rep
 
     def init_from_data(self, data_in: WheelDetectionRunData):
         data = data_in.data
-        early_data = data.filter((pl.col("outcome") == -1) & (pl.col("isCatch") == 0))
+        early_data = data.filter((pl.col("outcome") == -1))
         stim_data = data.filter((pl.col("outcome") != -1) & (pl.col("isCatch") == 0))
-        catch_data = data.filter(pl.col("isCatch") == 1)
-        correct_data = data.filter(pl.col("outcome") == 1)
-        miss_data = data.filter(pl.col("outcome") == 0)
+        catch_data = data.filter((pl.col("outcome") != -1) & (pl.col("isCatch") == 1))
+        correct_data = stim_data.filter(pl.col("outcome") == 1)
+        miss_data = stim_data.filter(pl.col("outcome") == 0)
 
         # counts
-        self.all_count = len(data)
-        self.early_count = len(early_data)
-        self.stim_count = len(stim_data)
-        self.correct_count = len(correct_data)
-        self.miss_count = len(miss_data)
+        self.total_trial_count = len(data)
+        self.early_trial_count = len(early_data)
+        self.stim_trial_count = len(stim_data)
+        self.correct_trial_count = len(correct_data)
+        self.miss_trial_count = len(miss_data)
 
         # percents from nonoptos
-        nonopto_data = data.filter(pl.col("opto") == 0)
-        nonopto_correct = len(nonopto_data.filter(pl.col("outcome") == 1))
-        nonopto_miss = len(nonopto_data.filter(pl.col("outcome") == 0))
-        self.nonopto_hit_rate = round(
-            100 * nonopto_correct / (nonopto_correct + nonopto_miss), 3
-        )
+        nonopto_data = stim_data.filter(pl.col("opto") == 0)
+        nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == 1))
+        nonopto_miss_count = len(nonopto_data.filter(pl.col("outcome") == 0))
+        self.nonopto_hit_rate = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-        self.all_correct_percent = round(100 * self.correct_count / self.all_count, 3)
-        self.hit_rate = round(100 * self.correct_count / self.stim_count, 3)
-        self.false_alarm = round(
-            100 * self.early_count / (self.early_count + self.correct_count), 3
+        self.correct_rate = round(
+            100 * self.correct_trial_count / self.total_trial_count, 3
         )
-        self.nogo_percent = round(100 * self.miss_count / self.stim_count, 3)
-
-        ## performance on easy trials
-        easy_data = data.filter(
-            (pl.col("contrast").is_in([100, 50])) & (pl.col("opto_region") == "nonopto")
+        self.hit_rate = round(100 * self.correct_trial_count / self.stim_trial_count, 3)
+        self.false_alarm_rate = round(
+            100 * self.early_trial_count / self.total_trial_count, 3
         )
-
-        easy_correct_count = len(easy_data.filter(pl.col("outcome") == 1))
-        if len(easy_data):
-            self.easy_hit_rate = round(100 * easy_correct_count / len(easy_data), 3)
-        else:
-            self.easy_hit_rate = 0
+        self.nogo_rate = round(100 * self.miss_trial_count / self.stim_trial_count, 3)
 
         # median response time
-        self.median_response_time = round(
-            stim_data.filter(pl.col("outcome") == 1)["response_latency"].median(), 3
+        self.median_response_latency = round(
+            nonopto_data.filter(pl.col("outcome") == 1)["response_latency"].median(), 3
         )
+
+        ## performance on easy trials
+        easy_data = nonopto_data.filter(pl.col("contrast").is_in([100, 50]))
+        self.easy_trial_count = len(easy_data)
+        easy_correct_count = len(easy_data.filter(pl.col("outcome") == 1))
+        if self.easy_trial_count:
+            self.easy_hit_rate = round(
+                100 * easy_correct_count / self.easy_trial_count, 3
+            )
+            self.easy_median_response_latency = round(
+                easy_data.filter(pl.col("outcome") == 1)["response_latency"].median(), 3
+            )
+        else:
+            self.easy_hit_rate = -1
+            self.easy_median_response_latency = -1
 
         # d prime(?)
         self.d_prime = st.norm.ppf(self.hit_rate / 100) - st.norm.ppf(
-            self.false_alarm / 100
+            self.false_alarm_rate / 100
         )
 
     def init_from_dict(self, dict_in: dict):
@@ -285,7 +280,23 @@ class WheelDetectionStats:
             setattr(self, k, v)
 
     def get_dict(self) -> dict:
-        return {key: getattr(self, key, None) for key in self.__slots__}
+        _counts = {
+            key: getattr(self, key, None)
+            for key in self.__dict__.keys()
+            if key.endswith("count")
+        }
+        _rates = {
+            key: getattr(self, key, None)
+            for key in self.__dict__.keys()
+            if key.endswith("rate")
+        }
+        _latency = {
+            key: getattr(self, key, None)
+            for key in self.__dict__.keys()
+            if key.endswith("latency")
+        }
+        _stats = {**_counts, **_rates, **_latency}
+        return _stats
 
 
 class WheelDetectionRun(Run):
@@ -341,7 +352,13 @@ class WheelDetectionRun(Run):
         else:
             self.logger.listener_configurer()
             self._list_data = []
-            pbar = tqdm(trial_nos, desc="Extracting trial data:", leave=True, position=0)
+            pbar = tqdm(
+                trial_nos,
+                desc="Extracting trial data:",
+                leave=True,
+                position=0,
+                disable=not config.verbose,
+            )
             for t in pbar:
                 self._get_trial(t)
 
