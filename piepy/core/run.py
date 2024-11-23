@@ -206,6 +206,7 @@ class Run:
             "2->3": "stimend",
             "3->0": "trialend",
         }
+        return state_keys[curr_key]
 
     def check_and_translate_state_data(self) -> bool:
         """Checks if state data exists and translated the state transitions according to defined translation dictionary
@@ -221,7 +222,10 @@ class Run:
         try:
             self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
                 pl.struct(["oldState", "newState"])
-                .apply(lambda x: self.translate_transition(x["oldState"], x["newState"]))
+                .map_elements(
+                    lambda x: self.translate_transition(x["oldState"], x["newState"]),
+                    return_dtype=str,
+                )
                 .alias("transition")
             )
         except:
@@ -266,14 +270,41 @@ class Run:
         """Adds another column to the DataFrame where iStim increments for each presentation"""
         display("Adding total iStim column")
 
-        uniq_stim_count = len(self.rawdata["vstim"]["iStim"].drop_nulls().unique())
-        max_stim_id = self.rawdata["vstim"]["iStim"].drop_nulls().max()
+        _iStim = self.rawdata["vstim"]["iStim"]
+        _iTrial = self.rawdata["vstim"]["iTrial"]
 
-        self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
-            (
-                uniq_stim_count * pl.col("iTrial") - (pl.col("iStim") - max_stim_id).abs()
-            ).alias("total_iStim")
+        # check if either itrial or istim is monotonically increasing, if so take the one that i
+        _iStim_monot = np.diff(_iStim.drop_nulls().unique(maintain_order=True).to_list())
+        _iTrial_monot = np.diff(
+            _iTrial.drop_nulls().unique(maintain_order=True).to_list()
         )
+        if len(_iStim_monot) and np.all(_iStim_monot > 0):
+            # istim monotonic, take that (scenario 1)
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+                (pl.col("iStim") + 1).alias("total_iStim")
+            )
+        elif len(_iTrial_monot) and np.all(_iTrial_monot > 0):
+            # itrial is monotonic, take that (scenario 3)
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+                (pl.col("iTrial")).alias("total_iStim")
+            )
+        else:
+            # for every unique iTrial, run on istims
+            incr = []
+            _observed_iTrials = []
+            ctr = 0
+            for t, s in zip(_iTrial.to_list(), _iStim.to_list()):
+                if s is None or t is None:
+                    incr.append(None)
+                else:
+                    if t not in _observed_iTrials:
+                        _observed_iStims = []
+                        if s not in _observed_iStims:
+                            _observed_iStims.append(s)
+                            ctr += 1
+                    incr.append(ctr)
+            total_stim = pl.Series("total_iStim", incr)
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(total_stim)
 
     def extract_trial_count(self):
         """Extracts the trial no from state changes, this works for stimpy for now"""
