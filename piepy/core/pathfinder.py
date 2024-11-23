@@ -1,4 +1,5 @@
 import os
+import glob
 import natsort
 from os.path import join as pjoin
 from os.path import exists as exists
@@ -50,8 +51,10 @@ class PathFinder:
             _found = False
             for p in path:
                 if os.path.isdir(p):
-                    session_related_dir = pjoin(p, self.sessiondir).replace("\\", os.sep)
-                    if exists(session_related_dir):
+                    _dirs = pjoin(p, self.sessiondir).replace("\\", os.sep)
+                    _found_dirs = glob.glob(f"{_dirs}*")
+                    if len(_found_dirs):
+                        session_related_dir = _found_dirs[0]
                         _found = True
                         found_runs = self.look_for_runs(session_related_dir)
                         # saving everything as a list
