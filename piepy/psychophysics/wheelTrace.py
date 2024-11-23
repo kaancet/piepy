@@ -1,10 +1,11 @@
-from scipy.interpolate import PchipInterpolator, interp1d
+import numpy as np
 import scipy.signal
 from scipy.linalg import hankel
-
+from scipy.interpolate import PchipInterpolator, interp1d
 import matplotlib.pyplot as plt
 
 from ..core.utils import find_nearest
+
 WHEEL_DIAMETER = 2 * 3.1
 WHEEL_TICKS_PER_REV = 1024
 
@@ -48,9 +49,10 @@ class WheelTrace:
         self.offset_samps = np.array([])
 
     def set_trace_data(self, tick_t: np.ndarray, tick_pos: np.ndarray) -> None:
+        """Sets the absolute tick times and position readings, position readings are converted to integers"""
         if tick_t is not None:
             self.abs_tick_t = tick_t
-            self.abs_tick_pos = tick_pos
+            self.abs_tick_pos = tick_pos.astype(int)
 
     def init_trace(self, time_anchor: float) -> None:
         """"""
@@ -120,10 +122,13 @@ class WheelTrace:
     def reset_trajectory(self, reset_point: float = 0) -> None:
         """
         Resets the positions to make position 0 at t=0
+        This method is used on the ticks so the values can (and should) be integers
         """
         if self.interpolator is not None:
-            pos_at0 = self.interpolator(reset_point)
-            self.tick_pos = [p - pos_at0 for p in self.abs_tick_pos]
+            pos_at0 = round(
+                self.interpolator(reset_point).tolist()
+            )  # returns a 0 dimensional array, this makes it an int
+            self.tick_pos = [int(p - pos_at0) for p in self.abs_tick_pos]
 
     def make_interval_mask(self, time_window: list = None) -> np.ndarray:
         """Makes a mask to get the interval of interest in the trace"""
@@ -196,9 +201,8 @@ class WheelTrace:
             self.tick_t[0], self.tick_t[-1], 1 / self.interp_freq
         )  # Evenly resample at frequency
         if t[-1] > self.tick_t[-1]:
-            t = t[
-                :-1
-            ]  # Occasionally due to precision errors the last sample may be outside of range.
+            # Occasionally due to precision errors the last sample may be outside of range.
+            t = t[:-1]
 
         if fill_gaps:
             #  Find large gaps and forward fill @fixme This is inefficient
@@ -423,7 +427,7 @@ class WheelTrace:
         Returns
         -------
         vel : np.ndarray
-            Array of velocity values.
+            Array of velocity values in degrees.
 
         """
         sos = scipy.signal.butter(
@@ -434,11 +438,16 @@ class WheelTrace:
             },
             output="sos",
         )
+
+        # position-> rad
+        tick_pos_rad = self.cm_to_rad(self.ticks_to_cm(np.array(self.tick_pos)))
+        tick_pos_rad_interp = self.cm_to_rad(self.ticks_to_cm(self.tick_pos_interp))
+
         self.velo = (
             np.insert(
                 np.diff(
                     scipy.signal.sosfiltfilt(
-                        sos, self.tick_pos, padlen=len(self.tick_pos) - 1
+                        sos, self.tick_pos, padlen=len(tick_pos_rad) - 1
                     )
                 ),
                 0,
@@ -447,7 +456,7 @@ class WheelTrace:
             * self.interp_freq
         )
         self.velo_interp = (
-            np.insert(np.diff(scipy.signal.sosfiltfilt(sos, self.tick_pos_interp)), 0, 0)
+            np.insert(np.diff(scipy.signal.sosfiltfilt(sos, tick_pos_rad_interp)), 0, 0)
             * self.interp_freq
         )
         # self.speed = np.abs(velocity)
@@ -468,7 +477,7 @@ class WheelTrace:
     def get_speed_reactions(self, speed_threshold: float) -> None:
         """Selects the first data point where the calculated speed is faster than the speed threshold"""
         for i, velo_move in enumerate(self.trace_interval["velo_movements"]):
-            speed_move = np.abs(velo_move)
+            speed_move = np.abs(velo_move) * 1000
             faster_idx = np.where(speed_move > speed_threshold)[0]
             if len(faster_idx):
                 self.speed_reaction_t = self.trace_interval["t_movements"][i][
@@ -481,8 +490,8 @@ class WheelTrace:
                 )
                 break
 
-        if self.speed_reaction_t is not None:
-            self.speed_outcome = self.classify_reaction_time(self.speed_reaction_t)
+        # if self.speed_reaction_t is not None:
+        #     self.speed_outcome = self.classify_reaction_time(self.speed_reaction_t)
 
     def get_tick_reactions(self, tick_threshold: int) -> None:
         """Selects the first data point where the recorded ticks is bigger than the tick_threshold"""
