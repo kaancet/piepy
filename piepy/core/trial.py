@@ -180,31 +180,19 @@ class Trial:
 
     def get_opto(self) -> dict:
         """Extracts the opto boolean from opto slice from riglog"""
+        is_opto = False
+        opto_arr = []
         if self.meta.opto:
             if "opto" in self.data.keys() and len(self.data["opto"]):
-                opto_arr = self.data["opto"].select(["duinotime"]).to_numpy()
+                is_opto = True
+                opto_arr = self.data["opto"]["duinotime"].to_list()
+                # TODO: POWER MODULATION AND HAVING POWER AS A COLUMN
                 if len(opto_arr) > 1 and self.meta.opto_mode == 0:
+                    # this checks for discrepency between pulsed/cont. opto mode and opto pulse counts
                     self.logger.warning(
                         f"Something funky happened with opto stim, there are {len(opto_arr)} pulses"
                     )
-                    opto_arr = opto_arr[0]
-                elif len(opto_arr) > 1 and self.meta.opto_mode == 1:
-                    opto_arr = opto_arr[:, 0]
-                is_opto = True
-                opto_arr = opto_arr.tolist()
-            else:
-                # is_opto = int(bool(vstim_dict.get('opto',0)) or bool(len(opto_pulse)))
-                is_opto = False
-                opto_arr = []
-                if self.opto_pattern is not None and self.opto_pattern >= 0:
-                    self.logger.warning(
-                        "stimlog says opto, but no opto logged in riglog, using screen event as time!!"
-                    )
-                    is_opto = True
-                    opto_arr = [[self.t_stimstart_rig]]
-        else:
-            is_opto = False
-            opto_arr = [[]]
+                    opto_arr = [opto_arr[0]]
 
         opto_dict = {"opto": is_opto, "opto_pulse": opto_arr}
         self._attrs_from_dict(opto_dict)
