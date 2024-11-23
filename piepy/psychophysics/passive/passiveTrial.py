@@ -60,14 +60,17 @@ class PassiveTrial(Trial):
         self.t_trialstart = self.data["state"].filter(
             pl.col("transition") == "trialstart"
         )[0, "corrected_elapsed"]
-        try:
+
+        if "trialend" in self.data["state"]["transition"].to_list():
             self.t_trialend = self.data["state"].filter(
                 pl.col("transition") == "trialend"
             )[0, "corrected_elapsed"]
-        except:
+        elif "stimtrialend" in self.data["state"]["transition"].to_list():
             self.t_trialend = self.data["state"].filter(
                 pl.col("transition") == "stimtrialend"
             )[0, "corrected_elapsed"]
+        else:
+            raise StateMachineError("aht the fuck is this trial end structure man?")
 
     def set_data_slices(self, rawdata: dict) -> None:
         """Passive viewing experiment use the screen events to slice the data rather than states"""
