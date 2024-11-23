@@ -1,4 +1,4 @@
-from piepy.detection.wheelDetectionSession import WheelDetectionSession
+from piepy.psychophysics.detection.wheelDetectionSession import WheelDetectionSession
 from ..behaviorBasePlotters import *
 from .wheelDetectionSessionPlotter import *
 

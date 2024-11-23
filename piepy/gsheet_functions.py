@@ -4,7 +4,7 @@ from googleapiclient import discovery
 from oauth2client.service_account import ServiceAccountCredentials
 
 from .core.config import config as cfg
-from .utils import display
+from .core.io import display
 
 # define the scope
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]

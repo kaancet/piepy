@@ -1,5 +1,5 @@
 from ..basePlotters import *
-from matplotlib.collections import LineCollection
+from ...psychophysics.wheelTrace import WheelTrace
 
 
 class DetectionTrialPlotter:

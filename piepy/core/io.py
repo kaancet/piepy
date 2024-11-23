@@ -1,15 +1,13 @@
+import sys
+import json
 import numpy as np
-from scipy.interpolate import interp1d
 import pandas as pd
 import polars as pl
-import os
-import json
-import sys
-import time
+from tqdm import tqdm
 from ast import literal_eval
 from colorama import Fore, Style
-from tqdm import tqdm
 from datetime import datetime as dt
+from scipy.interpolate import interp1d
 
 try:
     from cStringIO import StringIO
@@ -19,76 +17,21 @@ except:
     except ImportError:
         from io import StringIO
 
+from .config import config
 
 def display(*msgs: str, color: str = "white", timestamp: bool = True):
-    try:
-        fg_color = getattr(Fore, color.upper())
-    except AttributeError:
-        fg_color = Fore.WHITE
-    msg = fg_color
-    if timestamp:
-        msg += f"[{dt.today().strftime('%y-%m-%d %H:%M:%S')}] - "
-    msg += f"{''.join(msgs)}\n"
-    msg += Style.RESET_ALL
-    sys.stdout.write(msg)
-    sys.stdout.flush()
-
-
-def unique_except(x, exceptions: list):
-    """Returns the unique values in an array except the given list"""
-    uniq = np.unique(x)
-    ret = [i for i in uniq if i not in exceptions]
-    return np.asarray(ret)
-
-
-def nonan_unique(x, sort: bool = False) -> np.ndarray:
-    """Returns the unqie list without nan values"""
-    u = pd.unique(x[~np.isnan(x)])
-    if sort:
-        return np.sort(u)
-    else:
-        return u
-
-
-def get_fraction(
-    data_in: np.ndarray, fraction_of, window_size: int = 10, min_period: int = None
-) -> np.ndarray:
-    """Returns the fraction of values in data_in"""
-    if min_period is None:
-        min_period = window_size
-
-    fraction = []
-    for i in range(len(data_in)):
-        window_start = int(i - window_size / 2)
-        if window_start < 0:
-            window_start = 0
-        window_end = int(i + window_size / 2)
-        window = data_in[window_start:window_end]
-
-        if len(window) < min_period:
-            to_append = np.nan
-        else:
-            tmp = []
-            for i in window:
-                tmp.append(1 if i == fraction_of else 0)
-                to_append = float(np.mean(tmp))
-        fraction.append(to_append * 100)
-
-    return np.array(fraction)
-
-
-def timeit(msg):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            ts = time.time()
-            result = func(*args, **kwargs)
-            te = time.time()
-            display(f"{msg} : {te-ts:.3}s")
-            return result
-
-        return wrapper
-
-    return decorator
+    if config.verbose:
+        try:
+            fg_color = getattr(Fore, color.upper())
+        except AttributeError:
+            fg_color = Fore.WHITE
+        msg = fg_color
+        if timestamp:
+            msg += f"[{dt.today().strftime('%y-%m-%d %H:%M:%S')}] - "
+        msg += f"{''.join(msgs)}\n"
+        msg += Style.RESET_ALL
+        sys.stdout.write(msg)
+        sys.stdout.flush()
 
 
 def JSONConverter(obj):
@@ -112,19 +55,6 @@ def jsonify(data):
         jsonified[key] = value
 
     return jsonified
-
-
-def find_nearest(array, value):
-    if len(array):
-        if isinstance(array, list):
-            array = np.array(array)
-        try:
-            idx = np.nanargmin(np.abs(array - value))
-        except:
-            idx = 0
-        return idx, array[idx]
-    else:
-        return None
 
 
 def save_dict_json(path: str, dict_in: dict) -> None:
@@ -238,10 +168,10 @@ def parseVStimLog(fname):
             )(np.arange(len(data["vstim"])))
         else:
 
-            print(
+            display(
                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
                     len(data["screen"]), indkey, len(fliploc)
-                )
+                ), color="yellow"
             )
     return data, comments
 
@@ -321,20 +251,20 @@ def parseStimpyLog(fname):
     if fname.endswith(".riglog"):
         display("Parsing riglog...")
 
-        q = pl.scan_csv(fname, has_header=False, comment_char="#")
-        col_names = {k: righeader[i] for i, k in enumerate(q.columns)}
+        q = pl.scan_csv(fname, has_header=False, comment_prefix="#")
+        col_names = {k: righeader[i] for i, k in enumerate(q.collect_schema().names())}
 
         q.with_columns(pl.col("code"))
         q = q.rename(col_names)
 
         logdata = q.select(
             [
-                pl.col("code").str.strip("[").str.strip(" ").cast(pl.Int64, strict=False),
-                pl.col("timereceived"),
-                pl.col("duinotime"),
+                pl.col("code").str.strip_chars("[").str.strip_chars(" ").cast(pl.Int64, strict=False),
+                pl.col("timereceived").str.strip_chars(" ").cast(pl.Int64),
+                pl.col("duinotime").str.strip_chars(" ").cast(pl.Float32).cast(pl.Int64),
                 pl.col("value")
-                .str.strip("]")
-                .str.strip(" ")
+                .str.strip_chars("]")
+                .str.strip_chars(" ")
                 .cast(pl.Int64, strict=False),
             ]
         ).collect()
@@ -345,12 +275,12 @@ def parseStimpyLog(fname):
         q = pl.scan_csv(fname, has_header=False)
         q = q.with_columns(pl.col("*").cast(pl.Float32, strict=False))
 
-        col_names = {k: vlogheader[i] for i, k in enumerate(q.columns)}
+        col_names = {k: vlogheader[i] for i, k in enumerate(q.collect_schema().names())}
         logdata = q.rename(col_names).collect()
 
     data = {}
     not_found = []
-    for code_nr in tqdm(codes.keys(), desc="Reading logs "):
+    for code_nr in tqdm(codes.keys(), desc="Reading logs",disable=not config.verbose):
         # TODO: cam1=6,cam2=7,cam3=8 changing the code_keys for later, semi hardcoded and depends on rig!!
         if code_nr == 6:
             code_key = "facecam"
@@ -611,11 +541,10 @@ def extrapolate_time(data):
             temp_df = pl.Series("duinotime", temp)
             data["vstim"] = data["vstim"].hstack([temp_df])
         else:
-
-            print(
+            display(
                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
                     len(data["screen"]), indkey, len(fliploc)
-                )
+                ), color="yellow"
             )
     return data
 

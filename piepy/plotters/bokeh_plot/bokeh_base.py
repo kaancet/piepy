@@ -4,11 +4,9 @@ from bokeh.core.properties import value
 from bokeh.io import curdoc, export_svgs
 
 from bokeh.themes import Theme
-import svglib.svglib as svglib
-from reportlab.graphics import renderPDF
 
 import os
-from piepy.utils import display
+from piepy.core.utils import display
 import polars as pl
 
 

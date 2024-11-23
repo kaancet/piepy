@@ -3,7 +3,7 @@ from polars import DataFrame
 from .stacks import *
 from .myio import *
 from .retinoutils import *
-from ...utils import *
+from ...core.io import *
 
 
 class CamDataAnalysis:

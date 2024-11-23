@@ -1,5 +1,5 @@
 import numpy as np
-from ...utils import *
+from ...core.utils import *
 from ...core.trial import *
 
 

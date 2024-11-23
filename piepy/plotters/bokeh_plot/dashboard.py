@@ -5,7 +5,7 @@ from os.path import join as pjoin
 from bokeh.models import DataTable, TableColumn, StringFormatter
 
 from piepy.detection.wheelDetectionSession import WheelDetectionSession
-from piepy.utils import getConfig
+from piepy.core.utils import getConfig
 from piepy.plotters.bokeh_plot.bokeh_base import *
 
 

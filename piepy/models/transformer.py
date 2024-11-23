@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import bernoulli
-from ..utils import display
+from ..core.io import display
 
 
 class DataTransformer(object):

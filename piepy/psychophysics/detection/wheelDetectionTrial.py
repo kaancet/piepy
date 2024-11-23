@@ -1,5 +1,5 @@
 import numpy as np
-from ...utils import *
+from ...core.io import *
 from ...core.trial import *
 from ..wheelTrace import WheelTrace
 

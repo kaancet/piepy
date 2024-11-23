@@ -13,7 +13,8 @@ from datetime import datetime as dt
 from os.path import dirname, abspath, normpath
 
 from ..core.config import config as cfg
-from ..utils import display, timeit
+from .utils import timeit
+from .io import display
 from ..gsheet_functions import GSheet
 
 

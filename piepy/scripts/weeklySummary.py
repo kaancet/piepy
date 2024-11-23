@@ -8,7 +8,7 @@ from ..detection.wheelDetectionBehavior import WheelDetectionBehavior
 from ..detection.wheelDetectionSession import WheelDetectionSession
 from ..wheel.wheelBehavior import WheelBehavior
 from ..wheel.wheelSession import WheelSession
-from ..utils import *
+from ..core.utils import *
 
 weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 

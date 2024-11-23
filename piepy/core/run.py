@@ -2,7 +2,7 @@ import scipy.io as sio
 from os.path import join as pjoin
 from os.path import exists as exists
 
-from ..utils import *
+from .io import *
 from .exceptions import *
 from .logger import Logger
 from .pathfinder import *

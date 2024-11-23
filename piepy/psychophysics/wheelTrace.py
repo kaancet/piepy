@@ -1,10 +1,10 @@
-from ..utils import *
 from scipy.interpolate import PchipInterpolator, interp1d
 import scipy.signal
 from scipy.linalg import hankel
 
 import matplotlib.pyplot as plt
 
+from ..core.utils import find_nearest
 WHEEL_DIAMETER = 2 * 3.1
 WHEEL_TICKS_PER_REV = 1024
 

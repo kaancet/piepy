@@ -7,7 +7,7 @@ from scipy.stats import (
     barnard_exact,
     boschloo_exact,
 )
-from ...utils import display
+from ...core.io import display
 
 
 class DetectionAnalysis:

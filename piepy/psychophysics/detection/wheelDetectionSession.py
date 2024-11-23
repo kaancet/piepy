@@ -11,6 +11,8 @@ from tqdm.contrib.concurrent import process_map
 
 from ...core.session import Session
 from ...core.run import RunData, Run, RunMeta
+from ...core.config import config
+from ...core.utils import nonan_unique, timeit, get_fraction
 from ...core.pathfinder import *
 from .wheelDetectionTrial import *
 
