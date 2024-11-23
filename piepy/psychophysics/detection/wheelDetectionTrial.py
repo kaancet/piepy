@@ -21,8 +21,8 @@ class WheelDetectionTrial(Trial):
 
         if screen.is_empty():
             # no screen events to sync timeframes, can happen during training but shouldn't happen during experiments!
-            self.vstim_offset = 0
-            self.state_offset = 0
+            self.vstim_offset = 0.0
+            self.state_offset = 0.0
         else:
             # correction can only happen in stim trials
             if "stimstart" in state["transition"].to_list():
@@ -38,13 +38,13 @@ class WheelDetectionTrial(Trial):
                         0, "presentTime"
                     ]
                     self.logger.error(f"No photosensor logged in vstim!!")
-
+                vstim_onset *= 1000  # ms
                 self.vstim_offset = vstim_onset - rig_stim_onset
                 self.state_offset = state_stim_onset - rig_stim_onset
             else:
                 # no stimulus, meaning early trials
-                self.vstim_offset = 0
-                self.state_offset = 0
+                self.vstim_offset = 0.0
+                self.state_offset = 0.0
 
         # if offset is negative, that means the rig_onset time happened after the python timing
         self.data["state"] = state.with_columns(
@@ -106,9 +106,14 @@ class WheelDetectionTrial(Trial):
             "prob": None,
             "rig_reaction_time": None,
             "rig_reaction_tick": None,
+            "median_loop_time": None,
         }
 
         if early_flag != -1:
+            vstim_dict["median_loop_time"] = (
+                np.mean(np.diff(vstim["presentTime"].to_numpy())) * 1000
+            )  # ms
+
             contrast_temp = (
                 100 * round(temp_dict["contrast_r"], 5)
                 if temp_dict["correct"]
@@ -131,7 +136,9 @@ class WheelDetectionTrial(Trial):
                 else round(temp_dict["tf_l"], 2)
             )
             vstim_dict["stim_pos"] = (
-                temp_dict["posx_r"] if temp_dict["correct"] else temp_dict["posx_l"]
+                int(temp_dict["posx_r"])
+                if temp_dict["correct"]
+                else int(temp_dict["posx_l"])
             )
 
             vstim_dict["opto_pattern"] = temp_dict.get("opto_pattern", None)
@@ -177,9 +184,11 @@ class WheelDetectionTrial(Trial):
     def get_wheel_traces(self, **kwargs) -> dict:
         """Extracts the wheel trajectories and resets the positions according to time_anchor"""
         thresh_in_ticks = kwargs.get("tick_thresh", self.meta.wheelThresholdStim)
-        speed_thresh = thresh_in_ticks / kwargs.get(
-            "time_thresh", 17
-        )  # 17 is the avg ms for a loop
+
+        _loop_t = (
+            self.median_loop_time if self.median_loop_time is not None else 16.5
+        )  # avg ms for a loop
+        speed_thresh = thresh_in_ticks / kwargs.get("time_thresh", _loop_t)
         interp_freq = kwargs.get("freq", 5)
 
         wheel_data = self.data["position"]
@@ -203,16 +212,15 @@ class WheelDetectionTrial(Trial):
                 #  the window of analysis for trajectories
                 window_end = self.t_stimend
             else:
-                # for early trials use the time after quiescence period
+                # for early trials use the blank period
                 time_anchor = self.t_trialinit
-                window_end = self.t_trialinit + 3000
+                window_end = self.t_trialinit + self.t_blank_dur
         else:
             time_anchor = self.t_stimstart_rig
             window_end = self.t_stimend_rig
             if window_end is None:
-                display(
-                    f"No stimend signal from screen data, using corrected state timing!",
-                    color="yellow",
+                self.logger.warning(
+                    f"No stimend signal from screen data, using corrected state timing!"
                 )
                 window_end = self.data["state"].filter(
                     pl.col("transition").str.contains("stimend")
@@ -339,8 +347,8 @@ class WheelDetectionTrial(Trial):
             miss = self.data["state"].filter(pl.col("transition") == "miss")
             if len(miss):
                 temp_resp = miss[0, "stateElapsed"]
-                if temp_resp <= 150:
-                    # this is actually early
+                if temp_resp <= 200:
+                    # this is actually early, higher threshold here compared to stimpy because of logging lag
                     state_log_data["state_outcome"] = -1
                     state_log_data["response_latency"] = temp_resp
                 elif 150 < temp_resp < 1000:
@@ -363,20 +371,21 @@ class WheelDetectionTrial(Trial):
 
         # stimulus end
         if state_log_data["t_stimstart"] is not None:
-            try:
-                if state_log_data["state_outcome"] != 1:
-                    state_log_data["t_stimend"] = self.data["state"].filter(
-                        (pl.col("transition") == "stimendincorrect")
-                    )[0, "corrected_elapsed"]
-                else:
-                    state_log_data["t_stimend"] = self.data["state"].filter(
-                        (pl.col("transition") == "stimendcorrect")
-                    )[0, "corrected_elapsed"]
-            except:
-                # this means that the trial was cut short, should only happen in last trial
-                self.logger.warning(
+
+            if "stimendincorrect" in self.data["state"]["transition"]:
+                _end = "stimendincorrect"
+            elif "catch" in self.data["state"]["transition"]:
+                _end = "catch"
+            elif "stimendcorrect" in self.data["state"]["transition"]:
+                _end = "stimendcorrect"
+            else:
+                raise ValueError(
                     "Stimulus appeared but not disappeared, is this expected??"
                 )
+
+            state_log_data["t_stimend"] = self.data["state"].filter(
+                (pl.col("transition") == _end)
+            )[0, "corrected_elapsed"]
 
         state_log_data["t_trialend"] = self.t_trialend
         self._attrs_from_dict(state_log_data)
