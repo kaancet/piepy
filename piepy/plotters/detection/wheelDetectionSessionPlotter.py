@@ -58,7 +58,7 @@ class DetectionPsychometricPlotter(BasePlotter):
             ax = self.fig.add_subplot(1, 1, 1)
 
         nonearly_data = self.stat_analysis.agg_data.drop_nulls("contrast")
-        q = nonearly_data.sort(["stimkey", "opto_pattern"], descending=True)
+        q = nonearly_data.sort(["stimkey", "opto_pattern", "contrast"], descending=True)
 
         for filt_tup in self.subsets(q, ["stimkey", "stim_side"]):
             filt_df = filt_tup[-1]
@@ -133,11 +133,12 @@ class DetectionPsychometricPlotter(BasePlotter):
             x_t = {t: t for t in x_ticks}
 
         elif xaxis_type == "linear_spaced":
-            temp = nonearly_data["signed_contrast"].unique().sort().to_numpy()
-            x_ticks = np.arange(-(len(temp) - 1) / 2, (len(temp) - 1) / 2 + 1)
-            x_t = {temp[i]: t for i, t in enumerate(x_ticks)}
+            x_ticks = nonearly_data["linear_contrast_idx"].unique().sort().to_numpy()
+            x_labels = nonearly_data["signed_contrast"].unique().sort().to_numpy()
+            # x_ticks = np.arange(-(len(temp) - 1) / 2, (len(temp) - 1) / 2 + 1)
+            x_t = {x_labels[i]: t for i, t in enumerate(x_ticks)}
             ax.set_xticks(x_ticks)
-            ax.set_xticklabels(temp)
+            ax.set_xticklabels(x_labels)
             ax.set_xlim([x_ticks[0] - 0.5, x_ticks[-1] + 0.5])
 
         # put the significance starts
@@ -183,7 +184,7 @@ class DetectionPerformancePlotter(PerformancePlotter):
         super().__init__(data, **kwargs)
 
 
-class DetectionResponseTimeScatterCloudPlotter(ResponseTimeDistributionPlotter):
+class DetectionResponseTimeScatterCloudPlotter(ReactionTimeDistributionPlotter):
     __slots__ = []
 
     def __init__(self, data: pl.DataFrame, **kwargs):
@@ -215,22 +216,25 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
     @staticmethod
     def shuffle_times(x_in, n_shuffle: int = 1000) -> np.ndarray:
         """Shuffles x_in n_shuffle times"""
+        x_in = x_in.reshape(1, -1)
+
         gen = np.random.default_rng()
-        x_in = x_in.reshape(-1, 1)
         x_temp = x_in.copy()
-        shuffled_matrix = np.zeros((n_shuffle, x_in.shape[0]))
+        _shuffle1 = np.zeros((n_shuffle, x_in.shape[1]))
 
         for i in range(n_shuffle):
-            gen.shuffle(x_temp)
-            shuffled_matrix[i, :] = x_temp.reshape(1, -1)
+            gen.shuffle(x_temp, axis=1)
+            _shuffle1[i, :] = x_temp.reshape(1, -1)
 
+        idx = np.random.rand(*_shuffle1.shape).argsort(axis=0)
+        shuffled_matrix = np.take_along_axis(_shuffle1, idx, axis=0)
         return shuffled_matrix
 
     def make_agg_data(self):
         """Aggregates the data"""
         q = (
             self.plot_data.lazy()
-            .groupby(["stim_type", "contrast", "opto"])
+            .group_by(["stim_type", "contrast", "opto"])
             .agg(
                 [
                     (pl.col("response_latency").alias("response_times")),
@@ -246,17 +250,29 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         return df
 
     def plot(
-        self, ax: plt.Axes = None, bin_width=50, seperate_stims: bool = False, **kwargs
+        self,
+        ax: plt.Axes = None,
+        bin_width=50,
+        reaction_of: str = "state",
+        seperate_stims: bool = False,
+        **kwargs,
     ):
         n_shuffle = kwargs.get("n_shuffle", 1000)
         if ax is None:
             self.fig = plt.figure(figsize=kwargs.get("figsize", (15, 10)))
             ax = self.fig.add_subplot(1, 1, 1)
 
+        if reaction_of == "state":
+            reaction_of = "response_times"
+        elif reaction_of in ["pos", "speed", "rig"]:
+            reaction_of = reaction_of + "_reaction_time"
+        elif reaction_of == "transformed_times":
+            reaction_of = "transformed_response_times"
+
         self.plot_data = self.plot_data.with_columns(
             pl.when(pl.col("outcome") != -1)
-            .then(pl.col("response_latency"))
-            .otherwise(-(pl.col("t_blank_dur") - pl.col("response_latency")))
+            .then(pl.col(reaction_of))
+            .otherwise(-(pl.col("t_blank_dur") - pl.col(reaction_of)))
             .alias("blanked_response_latency")
         )
 
@@ -264,7 +280,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
         early_data = self.plot_data.filter(pl.col("outcome") == -1)
         resp_times = early_data["blanked_response_latency"].to_numpy()
         counts, bins = self.bin_times(resp_times, bin_width)
-        ax = self.__plot__(ax, counts, bins, color="r", label="Early")
+        ax = self.__plot__(ax, counts, bins, color="gray", label="Early")
 
         if seperate_stims:
             self.plot_data = self.make_agg_data()
@@ -283,7 +299,7 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
 
                     # resp_times_blanked = filt_df['blanked_response_latency'].to_numpy()
                     # blank_times = filt_df['blank_time'].to_numpy()
-                    resp_times = filt_df["response_latency"].to_numpy()
+                    resp_times = filt_df[reaction_of].to_numpy()
 
                     counts, bins = self.bin_times(resp_times, bin_width)
 
@@ -299,39 +315,40 @@ class DetectionResponseHistogramPlotter(ResponseTimeHistogramPlotter):
                     )
 
                     # plotting the median
-                    ax.axvline(
-                        np.median(resp_times),
-                        color=self.color.stim_keys[k]["color"],
-                        linewidth=3,
-                        label=f"{label} Median",
-                    )
-                    # plotting the shuffled histograms
-                    # shuffled = self.shuffle_times(resp_times_blanked)
-                    # shuffled_hists = np.zeros((n_shuffle,len(counts)))
+                    # ax.axvline(
+                    #     np.median(resp_times),
+                    #     color=self.color.stim_keys[k]["color"],
+                    #     linewidth=3,
+                    #     label=f"{label} Median",
+                    # )
 
-                    # for i,row in enumerate(shuffled):
+        # do bootstrap
+        # all_resp_times = self.plot_data["blanked_response_latency"].to_numpy()
+        # # shuffled = self.shuffle_times(all_resp_times)
+        # _bins = np.arange(-4000,1000,bin_width)
+        # boot_hists = np.zeros((n_shuffle,len(_bins)-1))
+        # for i,_ in enumerate(boot_hists):
+        #     _bootstrapped = np.random.choice(all_resp_times,len(all_resp_times),replace=True)
+        #     counts,_ = np.histogram(_bootstrapped,_bins)
+        #     boot_hists[i,:] = counts.reshape(1,-1)
 
-                    #     row -= blank_times
-                    #     counts,_ = self.bin_times(row,bin_width,bins=bins)
-                    #     shuffled_hists[i,:] = counts.reshape(1,-1)
+        # #mean & std
+        # boot_mean = np.mean(boot_hists,axis=0)
+        # boot_std = np.std(boot_hists,axis=0)
 
-                    # #mean & std
-                    # shuf_mean = np.mean(shuffled_hists,axis=0)
-                    # shuf_std = np.std(shuffled_hists,axis=0)
+        # ax.fill_between(_bins[1:],boot_mean-boot_std,boot_mean+boot_std,color='dimgrey',alpha=0.4,zorder=2)
+        # ax.plot(_bins[1:],boot_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
+        # ax.legend(
+        #     loc="center left",
+        #     bbox_to_anchor=(0.05, 0.8),
+        #     fontsize=fontsize - 5,
+        #     frameon=False,
+        # )
+        ax.set_xlabel("Time from Stimulus onset (ms)")
+        ax.set_ylabel("Counts")
 
-                    # ax.fill_between(bins[1:],shuf_mean-shuf_std,shuf_mean+shuf_std,color='dimgrey',alpha=0.4,zorder=2)
-                    # ax.plot(bins[1:],shuf_mean,color='dimgrey',alpha=0.6,linewidth=2,zorder=3)
-
-        fontsize = kwargs.get("fontsize", 25)
-        ax.legend(
-            loc="center left",
-            bbox_to_anchor=(0.05, 0.8),
-            fontsize=fontsize - 5,
-            frameon=False,
-        )
-        ax.set_xlabel("Time from Stimulus onset (ms)", fontsize=fontsize)
-        ax.set_ylabel("Counts", fontsize=fontsize)
-        ax.tick_params(labelsize=fontsize)
+        ax.set_xlim([None, 1100])
+        ax.set_xticks([-1000, -500, 0, 500, 1000])
         ax.grid(alpha=0.5, axis="y")
 
         return ax
@@ -356,7 +373,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
             q = q.filter(pl.col("outcome") != -1)
 
         q = (
-            q.groupby(["stimkey", "outcome"])
+            q.group_by(["stimkey", "outcome"])
             .agg(
                 [
                     pl.count().alias("count"),
@@ -390,7 +407,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
             len(early_data),
             width=bar_width,
             color=self.color.outcome_keys[str(-1)]["color"],
-            linewidth=2,
+            linewidth=0.5,
             edgecolor="k",
         )
 
@@ -416,6 +433,8 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
                     self.color.outcome_keys[str(0)]["color"],
                     self.color.outcome_keys[str(1)]["color"],
                 ],
+                linewidth=0.5,
+                edgecolor="k",
             )
 
             label_dict[i] = label

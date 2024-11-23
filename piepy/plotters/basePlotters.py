@@ -3,7 +3,9 @@ import polars as pl
 from scipy import stats
 from os.path import join as pjoin
 import matplotlib.patheffects as pe
+from scipy.ndimage import uniform_filter1d
 
+from ..core.utils import get_fraction
 from .plotter_utils import *
 from ..psychophysics.wheelUtils import *
 from ..psychophysics.wheelTrace import *
@@ -16,12 +18,16 @@ class BasePlotter:
 
     __slots__ = ["plot_data", "fig", "color"]
 
-    def __init__(self, data: pl.DataFrame, **kwargs):
-        self.plot_data = data
+    def __init__(self, data: pl.DataFrame = None, **kwargs):
         self.fig = None
-        set_style(kwargs.pop("style", "presentation"))
         self.color = Color()
+        set_style(kwargs.pop("style", "presentation"))
+        if data is not None:
+            self.set_data(data)
 
+    def set_data(self, data: pl.DataFrame) -> None:
+        """Sets the data for the plotter"""
+        self.plot_data = data
         # check color definitions
         self.color.check_stim_colors(
             self.plot_data["stimkey"].drop_nulls().unique().to_list()
@@ -115,23 +121,34 @@ class BasePlotter:
 
 
 class PerformancePlotter(BasePlotter):
-    """Plots the performance progression through the session"""
+    """Plots the performance progression with respect to trial or time"""
 
     __slots__ = ["stimkey", "plot_data", "uniq_keys"]
 
     def __init__(self, data, **kwargs):
         super().__init__(data, **kwargs)
 
+    @staticmethod
+    def get_hit_rate(arr: np.ndarray) -> np.ndarray:
+        """Returns the hit rates as an array"""
+        arr = arr.astype(float)
+        # convert -1(earlies) to np.nan
+        arr[arr == -1] = np.nan
+        # cumulative count of hits ignoring nans (1 hit, 0 miss)
+        _hits = np.nancumsum(arr)
+        # cumulative counts of all not nans (earlies in this case)
+        _non_earlies = np.cumsum(~np.isnan(arr))
+        return (_hits / _non_earlies) * 100
+
     def plot(
         self,
         ax: plt.axes = None,
         plot_in_time: bool = False,
         seperate_by: str = None,
-        running_window: int = 20,
+        running_window: int = None,
         **kwargs,
     ) -> plt.axes:
-        """Plots the performance progression through the session
-
+        """
         Parameters:
         ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
         plot_int_time (bool): whether or not x_axis is time (True) or trial number(False)
@@ -164,12 +181,16 @@ class PerformancePlotter(BasePlotter):
             else:
                 data2plot = self.plot_data.select(pl.col("*"))
 
-            y_axis = get_fraction(
-                data2plot["outcome"].to_numpy(),
-                fraction_of=1,
-                window_size=running_window,
-                min_period=10,
-            )
+            temp = self.get_hit_rate(data2plot["outcome"].to_numpy())
+            data2plot = data2plot.with_columns(pl.Series("fraction", temp))
+
+            if running_window is not None:
+                data2plot = data2plot.with_columns(
+                    rolling_mean=pl.col("fraction").rolling_mean(
+                        window_size=running_window, min_periods=5
+                    )
+                )
+            y_axis = data2plot["fraction"].to_numpy()
 
             if plot_in_time:
                 x_axis_ = data2plot["openstart_absolute"].to_numpy() / 60000
@@ -193,7 +214,9 @@ class PerformancePlotter(BasePlotter):
         return ax
 
 
-class ResponseTimePlotter(BasePlotter):
+class ReactionTimePlotter(BasePlotter):
+    """Plots the reaction time with respect to trial or time"""
+
     __slots__ = ["stimkey", "plot_data", "uniq_keys"]
 
     def __init__(self, data, **kwargs):
@@ -208,8 +231,7 @@ class ResponseTimePlotter(BasePlotter):
         running_window: int = None,
         **kwargs,
     ) -> plt.axes:
-        """Plots the response time progression through the session
-
+        """
         Parameters:
         ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
         plot_int_time (bool): whether or not x_axis is time (True) or trial number(False)
@@ -280,6 +302,8 @@ class ResponseTimePlotter(BasePlotter):
 
 
 class CumulativeReactionTimePlotter(BasePlotter):
+    """Plots the cumulative distribution of trial reaction times"""
+
     def __init__(self, data: pl.DataFrame, **kwargs) -> None:
         super().__init__(data, **kwargs)
 
@@ -299,6 +323,19 @@ class CumulativeReactionTimePlotter(BasePlotter):
         bin_width: float = 10,
         **kwargs,
     ) -> None:
+        """
+        Parameters:
+        ax (plt.axes): An axes object to place to plot,default is None, which creates the axes
+        reaction_of (str): string that indicates which reaction type to use, default is 'state'
+                            state: timing from stimpy statemachine
+                            pos:   timing from wheel trajectory position that passes the threshold value
+                            speed: timing from wheel movement speed that passes the threshold value
+                            rig:   timing recorded from rig Arduino(not present in all sessions due to stimpy branch differences)
+        bin_width (float): Width of bins in ms, default is 10
+
+        Returns:
+        plt.axes: Axes object
+        """
 
         if ax is None:
             self.fig = plt.figure(figsize=kwargs.pop("figsize", (8, 8)))
@@ -306,6 +343,8 @@ class CumulativeReactionTimePlotter(BasePlotter):
 
         if reaction_of == "state":
             reaction_of = "response_latency"
+        elif reaction_of == "transformed":
+            reaction_of = "transformed_response_times"
         elif reaction_of in ["pos", "speed", "rig"]:
             reaction_of = reaction_of + "_reaction_time"
 
@@ -338,6 +377,8 @@ class CumulativeReactionTimePlotter(BasePlotter):
 
 
 class ReactionCumulativePlotter(BasePlotter):
+    """"""
+
     def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
         self.stat_analysis = DetectionAnalysis(data=self.plot_data)
@@ -516,7 +557,7 @@ class ReactionCumulativePlotter(BasePlotter):
                             ax.grid(alpha=0.5, axis="both")
 
 
-class ResponseTimeDistributionPlotter(BasePlotter):
+class ReactionTimeDistributionPlotter(BasePlotter):
     """Plots the reaction times as a dot cloud on x-axis as contrast and y-axis as reaction times"""
 
     def __init__(self, data, stimkey: str = None, **kwargs) -> None:
@@ -535,7 +576,7 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         )
 
     @staticmethod
-    def make_dot_cloud(
+    def make_dot_cloud2(
         response_times: ArrayLike, pos: float, cloud_width: float = 0.33
     ) -> tuple[list, list]:
         """Makes a dot cloud by adding random jitter to inidividual points
@@ -570,12 +611,48 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         return part_x, part_y
 
     @staticmethod
+    def make_dot_cloud(
+        y: ArrayLike, center_pos: float = 0, nbins=None, width: float = 0.6
+    ):
+        """
+        Returns x coordinates for the points in ``y``, so that plotting ``x`` and
+        ``y`` results in a bee swarm plot.
+        """
+        y = np.asarray(y)
+        if nbins is None:
+            nbins = len(y) // 6
+
+        # Get upper bounds of bins
+        counts, bin_edges = np.histogram(y, bins=nbins)
+        # get the indices that correspond to points inside the bin edges
+        ibs = []
+        for ymin, ymax in zip(bin_edges[:-1], bin_edges[1:]):
+            i = np.nonzero((y >= ymin) * (y < ymax))[0]
+            ibs.append(i)
+
+        x_coords = np.zeros(len(y))
+        dx = width / (np.nanmax(counts) // 2)
+        for i in ibs:
+            _points = y[i]  # value of points that fall into the bin
+            # if less then 2, leave untouched, will put it in the mid line
+            if len(i) > 1:
+                j = len(i) % 2
+                i = i[np.argsort(_points)]
+                # if even numbers of points, j will be 0, which will allocate the points equally to left and right
+                # if odd, j will be 1, then, below lines will leave idx 0 at the midline and start from idx 1
+                a = i[j::2]
+                b = i[j + 1 :: 2]
+                x_coords[a] = (0.5 + j / 3 + np.arange(len(a))) * dx
+                x_coords[b] = (0.5 + j / 3 + np.arange(len(b))) * -dx
+
+        return x_coords + center_pos
+
+    @staticmethod
     def __plot_scatter__(ax, contrast, time, median, pos, cloud_width, **kwargs):
         """Plots the trial response times as a scatter cloud plot"""
         ax.scatter(
             contrast,
             time,
-            alpha=0.6,
             linewidths=0,
             s=(plt.rcParams["lines.markersize"] ** 2) / 2,
             **kwargs,
@@ -672,9 +749,10 @@ class ResponseTimeDistributionPlotter(BasePlotter):
         # do cutoff
         data = data.with_columns(
             pl.col(reaction_of)
-            .apply(lambda x: [i for i in x if i is not None and i < t_cutoff])
+            .list.eval(pl.when(pl.element().is_between(150, t_cutoff)).then(pl.element()))
             .alias("cutoff_response_times")
         )
+
         # make a key,value pair from signed_contrast and linear_contrast_idx
         cpos = self.make_linear_contrast_axis(data)
         for filt_tup in self.subsets(data, ["stimkey", "stim_side", "signed_contrast"]):
@@ -684,12 +762,14 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                     continue
 
                 resp_times = filt_df[0, "cutoff_response_times"].to_numpy()
+                resp_times = resp_times[~np.isnan(resp_times)]
 
                 response_times = self.add_jitter_to_misses(resp_times)
 
-                x_dots, y_dots = self.make_dot_cloud(
-                    response_times, cpos[filt_tup[2]], cloud_width
+                x_dots = self.make_dot_cloud(
+                    response_times, cpos[filt_tup[2]], 100, cloud_width
                 )
+                y_dots = response_times
                 median = np.median(response_times)
 
                 ax = self.__plot_scatter__(
@@ -720,9 +800,8 @@ class ResponseTimeDistributionPlotter(BasePlotter):
                 baseline["cutoff_response_times"].explode().drop_nulls().to_numpy()
             )
             catch_resp_times = self.add_jitter_to_misses(catch_resp_times)
-            x_dots, y_dots = self.make_dot_cloud(
-                catch_resp_times, cpos[0], cloud_width / 2
-            )
+            x_dots = self.make_dot_cloud(catch_resp_times, cpos[0], 100, cloud_width / 2)
+            y_dots = catch_resp_times
             median = np.median(catch_resp_times)
             ax = self.__plot_scatter__(
                 ax,
@@ -921,7 +1000,7 @@ class ResponseTimeHistogramPlotter(BasePlotter):
 
         color = ["orangered" if i <= 150 else cl for i in bins]
 
-        ax.bar(bins[1:], counts, width=bar_width, color=color, edgecolor="k", **kwargs)
+        ax.bar(bins[1:], counts, width=bar_width, color=color, linewidth=0, **kwargs)
 
         # zero line
         ax.axvline(x=0, color="k", linestyle=":", linewidth=3)
@@ -1061,6 +1140,7 @@ class LickScatterPlotter(BasePlotter):
 class WheelTrajectoryPlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame, **kwargs) -> None:
         super().__init__(data, **kwargs)
+        self.trace = WheelTrace()
 
     @staticmethod
     def __plot_density__(ax, x_bins, y_dens, **kwargs):
@@ -1085,19 +1165,22 @@ class WheelTrajectoryPlotter(BasePlotter):
 
     def plot(
         self,
+        tuple_f_axs: tuple = None,
         seperate_by: str = "contrast",
-        anchor_by: str = "t_stimstart",
+        anchor_by: str = "t_stimstart_rig",
         include_misses: bool = True,
-        time_lims: list = None,
-        traj_lims: list = None,
-        n_interp: int = 3000,
         **kwargs,
     ):
 
+        time_lims = kwargs.pop("time_lims", None)
         if time_lims is None:
             time_lims = [-200, 1500]
+
+        traj_lims = kwargs.pop("traj_lims", None)
         if traj_lims is None:
-            traj_lims = [-75, 75]
+            traj_lims = [None, None]
+
+        plot_speed = kwargs.pop("plot_speed", False)
 
         if include_misses:
             data = self.plot_data.filter(pl.col("outcome") != -1)
@@ -1115,74 +1198,119 @@ class WheelTrajectoryPlotter(BasePlotter):
         elif seperate_by == "outcome":
             color = self.color.outcome_keys
 
-        self.fig, axes = plt.subplots(
-            ncols=n_stim,
-            nrows=n_opto,
-            constrained_layout=True,
-            figsize=kwargs.pop("figsize", (20, 15)),
-        )
+        if tuple_f_axs is None:
+            self.fig, axes = plt.subplots(
+                nrows=n_stim * n_opto,
+                constrained_layout=True,
+                figsize=kwargs.pop("figsize", (20, 15)),
+            )
+        else:
+            axes = tuple_f_axs
 
-        # make sure axes is a list of lists so indexing during looper is standardized for different experiment conditions
-        while True:
-            _tmp = None
-            try:
-                _tmp = axes[0][0]
-                if _tmp is not None:
-                    break
-            except:
-                axes = [axes]
-
+        if not isinstance(axes, np.ndarray):
+            axes = [axes]
         # dummy variables to control axis switching
-        _target_id = uniq_opto[0]
-        _stim_name = uniq_stim[0]
-        ax_row = 0
-        ax_col = 0
+        _target_id = uniq_opto[0]  # opto patterns are on the columns
+        _stim_name = uniq_stim[0]  # stim types are on the rows
+        ax_idx = 0
+        all_rig_react = []
         # loop through all subsets of data (N=multiplication of the number of unique elements in each column)
         for filt_tup in self.subsets(data, ["opto_pattern", "stim_type", seperate_by]):
             filt_df = filt_tup[-1]
             sep = filt_tup[2]
 
-            if filt_tup[0] != _target_id:
-                ax_row += 1
+            if filt_tup[0] != _target_id or filt_tup[1] != _stim_name:
+                ax_idx += 1
+                # make the target match the current opto_pattern and stim type in concurrent loops
                 _target_id = filt_tup[0]
-                # everytime row is updated, column needs to be reset
-                ax_col = 0
-                _stim_name = uniq_stim[0]
-
-            if filt_tup[1] != _stim_name:
-                ax_col += 1
                 _stim_name = filt_tup[1]
-            ax = axes[ax_row][ax_col]
+
+            ax = axes[ax_idx]
 
             if "stimstart" in anchor_by:
                 filt_df = filt_df.filter(pl.col("state_outcome") != -1)
 
             if len(filt_df):
-                t_interp = np.linspace(-500, 2000, n_interp)
-                wheel_all_cond = np.zeros((len(filt_df), n_interp))
-                wheel_all_cond[:] = np.nan
+
+                _temp_wheel_list = []
+                _rig_react_rad_list = []
+                _longest_trace_len = 0
+                t_interp = None
+                _counter = (
+                    0  # counter is used because some trials have <2 wheel data points
+                )
                 for i, trial in enumerate(filt_df.iter_rows(named=True)):
-                    wheel_time = trial["wheel_time"]
-                    wheel_pos = trial["wheel_pos"]
+                    wheel_time = np.array(trial["wheel_time"])
+                    wheel_pos = np.array(trial["wheel_pos"])
+                    time_anchor = trial[anchor_by]
 
                     if len(wheel_time) > 2:
-                        # relative time
-                        wheel_time = np.array(wheel_time) - trial[anchor_by]
 
-                        pos_interp = interp1d(
-                            wheel_time, wheel_pos, fill_value="extrapolate"
-                        )(t_interp)
+                        self.trace.set_trace_data(wheel_time, wheel_pos)
+                        if time_anchor is None:
+                            print("ojbsdfjibsdf")
+                        self.trace.init_trace(time_anchor)
+                        speed = np.abs(self.trace.velo_interp) * 1000
 
-                        # relative position
-                        pos_at0 = interp1d(
-                            wheel_time, wheel_pos, fill_value="extrapolate"
-                        )(0)
-                        pos_interp = pos_interp - pos_at0
+                        # take the relative portion from 0
+                        _temp = np.where(
+                            (self.trace.tick_t_interp >= time_lims[0])
+                            & (self.trace.tick_t_interp <= time_lims[1])
+                        )
+                        if len(_temp):
+                            time_window = self.trace.tick_t_interp[_temp]
+                            pos_window = self.trace.tick_pos_interp[_temp]
+                            speed_window = speed[_temp]
+                            try:
+                                a = pos_window[0]
+                            except:
+                                print("lkjbasdadfdfk;n")
 
-                        wheel_all_cond[i, :] = pos_interp
+                            # TODO: Arbitrary filtering for weird wheel traces
+                            if -5 < pos_window[0] < 5:
+                                if plot_speed:
+                                    _temp_wheel_list.append(speed_window.tolist())
+                                    if trial["rig_reaction_tick"] is not None:
+                                        speed_thresh = trial["rig_reaction_tick"] / (
+                                            trial["median_loop_time"] * 5
+                                        )  # 5 is wheelbuffer
+                                        speed_thresh = self.trace.cm_to_rad(
+                                            self.trace.ticks_to_cm(speed_thresh)
+                                        )
+                                        _rig_react_rad_list.append(
+                                            speed_thresh * 1000
+                                        )  # x1000 for rad/s
+                                else:
+                                    # convert to rad
+                                    wheel_pos_rad = self.trace.cm_to_rad(
+                                        self.trace.ticks_to_cm(np.array(pos_window))
+                                    )
+                                    _temp_wheel_list.append(wheel_pos_rad.tolist())
+                                    if trial["rig_reaction_tick"] is not None:
+                                        pos_thresh = self.trace.cm_to_rad(
+                                            self.trace.ticks_to_cm(
+                                                trial["rig_reaction_tick"]
+                                            )
+                                        )
+                                        _rig_react_rad_list.append(pos_thresh)
 
-                avg = np.nanmean(wheel_all_cond, axis=0)
-                sem = stats.sem(wheel_all_cond, axis=0)
+                                if len(_temp_wheel_list[_counter]) >= _longest_trace_len:
+                                    _longest_trace_len = len(_temp_wheel_list[_counter])
+                                    t_interp = time_window
+                                _counter += 1
+
+                all_rig_react.extend(_rig_react_rad_list)
+                # make amatrix to avreage over the rows
+                all_traces_mat = np.array(
+                    [
+                        xi + [None] * (_longest_trace_len - len(xi))
+                        for xi in _temp_wheel_list
+                    ],
+                    dtype=float,
+                )
+
+                avg = np.nanmean(all_traces_mat, axis=0)
+                sem = stats.sem(all_traces_mat, axis=0, nan_policy="omit")
 
                 ax.fill_between(
                     t_interp,
@@ -1195,17 +1323,20 @@ class WheelTrajectoryPlotter(BasePlotter):
 
                 ax.plot(t_interp, avg, **color[str(sep)], **kwargs)
 
-            ax.set_xlim(time_lims)
-            # ax.set_ylim(traj_lims)
+            ax.set_xlim(time_lims[0] - 10, time_lims[1] + 10)
+            ax.set_ylim(traj_lims[0], traj_lims[1])
 
             # anchor line(stimstart init start)
-            ax.axvline(0, color="k", linewidth=0.5, alpha=0.6)
+            ax.axvline(0, color="k", linewidth=1, alpha=0.6)
 
             # stim end
-            ax.axvline(1000, color="k", linewidth=0.5, alpha=0.6)
+            ax.axvline(1000, color="k", linewidth=1, alpha=0.6)
 
             ax.set_title(f"{filt_tup[0]} {filt_tup[1]}")
-            ax.set_ylabel("Wheel\nmovement (cm)")
+            if plot_speed:
+                ax.set_ylabel("Wheel\nspeed (rad/s)")
+            else:
+                ax.set_ylabel("Wheel\nmovement (rad)")
             ax.set_xlabel("Time from stim onset (ms)")
 
             # make it pretty
@@ -1214,3 +1345,11 @@ class WheelTrajectoryPlotter(BasePlotter):
 
             ax.grid(axis="y")
             ax.legend(frameon=False)
+
+        react_mean = np.mean(all_rig_react)
+        for a in axes:
+            a.axhline(react_mean, color="#147800", linewidth=0.5, alpha=0.8)
+            if not plot_speed:
+                ax.axhline(-react_mean, color="#147800", linewidth=0.5, alpha=0.8)
+
+        return axes
