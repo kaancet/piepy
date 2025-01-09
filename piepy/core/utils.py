@@ -1,20 +1,20 @@
 import numpy as np
-import pandas as pd
 import time
-from tqdm import tqdm
 from .io import display
+from numpy.typing import ArrayLike
 
 
-def unique_except(x, exceptions: list):
+def unique_except(x: ArrayLike, exceptions: list) -> np.ndarray:
     """Returns the unique values in an array except the given list"""
     uniq = np.unique(x)
     ret = [i for i in uniq if i not in exceptions]
     return np.asarray(ret)
 
 
-def nonan_unique(x, sort: bool = False) -> np.ndarray:
-    """Returns the unqie list without nan values"""
-    u = pd.unique(x[~np.isnan(x)])
+def nonan_unique(x: ArrayLike, sort: bool = False) -> np.ndarray:
+    """Returns the unique list without nan values"""
+    x = np.array(x)
+    u = np.unique(x[~np.isnan(x)])
     if sort:
         return np.sort(u)
     else:
@@ -46,19 +46,6 @@ def get_fraction(
         fraction.append(to_append * 100)
 
     return np.array(fraction)
-
-
-def find_nearest(array, value):
-    if len(array):
-        if isinstance(array, list):
-            array = np.array(array)
-        try:
-            idx = np.nanargmin(np.abs(array - value))
-        except:
-            idx = 0
-        return idx, array[idx]
-    else:
-        return None
 
 
 def timeit(msg):

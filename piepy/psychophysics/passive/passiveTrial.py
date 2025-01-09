@@ -70,7 +70,7 @@ class PassiveTrial(Trial):
                 pl.col("transition") == "stimtrialend"
             )[0, "corrected_elapsed"]
         else:
-            raise StateMachineError("aht the fuck is this trial end structure man?")
+            raise StateMachineError("What the fuck is this trial end structure man?")
 
     def set_data_slices(self, rawdata: dict) -> None:
         """Passive viewing experiment use the screen events to slice the data rather than states"""

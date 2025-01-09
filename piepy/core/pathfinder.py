@@ -8,6 +8,8 @@ from .exceptions import *
 
 
 class Paths:
+    """Paths for single run"""
+
     def __init__(self, paths_dict: dict, path_idx: int = None) -> None:
         for name, path in paths_dict.items():
             if isinstance(path, list):

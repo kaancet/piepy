@@ -1,265 +1,203 @@
-import polars as pl
 import numpy as np
-from .exceptions import *
+import polars as pl
+import patito as pt
+from typing import Any
+from .exceptions import StateMachineError
 
 
-class Trial:
-    __slots__ = [
-        "trial_no",
-        "data",
-        "column_keys",
-        "t_trialstart",
-        "t_trialend",
-        "db_interface",
-        "total_trial_count",
-        "reward_ms_per_ul",
-        "meta",
-        "logger",
-    ]
+class Trial(pt.Model):
+    """This is the Trial dataframe model class that ends up as a row in session data frame after being validated.
+    This is the most basic form of a Trial, which has a trial no, start and an end"""
 
-    def __init__(self, trial_no: int, meta, logger) -> None:
-        self.trial_no = trial_no
-        self.meta = meta
+    # provided in instantiation
+    trial_no: int = pt.Field(gt=0, frozen=True, dtype=pl.UInt64)
+    t_trialstart: float = pt.Field(gt=0, dtype=pl.Float64)
+    t_trialend: float = pt.Field(gt=0, dtype=pl.Float64)
+
+
+class TrialHandler:
+    """A class that houses methods for parsing/checking/filling the Trial DataFrame class"""
+
+    def __init__(self) -> None:
         self.data = {}
-        self.logger = logger
-        self.reward_ms_per_ul = 0
-        self.logger.set_msg_prefix(f"TRIAL-[{self.trial_no}]")
+        self.set_model(Trial)
 
-    def __repr__(self) -> str:
-        rep = f"""Trial No :{self.trial_no}
-        {self.data.get("state",None)}"""
-        return rep
+    def set_model(self, model: pt.Model) -> None:
+        """Sets the model the handler will use to validate the trial"""
+        self.trial_model = model
 
-    def _attrs_from_dict(self, log_data: dict) -> None:
-        """
-        Creates class attributes from a dictionary
-        :param log_data: any dictionary  to set class attributes
-        """
-        for k, v in log_data.items():
-            setattr(self, k, v)
+    def _update_model(self) -> None:
+        """Updates the model with new keys in the dictionary, if there are any new ones"""
 
-    def is_trial_complete(self, rawdata: dict) -> bool:
-        """Sets state data, t_trialstart and t_trialend for data slices to be extracted
-        Returns False if trialend and trialstart not present"""
-        states = rawdata.get("statemachine")
+        def list_field_fixer(field_val) -> tuple[type, Any]:
+            """Fixes the typing and defult value for lists"""
+            if isinstance(field_val, list):
+                return (list[float], [])
+            else:
+                return (type(field_val), None)
 
-        self.data["state"] = states.filter(pl.col("trialNo") == self.trial_no)
-        _state_transitions = self.data["state"]["transition"].to_list()
+        _new_cols = {
+            k: list_field_fixer(v)
+            for k, v in self._trial.items()
+            if k not in self.trial_model.columns
+        }
+        self.trial_model = self.trial_model.with_fields(**_new_cols)
 
-        # Trial start
-        if "trialstart" not in _state_transitions:
-            raise StateMachineError(
-                f"[Trial {self.trial_no}] NO TRIALSTART FOR STATEMACHINE "
-            )
+    def _update_and_return(self, return_as: str = "dict") -> pt.DataFrame | dict | list:
+        """First validates, then returns the self._trial in the form given in return_as"""
+        # update the model with new vstim columns
+        self._update_model()
+        _t = pt.DataFrame(self._trial)
+
+        # validate the data
+        valid_data = _t
+        #   .set_model(self.trial_model) # Specify the schema of the given data frame
+        #   .derive() # Derive the columns that have derived_from in their Field
+        #   .drop() # Drop the columns that are not a part of the model definition
+        #   .cast() # Cast the columns that have dtype argument in their Field
+        #   .fill_null(strategy="defaults") # Fill missing values with the default values specified in the schema
+        #   .validate() # Assert that the data frame now complies with the schema
+        #   )
+
+        if return_as == "df":
+            return valid_data
+        elif return_as == "dict":
+            return valid_data.to_dict(as_series=False)
+        elif return_as == "list":
+            return valid_data.to_dicts()
         else:
-            self.t_trialstart = self.data["state"].filter(
+            raise ValueError(
+                f"Unexpected value for return_as. Got {return_as}, expected values are: df, dict_of_lists, list_of_dicts"
+            )
+
+    def init_trial(self) -> None:
+        """Creates an _trial object filled with None values"""
+        self._trial = {k: None for k in self.trial_model.columns}
+
+    def get_trial(
+        self, trial_no: int, rawdata: dict, return_as: str = "dict"
+    ) -> pt.DataFrame | dict | list | None:
+        """Main function that is called from outside, sets the trial, validates data type and returns it"""
+        self.init_trial()
+        _is_trial_set = self.set_trial(trial_no, rawdata)
+
+        if not _is_trial_set:
+            return None
+        else:
+            return self._update_and_return(return_as)
+
+    def set_trial(self, trial_no: int, rawdata: dict) -> bool:
+        """Sets the trialstart and end times, and sets the data slice corresponding to the current trial"""
+        self._trial["trial_no"] = trial_no
+
+        _state = rawdata["statemachine"].filter(pl.col("trialNo") == trial_no)
+        _state_transitions = _state["transition"].to_list()
+
+        # check if trial is complete
+        if self.is_trial_complete(_state_transitions):
+            self._trial["t_trialstart"] = _state.filter(
                 pl.col("transition") == "trialstart"
             )[0, "elapsed"]
-
-        # trial end
-        does_trial_end = False
-        if "trialend" in _state_transitions:
-            self.t_trialend = self.data["state"].filter(
-                pl.col("transition") == "trialend"
-            )[0, "elapsed"]
-            does_trial_end = True
-        elif "stimtrialend" in _state_transitions:
-            self.t_trialend = self.data["state"].filter(
-                pl.col("transition") == "stimtrialend"
-            )[0, "elapsed"]
-            does_trial_end = True
-
-        return does_trial_end
-
-    def set_data_slices(self, rawdata: dict) -> bool:
-        """
-        Extracts the relevant portion from each data, using the statemachine log
-        WARNING: statemachine log is python timing, so it's likely that it will be not as accurate as the Arduino timing
-
-        rawdata(dict): Rawdata dictionary including all of the logs
-        Returns: DataFrame slice of corresponding trial no
-        """
-        rig_cols = [
-            "screen",
-            "imaging",
-            "position",
-            "lick",
-            "button",
-            "reward",
-            "lap",
-            "facecam",
-            "eyecam",
-            "onepcam",
-            "act0",
-            "act1",
-            "opto",
-        ]
-
-        if self.is_trial_complete(rawdata):
-            self.correct_timeframes(rawdata)
-
-            # riglog
-            for k, v in rawdata.items():
-                if k in ["statemachine", "screen", "vstim"]:
-                    # skip because already looked into it
-                    continue
-                if not v.is_empty():
-                    if k in rig_cols:
-                        temp_v = v.filter(
-                            (pl.col("duinotime") >= self.t_trialstart)
-                            & (pl.col("duinotime") <= self.t_trialend)
-                        )
-
-                    self.data[k] = temp_v
-            return True
+            if "trialend" in _state_transitions:
+                self._trial["t_trialend"] = _state.filter(
+                    pl.col("transition") == "trialend"
+                )[0, "elapsed"]
+            else:
+                self._trial["t_trialend"] = _state.filter(
+                    pl.col("transition") == "stimtrialstart"
+                )[0, "elapsed"]
         else:
             return False
 
-    # ======
-    # Abstract methods to be overwritten
-    # ======
-
-    def correct_timeframes(self, rawdata: dict) -> None:
-        """ """
-        pass
-
-    def get_state_cahnges(self) -> None:
-        """ """
-        pass
-
-    # ======
-    # Experiment type independentrial event extraction
-    # ======
-
-    def get_licks(self) -> dict:
-        """Extracts the lick data from slice"""
-        lick_data = self.data.get("lick", None)
-        if lick_data is not None:
-            if len(lick_data):
-                # lick_arr = np.array(lick_data[['duinotime', 'value']])
-                lick_arr = lick_data.select(["duinotime", "value"]).to_series().to_list()
-            else:
-                if self.state_outcome == 1:
-                    self.logger.error(f"Empty lick data in correct trial")
-                lick_arr = None
-        else:
-            self.logger.warning(f"No lick data in trial")
-            lick_arr = None
-
-        lick_dict = {"lick": lick_arr}
-        self._attrs_from_dict(lick_dict)
-        return lick_dict
-
-    def get_reward(self) -> dict:
-        """Extracts the reward clicks from slice"""
-
-        reward_data = self.data.get("reward", None)
-        if reward_data is not None:
-            # no reward data, shouldn't happen a lot, usually in shitty sessions
-            reward_arr = reward_data.select(["duinotime", "value"]).to_numpy()
-            if len(reward_arr):
-                try:
-                    reward_amount_uL = np.unique(self.data["vstim"]["reward"])[0]
-                except:
-                    reward_amount_uL = self.meta.rewardSize
-                    self.logger.warning(
-                        f"No reward logged from vstim, using rewardSize from prot file"
-                    )
-                reward_arr = np.append(reward_arr, reward_arr[:, 1])
-                reward_arr[1] = reward_amount_uL
-                reward_arr = reward_arr.tolist()
-                # reward is a 3 element array: [time,value_il, value_ms]
-            else:
-                reward_arr = None
-        else:
-            reward_arr = None
-
-        reward_dict = {"reward": reward_arr}
-        self._attrs_from_dict(reward_dict)
-        return reward_dict
-
-    def get_opto(self) -> dict:
-        """Extracts the opto boolean from opto slice from riglog"""
-        is_opto = False
-        opto_arr = []
-        if self.meta.opto:
-            if "opto" in self.data.keys() and len(self.data["opto"]):
-                is_opto = True
-                opto_arr = self.data["opto"]["duinotime"].to_list()
-                # TODO: POWER MODULATION AND HAVING POWER AS A COLUMN
-                if len(opto_arr) > 1 and self.meta.opto_mode == 0:
-                    # this checks for discrepency between pulsed/cont. opto mode and opto pulse counts
-                    self.logger.warning(
-                        f"Something funky happened with opto stim, there are {len(opto_arr)} pulses"
-                    )
-                    opto_arr = [opto_arr[0]]
-
-        opto_dict = {"opto": is_opto, "opto_pulse": opto_arr}
-        self._attrs_from_dict(opto_dict)
-        return opto_dict
-
-    def get_screen_events(self) -> dict:
-        """Gets the screen pulses from rig data"""
-        screen_dict = {"t_stimstart_rig": None, "t_stimend_rig": None}
-
-        if "screen" in self.data.keys():
-            screen_data = self.data["screen"]
-            screen_arr = screen_data.select(["duinotime", "value"]).to_numpy()
-
-            if len(screen_arr) == 1:
-                self.logger.error(
-                    "Only one screen event! Stimulus appeared but not dissapeared?"
-                )
-                # assumes the single pulse is stim on
-                screen_dict["t_stimstart_rig"] = screen_arr[0, 0]
-            elif len(screen_arr) > 2:
-                # TODO: 3 SCREEN EVENTS WITH OPTO BEFORE STIMULUS PRESENTATION?
-                self.logger.error(
-                    "More than 2 screen events per trial, this is not possible"
-                )
-            elif len(screen_arr) == 0:
-                self.logger.critical("NO SCREEN EVENT FOR STIMULUS TRIAL!")
-            else:
-                # This is the correct stim ON/OFF scenario
-                screen_dict["t_stimstart_rig"] = screen_arr[0, 0]
-                screen_dict["t_stimend_rig"] = screen_arr[1, 0]
-
-        self._attrs_from_dict(screen_dict)
-        return screen_dict
-
-    def get_frames(self, get_from: str = None, **kwargs) -> dict:
-        """Extracts the frames from designated imaging mode, returns None if no"""
-
-        frame_ids = []
-        if not self.meta.imaging_mode is None:
-            if get_from in self.data.keys():
-                """
-                NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving),
-                if there is onepcam frame TTL signals coming into the Arduino it will save them.
-                This will lead to having onepcam_frame_ids column to be created but there will be no actual tiff files.
-                """
-                rig_frames_data = self.data[
-                    get_from
-                ]  # this should already be the frames of trial dur
-
-                if self.t_stimstart_rig is not None:
-                    # get stim present slice
-                    rig_frames_data = rig_frames_data.filter(
-                        (pl.col("duinotime") >= self.t_stimstart_rig)
-                        & (pl.col("duinotime") <= self.t_stimend_rig)
-                    )
-
-                    if len(rig_frames_data):
-                        frame_ids = [
-                            int(rig_frames_data[0, "value"]),
-                            int(rig_frames_data[-1, "value"]),
-                        ]
-
-                    else:
-                        self.logger.critical(
-                            f"{get_from} no camera pulses recorded during stim presentation!!! THIS IS BAD!"
+        # fill a dictionary with slices from the dataframe that correspond to the trial
+        for k, v in rawdata.items():
+            if k == "statemachine":
+                self.data["state"] = _state
+                continue
+            if not v.is_empty():
+                if "presentTime" not in v.columns:
+                    temp_v = v.filter(
+                        pl.col("duinotime").is_between(
+                            self._trial["t_trialstart"], self._trial["t_trialend"]
                         )
-        frames_dict = {f"{get_from}_frame_ids": frame_ids}
+                    )
+                else:
+                    if k == "vstim":
+                        # for vstim use total_istim to get trial related data,
+                        # timing is not very robust
+                        # temp_v = v.filter(pl.col("total_iStim") == trial_no)
+                        temp_v = v.filter(
+                            (pl.col("presentTime") * 1000).is_between(
+                                self._trial["t_trialstart"], self._trial["t_trialend"]
+                            )
+                        )
 
-        self._attrs_from_dict(frames_dict)
-        return frames_dict
+                self.data[k] = temp_v
+        return True
+
+    # TODO: Semantically, this function can be somewhere else, but where?
+    def set_opto(self) -> None:
+        """Sets the opto boolean from opto slice from riglog"""
+        opto_array = self._get_rig_event("opto")
+
+        if opto_array is not None:
+            _is_opto = True
+            _opto_time = [opto_array[:, 0].tolist()]
+        else:
+            _is_opto = False
+            _opto_time = [[]]
+        self._trial["opto"] = _is_opto
+        self._trial["opto_pulse"] = _opto_time
+
+    def set_frame_endpoints(self, imaging_mode: str, epoch_enpoints: list) -> tuple:
+        """Gets the start and end frame ids for the provided imaging mode, given that it exists in the logged data
+        NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving),
+        if there is onepcam frame TTL signals coming into the Arduino, it will save them as pulses.
+        This will lead to having frame_ids column to be created BUT there will be no actual camera frames recorded that correspond to the frame signals
+        """
+        frames_data = self._get_rig_event(imaging_mode)
+        frames_data = frames_data.filter(
+            (pl.col("duinotime") >= epoch_enpoints[0])
+            & (pl.col("duinotime") <= epoch_enpoints[0])
+        )
+        if len(frames_data):
+            frame_ids = (
+                int(frames_data[0, "value"]),
+                int(frames_data[-1, "value"]),
+            )
+        else:
+            frame_ids = None
+
+        self._trial[f"{imaging_mode}_frame"] = frame_ids
+
+    @staticmethod
+    def is_trial_complete(transitions: list) -> bool:
+        """Check if the trial starts and ends correctly, using transitions from the state machine"""
+
+        # Trial start
+        if "trialstart" not in transitions:
+            raise StateMachineError("NO TRIALSTART FOR STATEMACHINE!!")
+
+        # Trial end
+        _trial_ended = False
+        if "trialend" in transitions or "stimtrialend" in transitions:
+            _trial_ended = True
+
+        return _trial_ended
+
+    # =====================================
+    # HARDWARE EVENTS RELATED TO THE TRIALS
+    # =====================================
+    def _get_rig_event(self, event_name: str) -> np.ndarray:
+        """Gets the hardware TTL entries(duinotime,value) from given event_name"""
+        if event_name not in self.data.keys():
+            # raise LogTypeMissingError(f"No hardware event logged with the name: {event_name}")
+            # display(f"No hardware event logged with the name: {event_name}")
+            return None
+
+        event_data = self.data[event_name]
+        if not event_data.is_empty():
+            event_arr = event_data.select(["duinotime", "value"]).to_numpy()
+        else:
+            event_arr = None
+        return event_arr

@@ -25,7 +25,7 @@ class DetectionPsychometricPlotter(BasePlotter):
 
     @staticmethod
     def _makelabel(name: np.ndarray, count: np.ndarray) -> str:
-        ret = f"""\nN=["""
+        ret = """\nN=["""
         for i, n in enumerate(name):
             ret += rf"""{float(n)}:$\bf{count[i]}$, """
         ret = ret[:-2]  # remove final space and comma

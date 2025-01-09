@@ -1,5 +1,5 @@
 from piepy.plotters.bokeh_plot.bokeh_base import *
-from piepy.plotters.plotter_utils import Color
+from piepy.plotters.plotting_utils import Color
 
 from bokeh.transform import jitter
 from bokeh.models import LogScale, LinearScale
@@ -57,7 +57,7 @@ class ReactionTimeScatterGraph(Graph):
 
         q = (
             temp.lazy()
-            .groupby(["stimkey", "signed_contrast"])
+            .group_by(["stimkey", "signed_contrast"])
             .agg([(pl.col("reaction_time").median().alias("median_reaction_time"))])
             .sort(["stimkey", "signed_contrast"])
         )

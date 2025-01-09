@@ -19,7 +19,7 @@ import bokeh.palettes as bokcolor
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 import matplotlib.gridspec as gridspec
-from piepy.utils import *
+from piepy.core.utils import *
 from ....wheelUtils import *
 from ...wheelAnalysis22 import WheelCurve
 

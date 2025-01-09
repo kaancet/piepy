@@ -9,7 +9,7 @@ from matplotlib import colors as mcolors
 import matplotlib.gridspec as gridspec
 from cycler import cycler
 from collections import defaultdict
-from piepy.utils import *
+from piepy.core.utils import *
 from ...wheelUtils import *
 from ..wheelAnalysis import WheelAnalysis
 

@@ -1,5 +1,5 @@
 import polars as pl
-from .plotter_utils import *
+from .plotting_utils import *
 from ..core.mouse import MouseData
 from .basePlotters import BasePlotter
 

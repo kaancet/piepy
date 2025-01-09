@@ -1,185 +1,58 @@
 import numpy as np
+from numpy.typing import ArrayLike
 import scipy.signal
 from scipy.linalg import hankel
-from scipy.interpolate import PchipInterpolator, interp1d
-import matplotlib.pyplot as plt
+from scipy.interpolate import PchipInterpolator
 
-from ..core.utils import find_nearest
 
 WHEEL_DIAMETER = 2 * 3.1
 WHEEL_TICKS_PER_REV = 1024
 
 
 class WheelTrace:
-    """Wheel Trace class to isolate the wheel traces"""
+    _interpolator = None
 
-    def __init__(
-        self,
-        tick_t: np.ndarray = None,
-        tick_pos: np.ndarray = None,
-        interp_freq: int = 5,
-    ) -> None:
-        self.wheel_diameter = WHEEL_DIAMETER
-        self.wheel_ticks_per_rev = WHEEL_TICKS_PER_REV
+    def __init__(self):
+        pass
 
-        self.set_trace_data(tick_t, tick_pos)
-        self.interp_freq = interp_freq
-        self.interpolator = None
+    @staticmethod
+    def find_nearest(arr: ArrayLike, value: float) -> int:
+        """Returns the index of the nearest"""
+        if not isinstance(arr, np.ndarray):
+            arr = np.array(arr)
+        return np.nanargmin(np.abs(arr - value))
 
-        self.tick_t_interp = None
-        # position reaction related
-        self.tick_pos_interp = None
-        self.pos_reaction_t = None
-        self.pos_at_reaction = None
-        self.pos_decision_t = None
-        self.pos_reaction_bias = None
-        self.pos_outcome = None
-        # speed reaction related
-        self.velo = None
-        self.velo_interp = None
-        self.speed_reaction_t = None
-        self.speed_at_reaction = None
-        self.speed_decision_t = None
-        self.speed_reaction_bias = None
-        self.speed_outcome = None
+    @classmethod
+    def init_interpolator(cls, t: ArrayLike, pos: ArrayLike) -> None:
+        if len(t) != len(pos):
+            raise ValueError("Unequal wheel time and position!!")
 
-        self.onsets = np.array([])
-        self.offsets = np.array([])
-        self.onset_samps = np.array([])
-        self.offset_samps = np.array([])
+        if len(t) == 1:
+            # only single value, means no wheel movement
+            # add another point with same pos but incremented t
+            t = np.append(t, t[0] + 10)
+            pos = np.append(pos, pos[0])
 
-    def set_trace_data(self, tick_t: np.ndarray, tick_pos: np.ndarray) -> None:
-        """Sets the absolute tick times and position readings, position readings are converted to integers"""
-        if tick_t is not None:
-            self.abs_tick_t = tick_t
-            self.abs_tick_pos = tick_pos.astype(int)
+        cls._interpolator = PchipInterpolator(t, pos, extrapolate=True)
 
-    def init_trace(self, time_anchor: float) -> None:
-        """"""
-        # convert to trial time frame
-        self.convert_time_frame(time_frame_anchor=time_anchor)
-        # create an interpolator, needs the frame to be converted first
-        self.make_interpolator()
-        # make position 0 at t=0
-        self.reset_trajectory()
-        # interpolate the sample points
-        self.interpolate_position()
-        # gets the velocity and speed from interpolated position
-        self.get_filtered_velocity()
+    @classmethod
+    def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
+        """Resets the time ticks to be zero at reset_time_point"""
+        return t - reset_time_point
 
-    def make_dict_to_log(self) -> dict:
-        """Makes a dictionary from certain attributes to log them"""
-        return {
-            "wheel_time": self.abs_tick_t,
-            # 'wheel_pos' : self.ticks_to_cm(self.tick_pos).tolist(),
-            "wheel_pos": self.abs_tick_pos,
-            "pos_reaction_time": self.pos_reaction_t,
-            "pos_reaction_bias": self.pos_reaction_bias,
-            "pos_decision_time": self.pos_decision_t,
-            "pos_outcome": self.pos_outcome,
-            "speed_reaction_time": self.speed_reaction_t,
-            "speed_bias": self.speed_reaction_bias,
-            "speed_decision_time": self.speed_decision_t,
-            "speed_outcome": self.speed_outcome,
-            "onsets": self.onsets.tolist(),
-            "offsets": self.offsets.tolist(),
-        }
+    @classmethod
+    def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
+        """Resets the positions to make position 0 at t=0
+        This method is used on the ticks so the values can (and should) be integers"""
+        if cls._interpolator is not None:
+            pos_at0 = round(cls._interpolator(reset_point).tolist())
+            _temp = pos - pos_at0
+            return _temp.astype(int)
 
-    def convert_time_frame(self, time_frame_anchor: float) -> None:
-        """
-        Converts the time frame, usually from general experiment time frame
-        to trial time frame using the anchor
-
-        Parameters
-        ----------
-        time_frame_anchor : float
-            Anchor point to be used in converting time frame
-        """
-        self.time_frame_anchor = time_frame_anchor
-        self.tick_t = [t - self.time_frame_anchor for t in self.abs_tick_t]
-
-    def make_interpolator(self, extrapolate: bool = True) -> None:
-        """
-        Creates an interpolator to interpolate positions
-
-        Parameters
-        ----------
-        extrapolate : bool
-            Whether to extrapolate out of bounds values
-        """
-        try:
-            self.interpolator = PchipInterpolator(
-                self.tick_t, self.abs_tick_pos, extrapolate=extrapolate
-            )
-        except:
-            if extrapolate:
-                self.interpolator = interp1d(
-                    self.tick_t, self.abs_tick_pos, fill_value="extrapolate"
-                )
-            else:
-                self.interpolator = interp1d(self.tick_t, self.abs_tick_pos)
-
-    def reset_trajectory(self, reset_point: float = 0) -> None:
-        """
-        Resets the positions to make position 0 at t=0
-        This method is used on the ticks so the values can (and should) be integers
-        """
-        if self.interpolator is not None:
-            pos_at0 = round(
-                self.interpolator(reset_point).tolist()
-            )  # returns a 0 dimensional array, this makes it an int
-            self.tick_pos = [int(p - pos_at0) for p in self.abs_tick_pos]
-
-    def make_interval_mask(self, time_window: list = None) -> np.ndarray:
-        """Makes a mask to get the interval of interest in the trace"""
-        if time_window is None:
-            time_window = [self.tick_t_interp[0], self.tick_t_interp[-1]]
-        else:
-            # also reset the timr frame of the time window
-            time_window = [t - self.time_frame_anchor for t in time_window]
-        mask = np.where(
-            (time_window[0] < self.tick_t_interp) & (self.tick_t_interp < time_window[1])
-        )
-        if not len(mask[0]):
-            # this can happen if the animal has not moved the wheel at all,
-            # so choose the whole trace
-            mask = np.arange(0, len(self.tick_t_interp))
-        return mask
-
-    def select_trace_interval(self, mask: np.ndarray) -> None:
-        """Makes a dict that has the interval of interests for t, pos, speed and movement onsets"""
-        tmp = {
-            "t": self.tick_t_interp[mask],
-            "pos": self.tick_pos_interp[mask],
-            "velo": self.velo_interp[mask],
-        }
-        onsets = []
-        t_move = []
-        pos_move = []
-        velo_move = []
-        for i, o in enumerate(self.onsets):
-            if o >= tmp["t"][0] and o <= tmp["t"][-1]:
-                # onset in range of selected traceinterval
-                onset_idx, onset_val = find_nearest(
-                    tmp["t"], o
-                )  # should be that onset_val == o
-                assert o == onset_val
-                offset_idx, _ = find_nearest(tmp["t"], self.offsets[i])
-
-                t_move.append(tmp["t"][onset_idx : offset_idx + 1])
-                velo_move.append(tmp["velo"][onset_idx : offset_idx + 1])
-                pos_move.append(tmp["pos"][onset_idx : offset_idx + 1])
-                onsets.append(o)
-
-        self.trace_interval = {
-            **tmp,
-            "onsets": onsets,
-            "pos_movements": pos_move,
-            "velo_movements": velo_move,
-            "t_movements": t_move,
-        }
-
-    def interpolate_position(self, reset_point: float = 0, fill_gaps=0):
+    @classmethod
+    def interpolate_trace(
+        cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
+    ) -> np.ndarray:
         """
         Interpolate wheel position.
 
@@ -197,62 +70,46 @@ class WheelTrace:
         t : array
             Timestamps of interpolated positions
         """
-        t = np.arange(
-            self.tick_t[0], self.tick_t[-1], 1 / self.interp_freq
-        )  # Evenly resample at frequency
-        if t[-1] > self.tick_t[-1]:
-            # Occasionally due to precision errors the last sample may be outside of range.
-            t = t[:-1]
+        if cls._interpolator is not None:
+            interp_t = np.arange(
+                t[0], t[-1], 1 / interp_freq
+            )  # Evenly resample at frequency
+            if t[-1] > t[-1]:
+                # Occasionally due to precision errors the last sample may be outside of range.
+                t = t[:-1]
 
-        if fill_gaps:
-            #  Find large gaps and forward fill @fixme This is inefficient
-            (gaps,) = np.where(np.diff(self.tick_t) >= fill_gaps)
-            for i in gaps:
-                self.interpolator[(t >= self.tick_t[i]) & (t < self.tick_t[i + 1])] = (
-                    self.tick_pos[i]
-                )
+            # if fill_gaps:
+            #     #  Find large gaps and forward fill @fixme This is inefficient
+            #     (gaps,) = np.where(np.diff(self.tick_t) >= fill_gaps)
+            #     for i in gaps:
+            #         self.interpolator[(t >= self.tick_t[i]) & (t < self.tick_t[i + 1])] = (
+            #             self.tick_pos[i]
+            #         )
 
-        self.tick_t_interp = t
-        pos_at0 = self.interpolator(reset_point)
-        self.tick_pos_interp = self.interpolator(self.tick_t_interp) - pos_at0
+            interp_pos = cls._interpolator(interp_t)
+            return interp_t, interp_pos
+        else:
+            print(
+                "No interpolator set, do that first by calling the init_interpolator function"
+            )
 
-    def cm_to_deg(self, positions):
-        """
-        Convert wheel position to degrees turned.  This may be useful for e.g. calculating velocity
-        in revolutions per second
+    @classmethod
+    def select_trace_interval(cls) -> None:
+        """ """
+        pass
 
-        # Example: Convert linear cm to degrees
-        >>> cm_to_deg(3.142 * WHEEL_DIAMETER)
-        360.04667846020925
-        """
-        return positions / (self.wheel_diameter * np.pi) * 360
-
-    def cm_to_rad(self, positions):
-        """
-        Convert wheel position to radians.  This may be useful for e.g. calculating angular velocity.
-
-        # Example: Convert linear cm to radians
-        >>> cm_to_rad(1)
-        0.3225806451612903
-        """
-        return positions * (2 / self.wheel_diameter)
-
-    def ticks_to_cm(self, positions):
-        """
-        Convert wheel position samples to cm linear displacement.  This may be useful for
-        inter-converting threshold units
-
-        """
-        return positions / self.wheel_ticks_per_rev * np.pi * self.wheel_diameter
-
+    @classmethod
     def get_movements(
-        self,
+        cls,
+        t: np.ndarray,
+        pos: np.ndarray,
+        freq: float,
         pos_thresh=0.03,
         t_thresh=0.5,
         min_gap=0.1,
         pos_thresh_onset=1.5,
         min_dur=0.05,
-    ) -> None:
+    ) -> dict:
         """
         Detect wheel movements. Uses interpolated positions
 
@@ -289,10 +146,8 @@ class WheelTrace:
         peak_vel_times : np.ndarray
             Timestamps of peak velocity for each detected movement
         """
-        # Wheel position must be evenly sampled.
-        t = self.tick_t_interp
-        pos = self.tick_pos_interp
-        freq = self.interp_freq
+        # Wheel position must be evenly sampled
+        movement_dict = {}
         dt = np.diff(t)
         assert np.all(np.abs(dt - dt.mean()) < 1e-10), "Values not evenly sampled"
 
@@ -373,22 +228,31 @@ class WheelTrace:
         moveGaps = onsets[1:] - offsets[:-1]
         gap_too_small = moveGaps < min_gap
         if onsets.size > 0:
-            self.onsets = onsets[
-                np.insert(~gap_too_small, 0, True)
-            ]  # always keep first onset
-            self.onset_samps = onset_samps[np.insert(~gap_too_small, 0, True)]
-            self.offsets = offsets[
-                np.append(~gap_too_small, True)
-            ]  # always keep last offset
-            self.offset_samps = offset_samps[np.append(~gap_too_small, True)]
+            onsets = onsets[np.insert(~gap_too_small, 0, True)]  # always keep first onset
+            onset_samps = onset_samps[np.insert(~gap_too_small, 0, True)]
+            offsets = offsets[np.append(~gap_too_small, True)]  # always keep last offset
+            offset_samps = offset_samps[np.append(~gap_too_small, True)]
+
+        movement_dict["onsets"] = np.hstack(
+            (onset_samps.reshape(-1, 1), onsets.reshape(-1, 1))
+        )
+        movement_dict["offsets"] = np.hstack(
+            (offset_samps.reshape(-1, 1), offsets.reshape(-1, 1))
+        )
 
         # Calculate the peak amplitudes -
         # the maximum absolute value of the difference from the onset position
-        self.peaks = (
-            pos[m + np.abs(pos[m:n] - pos[m]).argmax()] - pos[m]
-            for m, n in zip(onset_samps, offset_samps)
+        peaks = np.array(
+            [
+                pos[m + np.abs(pos[m:n] - pos[m]).argmax()] - pos[m]
+                for m, n in zip(onset_samps, offset_samps)
+            ]
         )
-        self.peak_amps = np.fromiter(self.peaks, dtype=float, count=onsets.size)
+        peak_amps = np.fromiter(peaks, dtype=float, count=onsets.size)
+        movement_dict["peaks"] = np.hstack(
+            (peaks.reshape(-1, 1), peak_amps.reshape(-1, 1))
+        )
+
         N = 10  # Number of points in the Gaussian
         STDEV = 1.8  # Equivalent to a width factor (alpha value) of 2.5
         gauss = scipy.signal.windows.gaussian(
@@ -397,21 +261,24 @@ class WheelTrace:
         vel = scipy.signal.convolve(np.diff(np.insert(pos, 0, 0)), gauss, mode="same")
 
         # For each movement period, find the timestamp where the absolute velocity was greatest
-        self.vel_peaks = (
-            t[m + np.abs(vel[m:n]).argmax()] for m, n in zip(onset_samps, offset_samps)
+        vel_peaks = np.array(
+            [t[m + np.abs(vel[m:n]).argmax()] for m, n in zip(onset_samps, offset_samps)]
         )
-        self.vel_peak_times = np.fromiter(self.vel_peaks, dtype=float, count=onsets.size)
+        vel_peak_times = np.fromiter(vel_peaks, dtype=float, count=onsets.size)
+        movement_dict["velo_peaks"] = np.hstack(
+            (vel_peak_times.reshape(-1, 1), vel_peaks.reshape(-1, 1))
+        )
 
-    def convert_movement_to_boolean(self) -> np.ndarray:
-        """This function uses the onset/offset times to create 0/1 boolean arrays of non_movement/movement"""
-        bool_moov = np.zeros_like(self.tick_t)
-        for i, o in enumerate(self.onsets):
-            idx_on, _ = find_nearest(self.tick_t, o)
-            idx_off, _ = find_nearest(self.tick_t, self.offsets[i])
-            bool_moov[idx_on + 1 : idx_off] = 1
-        return bool_moov
+        return movement_dict
 
-    def get_filtered_velocity(self, corner_frequency: float = 2, order: int = 8):
+    @classmethod
+    def get_filtered_velocity(
+        cls,
+        pos: np.ndarray,
+        interp_freq: float = 5,
+        corner_frequency: float = 2,
+        order: int = 8,
+    ) -> np.ndarray:
         """
         Compute wheel velocity from uniformly sampled wheel data.
 
@@ -430,182 +297,38 @@ class WheelTrace:
             Array of velocity values in degrees.
 
         """
-        sos = scipy.signal.butter(
-            **{
-                "N": order,
-                "Wn": corner_frequency / self.interp_freq * 2,
-                "btype": "lowpass",
-            },
-            output="sos",
-        )
+        _wn = corner_frequency / interp_freq * 2
+        sos = scipy.signal.butter(N=order, Wn=_wn, btype="lowpass", output="sos")
 
         # position-> rad
-        tick_pos_rad = self.cm_to_rad(self.ticks_to_cm(np.array(self.tick_pos)))
-        tick_pos_rad_interp = self.cm_to_rad(self.ticks_to_cm(self.tick_pos_interp))
+        pos_rad = cls.cm_to_rad(cls.ticks_to_cm(np.array(pos)))
 
-        self.velo = (
+        velo = (
             np.insert(
-                np.diff(
-                    scipy.signal.sosfiltfilt(
-                        sos, self.tick_pos, padlen=len(tick_pos_rad) - 1
-                    )
-                ),
+                np.diff(scipy.signal.sosfiltfilt(sos, pos_rad, padlen=len(pos_rad) - 1)),
                 0,
                 0,
             )
-            * self.interp_freq
-        )
-        self.velo_interp = (
-            np.insert(np.diff(scipy.signal.sosfiltfilt(sos, tick_pos_rad_interp)), 0, 0)
-            * self.interp_freq
+            * interp_freq
         )
         # self.speed = np.abs(velocity)
         # self.speed_interp = np.abs(interp_velocity)
         # self.acc = np.insert(np.diff(self.vel), 0, 0) * self.interp_freq
+        return velo
 
-    @staticmethod
-    def classify_reaction_time(react_t: float) -> int:
-        """Classifies the reaction time to outcome"""
-        if react_t <= 150:
-            ret = -1  # early
-        elif react_t > 150 and react_t < 1000:
-            ret = 1  # hit
-        else:
-            ret = 0  # miss
-        return ret
+    @classmethod
+    def ticks_to_cm(cls, positions: np.ndarray) -> np.ndarray:
+        """Convert wheel position samples to cm linear displacement."""
+        return positions / WHEEL_TICKS_PER_REV * np.pi * WHEEL_DIAMETER
 
-    def get_speed_reactions(self, speed_threshold: float) -> None:
-        """Selects the first data point where the calculated speed is faster than the speed threshold"""
-        for i, velo_move in enumerate(self.trace_interval["velo_movements"]):
-            speed_move = np.abs(velo_move) * 1000
-            faster_idx = np.where(speed_move > speed_threshold)[0]
-            if len(faster_idx):
-                self.speed_reaction_t = self.trace_interval["t_movements"][i][
-                    faster_idx[0]
-                ]
-                self.speed_at_reaction = speed_move[faster_idx[0]]
-                self.speed_decision_t = self.trace_interval["onsets"][i]
-                self.speed_reaction_bias = np.sign(
-                    self.trace_interval["velo_movements"][i][faster_idx[0]]
-                )
-                break
+    @classmethod
+    def cm_to_rad(cls, positions: np.ndarray) -> np.ndarray:
+        """Convert wheel position to radians.  This may be useful for e.g. calculating angular velocity.
+        # Example: Convert linear cm to radians"""
+        return positions * (2 / WHEEL_DIAMETER)
 
-        # if self.speed_reaction_t is not None:
-        #     self.speed_outcome = self.classify_reaction_time(self.speed_reaction_t)
-
-    def get_tick_reactions(self, tick_threshold: int) -> None:
-        """Selects the first data point where the recorded ticks is bigger than the tick_threshold"""
-        for i, movements in enumerate(self.trace_interval["pos_movements"]):
-            movements = np.abs(movements)  # absolute to look at difference easily
-            big_move = np.where(movements > tick_threshold)[0]
-            if len(big_move):
-                self.pos_reaction_t = self.trace_interval["t_movements"][i][big_move[0]]
-                self.pos_at_reaction = self.trace_interval["pos_movements"][i][
-                    big_move[0]
-                ]  # not using movements because of absolute operation above
-                self.pos_decision_t = self.trace_interval["onsets"][i]
-                self.pos_reaction_bias = np.sign(
-                    self.trace_interval["pos_movements"][i][big_move[0]]
-                )
-                break
-
-        if self.pos_reaction_t is not None:
-            self.pos_outcome = self.classify_reaction_time(self.pos_reaction_t)
-
-    def plot_trajectory(self) -> plt.Figure:
-        """A helper method to visualize the trajectory"""
-        f = plt.figure(figsize=(20, 8))
-        ax = f.add_subplot(111)
-
-        ax2 = ax.twinx()
-
-        # plot interpolated pos
-        ax.plot(
-            self.tick_t_interp,
-            self.tick_pos_interp,
-            color="cornflowerblue",
-            linewidth=2,
-            linestyle="--",
-        )
-
-        # plot interpolated speed
-        ax2.plot(
-            self.tick_t_interp,
-            self.velo_interp,
-            color="goldenrod",
-            linewidth=2,
-            linestyle="--",
-        )
-
-        # plot selected trace pos interval
-        ax.plot(
-            self.trace_interval["t"], self.trace_interval["pos"], color="b", linewidth=3
-        )
-
-        # plot selected trace speed interval
-        ax2.plot(
-            self.trace_interval["t"],
-            self.trace_interval["velo"],
-            color="orange",
-            linewidth=3,
-        )
-
-        # plot movements
-        for i, pos_move in enumerate(self.trace_interval["pos_movements"]):
-            # pos
-            ax.scatter(
-                self.trace_interval["onsets"][i],
-                pos_move[0],
-                color="teal",
-                marker="o",
-                s=80,
-            )
-            ax.plot(
-                self.trace_interval["t_movements"][i],
-                pos_move,
-                color="purple",
-                linewidth=5,
-            )
-
-            # speed
-            ax2.scatter(
-                self.trace_interval["onsets"][i],
-                self.trace_interval["velo_movements"][i][0],
-                color="maroon",
-                marker="o",
-                s=80,
-            )
-            ax2.plot(
-                self.trace_interval["t_movements"][i],
-                self.trace_interval["velo_movements"][i],
-                color="r",
-                linewidth=5,
-            )
-
-        # plot recorded data points
-        ax.scatter(self.tick_t, self.tick_pos, color="k", marker="+", s=40)
-
-        # stim onset
-        ax.axvline(0, color="k", linewidth=3)
-
-        # plot reactions
-        if self.pos_reaction_t is not None:
-            ax.axvline(
-                self.pos_reaction_t, color="forestgreen", linewidth=3, linestyle=":"
-            )
-
-        if self.speed_reaction_t is not None:
-            ax2.axvline(self.speed_reaction_t, color="lime", linewidth=3, linestyle=":")
-
-        ax.set_title("Wheel Trace")
-        ax.set_ylabel("Position", fontsize=14)
-        ax2.set_ylabel("Velocity", fontsize=14)
-        ax.set_xlabel("Time (ms)", fontsize=14)
-        ax.tick_params(labelsize=14)
-        ax2.tick_params(labelsize=14)
-
-        ax2.tick_params(axis="y", colors="orange")
-        ax2.yaxis.label.set_color("orange")
-        ax2.spines["right"].set_color("orange")
-
-        return f
+    @classmethod
+    def cm_to_deg(cls, positions: np.ndarray) -> np.ndarray:
+        """Convert wheel position to degrees turned.  This may be useful for e.g. calculating velocity
+        in revolutions per second"""
+        return positions / (WHEEL_DIAMETER * np.pi) * 360
