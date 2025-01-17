@@ -1,13 +1,8 @@
 import os  # noqa: F401
-import itertools
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 from datetime import datetime as dt
-from collections.abc import Generator
-
-from ..core.pathfinder import Paths
-
 
 cm = 1 / 2.54
 mplstyledict = {}
@@ -196,35 +191,13 @@ mplstyledict["print"] = {
 }
 
 
-def make_subsets(
-    data: pl.DataFrame,
-    col_name: str | list,
-    no_nan: bool = True,
-    do_sort: bool = True,
-) -> Generator:
-    """Generates subsets of the data given the col names
-    NOTE: The length of returned Generator depends on the length of columns you provide"""
-    if isinstance(col_name, str):
-        col_name = [col_name]
-
-    temp = []
-    for c in col_name:
-        if c not in data.columns:
-            raise ValueError(f"No column name {c} in data")
-
-        col_data = data[c]
-        if no_nan:
-            col_data = col_data.drop_nulls()
-        uniq_col = col_data.unique()
-
-        if do_sort:
-            uniq_col = uniq_col.sort()
-
-        temp.append(uniq_col.to_list())
-
-    for u in list(itertools.product(*temp)):
-        yield (*u, data.filter([pl.col(col_name[i]) == j for i, j in enumerate(u)]))
-
+def make_label(name: np.ndarray, count: np.ndarray) -> str:
+    ret = """\nN=["""
+    for i, n in enumerate(name):
+        ret += rf"""{float(n)}:$\bf{count[i]}$, """
+    ret = ret[:-2]  # remove final space and comma
+    ret += """]"""
+    return ret
 
 def make_linear_axis(data: pl.DataFrame, column_name: str, mid_value: float = 0) -> dict:
     """Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis"""
@@ -240,26 +213,6 @@ def make_linear_axis(data: pl.DataFrame, column_name: str, mid_value: float = 0)
         ax_list = neg.tolist() + pos.tolist()
 
     return {k: v for k, v in zip(dep_lst, ax_list)}
-
-
-def save_plot(fig: plt.Axes, path: Paths, save_format: str = "pdf", **kwargs) -> None:
-    """Saves the figure in given location
-
-    Parameters:
-    saveloc (str): Path of saving location
-    save_format(str): extension of saved figure, e.g. pdf,png,jpg
-    """
-    pass
-    # saveloc = os.path.join(saveloc, "figures")
-    # if not os.path.exists(saveloc):
-    #     os.mkdir(saveloc)
-    # savename = (
-    #     f"{date}_{self.__class__.__name__}_{animalid}_{extra_desc}.{save_format}"
-    # )
-    # saveloc = os.path.join(saveloc, savename)
-    # self.fig.suptitle(f"{date}_{animalid}")
-    # self.fig.savefig(saveloc)
-    # display(f"Saved {savename} plot", color="green")
 
 
 def set_style(styledict: str = "presentation") -> None:

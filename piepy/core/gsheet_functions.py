@@ -3,8 +3,8 @@ import gspread
 from googleapiclient import discovery
 from oauth2client.service_account import ServiceAccountCredentials
 
-from .core.config import config as cfg
-from .core.io import display
+from .config import config as cfg
+from .io import display
 
 # define the scope
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]

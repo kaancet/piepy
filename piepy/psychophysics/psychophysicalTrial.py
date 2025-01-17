@@ -42,6 +42,6 @@ class PsychophysicalTrialHandler(TrialHandler):
 
     def set_reward(self) -> None:
         """Sets the reward timings as a list"""
-        reward_array = self._get_rig_event("reward")
+        reward_array = self._get_rig_event("reward")    
         if reward_array is not None:
             self._trial["reward"] = reward_array.tolist()

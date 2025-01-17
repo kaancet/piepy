@@ -7,6 +7,7 @@ import polars as pl
 import scipy.stats as st
 from tabulate import tabulate
 from os.path import join as pjoin
+from scipy.optimize import curve_fit
 
 from ....core.io import display, load_json_dict, save_dict_json
 from ....core.run import RunData, Run
@@ -38,6 +39,7 @@ class WheelDetectionRunData(RunData):
         if data is not None:
             super().set_data(data)
             self.add_qolumns()
+            self.add_rig_response_time()
 
     def set_outcome(self, outcome_type: str = "state") -> None:
         """Sets the outcome column to the selected column"""
@@ -113,6 +115,40 @@ class WheelDetectionRunData(RunData):
             .otherwise(None)
             .alias("contrast_type")
         )
+        
+    def add_rig_response_time(self) -> None:
+        """Transforms the response time of trials that dont't have rig_response_time to that time frame"""
+        with_rig_time = self.data.drop_nulls("rig_response_time")
+        resp_time = with_rig_time["state_response_time"]
+        rig_time = with_rig_time["rig_response_time"]
+        
+        def m1_func(x, a):
+            m = 1
+            return m * x + a
+
+        if len(rig_time):
+            popt, pcov = curve_fit(
+                m1_func, resp_time, rig_time
+            )  # popt[0] is the time diff intercept
+
+            all_resp_time = self.data["state_response_time"]
+            new_rig_times = m1_func(all_resp_time, *popt)
+
+            tmp = pl.Series("temp_response_times", new_rig_times)
+            self.data = self.data.with_columns(tmp)
+
+            # don't change miss, they become hits
+            self.data = self.data.with_columns(
+                pl.when(pl.col("state_outcome") != 0)
+                .then(pl.col("temp_response_times"))
+                .otherwise(pl.col("state_response_time"))
+                .alias("response_time")
+            )
+            # drop the temp column
+            self.data = self.data.drop("temp_response_times")            
+        else:
+            print("NO RIG TIME TO INTERPOLATE, COPYING STATE TIME")
+            self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
     def add_pattern_related_columns(self) -> None:
         """Adds columns related to the silencing pattern if they exist"""
@@ -160,7 +196,7 @@ class WheelDetectionRunData(RunData):
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(str)).alias(
+                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias(
                     "stimkey"
                 )
             )
@@ -358,25 +394,6 @@ def get_run_stats(data: pl.DataFrame) -> dict:
         stats_dict["easy_median_response_latency"] = -1
 
     return stats_dict
-
-
-# @timeit("Getting rolling averages...")
-# def get_running_stats(data_in: pl.DataFrame, window_size: int = 20) -> pl.DataFrame:
-#     """Gets the running statistics of certain columns"""
-#     data_in = data_in.with_columns(
-#         pl.col("response_latency")
-#         .rolling_median(window_size)
-#         .alias("running_response_latency")
-#     )
-#     # answers
-#     outcomes = {"correct": 1, "nogo": 0, "early": -1}
-
-#     for k, v in outcomes.items():
-#         key = "fraction_" + k
-#         data_arr = data_in["state_outcome"].to_numpy()
-#         data_in[key] = get_fraction(data_arr, fraction_of=v)
-
-#     return data_in
 
 
 # import multiprocessing

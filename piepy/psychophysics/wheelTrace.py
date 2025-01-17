@@ -4,7 +4,6 @@ import scipy.signal
 from scipy.linalg import hankel
 from scipy.interpolate import PchipInterpolator
 
-
 WHEEL_DIAMETER = 2 * 3.1
 WHEEL_TICKS_PER_REV = 1024
 
@@ -50,6 +49,27 @@ class WheelTrace:
             return _temp.astype(int)
 
     @classmethod
+    def reset_and_interpolate(cls,
+             t:np.ndarray,
+             pos:np.ndarray,
+             reset_time:float,
+             interp_freq:float=5
+             ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+        """ """
+        #reset the time-frame
+        reset_t = cls.reset_time_frame(t, reset_time)
+        # init interpolator with ticks first
+        cls.init_interpolator(reset_t, pos)
+        # reset positions
+        reset_tick = cls.reset_position(pos, 0)
+        # reinit interpolator
+        cls.init_interpolator(reset_t, reset_tick)
+        # interpolate the whole trace
+        t_interp, tick_interp = cls.interpolate_trace(reset_t, reset_tick, interp_freq)
+        
+        return reset_t, reset_tick, t_interp,tick_interp
+    
+    @classmethod
     def interpolate_trace(
         cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
     ) -> np.ndarray:
@@ -71,6 +91,11 @@ class WheelTrace:
             Timestamps of interpolated positions
         """
         if cls._interpolator is not None:
+            if len(t) == 1:
+                # only single value, means no wheel movement
+                # add another point with same pos but incremented t
+                t = np.append(t, t[0] + 10)
+            
             interp_t = np.arange(
                 t[0], t[-1], 1 / interp_freq
             )  # Evenly resample at frequency
@@ -300,20 +325,14 @@ class WheelTrace:
         _wn = corner_frequency / interp_freq * 2
         sos = scipy.signal.butter(N=order, Wn=_wn, btype="lowpass", output="sos")
 
-        # position-> rad
-        pos_rad = cls.cm_to_rad(cls.ticks_to_cm(np.array(pos)))
-
         velo = (
             np.insert(
-                np.diff(scipy.signal.sosfiltfilt(sos, pos_rad, padlen=len(pos_rad) - 1)),
+                np.diff(scipy.signal.sosfiltfilt(sos, pos, padlen=len(pos) - 1)),
                 0,
                 0,
             )
             * interp_freq
         )
-        # self.speed = np.abs(velocity)
-        # self.speed_interp = np.abs(interp_velocity)
-        # self.acc = np.insert(np.diff(self.vel), 0, 0) * self.interp_freq
         return velo
 
     @classmethod

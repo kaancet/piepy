@@ -155,14 +155,14 @@ class DetectionPsychometricPlotter(BasePlotter):
                 c = self.p_vals[i, "contrast"]
                 s_k = self.p_vals[i, "stimkey"]
                 stars = ""
-                if p < 0.001:
+                if p < 0.0001:
+                    stars = "****"
+                elif 0.0001 <= p < 0.001:
                     stars = "***"
-                elif 0.001 < p < 0.01:
+                elif 0.001 <= p < 0.01:
                     stars = "**"
-                elif 0.01 < p < 0.05:
+                elif 0.01 <= p < 0.05:
                     stars = "*"
-                else:
-                    continue
                 ax.text(
                     x_t[c], 102 + 2 * i, stars, color=self.color.stim_keys[s_k]["color"]
                 )

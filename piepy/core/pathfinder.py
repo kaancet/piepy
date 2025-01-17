@@ -4,12 +4,11 @@ import natsort
 from os.path import join as pjoin
 from os.path import exists as exists
 from .config import config as cfg
-from .exceptions import *
+from .exceptions import PathSettingError
 
 
 class Paths:
     """Paths for single run"""
-
     def __init__(self, paths_dict: dict, path_idx: int = None) -> None:
         for name, path in paths_dict.items():
             if isinstance(path, list):
@@ -26,7 +25,7 @@ class Paths:
                         try:
                             ret = path[path_idx]
                             setattr(self, name, ret)
-                        except:
+                        except IndexError:
                             raise IndexError(
                                 f"Run no {path_idx} is larger than number of runs present in {name} location: {len(path)}"
                             )

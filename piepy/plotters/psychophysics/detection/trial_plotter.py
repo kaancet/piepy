@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from ...psychophysics.wheelTrace import WheelTrace
+from ....psychophysics.wheelTrace import WheelTrace
 
 
 def plot_trial(
@@ -12,40 +12,52 @@ def plot_trial(
     if ax is None:
         fig = plt.figure(figsize=kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
-
+    
     if len(trial_row) != 1:
         raise ValueError(f"trial_row needs to be of size 1, got {len(trial_row)}")
 
     _trial = trial_row.to_dict(as_series=False)
     _trial = {k: v[0] for k, v in _trial.items()}
-
-    # wheel
-    wheel_t = np.array(_trial["wheel_t"])
-    wheel_pos = np.array(_trial["wheel_pos"])
-
-    trace = WheelTrace()
-    trace.init_interpolator(wheel_t, wheel_pos)
     interp_freq = kwargs.get("interp_freq", 5)
-    t_interp, tick_interp = trace.interpolate_trace(wheel_t, wheel_pos, interp_freq)
-
-    # plot interp
-    pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
-    ax.plot(t_interp, pos_interp)
-
-    # plot data
-    pos_data = trace.cm_to_rad(trace.ticks_to_cm(wheel_pos))
-    ax.plot(wheel_t, pos_data)
-
+    trace = WheelTrace()
+    
     # look for a column that has t_*start_rig
     _start_name = [
         s for s in _trial.keys() if s.startswith("t_") and s.endswith("start_rig")
     ][0]
-
+    
     # timeframe reset value
     if _trial[_start_name] is not None:
         reset_time = _trial[_start_name]
     else:
-        reset_time = _trial["t_trialstart"]
+        if _trial["outcome"] == "early":
+            reset_time = _trial["t_trialinit"] + _trial["duratiion_blank"]
+        else:
+            reset_time = _trial["t_vstimstart"]
+    
+    # wheel
+    wheel_t = np.array(_trial["wheel_t"])
+    wheel_tick = np.array(_trial["wheel_pos"])
+    
+    if not len(wheel_t):
+        print("NO WHEEL MOVEMENT IN TRIAL")
+        return None
+    
+    reset_t,reset_tick, t_interp, tick_interp = trace.reset_and_interpolate(wheel_t, 
+                                                                            wheel_tick, 
+                                                                            reset_time, 
+                                                                            interp_freq)
+
+    # get radians
+    wheel_pos_rad = trace.cm_to_rad(trace.ticks_to_cm(reset_tick))
+    # convert the interpolation
+    interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
+    
+    # plot interp
+    ax.plot(t_interp, interp_pos)
+
+    # plot data
+    ax.plot(reset_t, wheel_pos_rad)
 
     # get the epoch time points, order them and reset the timeframe
     epochs_time_points = [
@@ -57,7 +69,7 @@ def plot_trial(
     reset_epoch_time_points = [(n, v - reset_time) for n, v in sorted_epoch_time_points]
 
     # plot epoch start/end
-    y_max = np.max(pos_data)
+    y_max = np.max(wheel_pos_rad)
     for name, t_val in reset_epoch_time_points:
         ax.axvline(t_val, color="k", ymax=y_max + 0.1)
         ax.scatter(t_val, y_max + 0.2, marker="v", c="k")
@@ -67,14 +79,14 @@ def plot_trial(
     # plot movements
     mov_dict = trace.get_movements(
         t_interp,
-        pos_interp,
+        interp_pos,
         freq=interp_freq,
-        pos_thresh=kwargs.get("pos_thresh", 0.02),
+        pos_thresh=kwargs.get("pos_thresh", 0.0001),
         t_thresh=kwargs.get("t_thresh", 0.5),
     )
 
     for i in range(len(mov_dict["onsets"])):
         _t = mov_dict["onsets"][i]
-        ax.scatter(_t[1], pos_interp[int(_t[0])], color="b")
+        ax.scatter(_t[1], interp_pos[int(_t[0])], color="b")
         _e = mov_dict["offsets"][i]
-        ax.scatter(_e[1], pos_interp[int(_e[0])], color="r")
+        ax.scatter(_e[1], interp_pos[int(_e[0])], color="r")

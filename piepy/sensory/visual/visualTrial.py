@@ -1,7 +1,6 @@
-import numpy as np
 import polars as pl
 import patito as pt
-from ...core.exceptions import *
+from ...core.exceptions import ScreenPulseError
 from ...core.utils import nonan_unique
 from ...core.trial import Trial, TrialHandler
 
@@ -39,6 +38,10 @@ class VisualTrialHandler(TrialHandler):
     def set_screen_events(self) -> None:
         """Sets the visual stimulus start and end times from screen photodiode events"""
         screen_array = self._get_rig_event("screen")
+        
+        if screen_array is None:
+            self._trial["t_vstimstart_rig"] = None
+            self._trial["t_vstimend_rig"] = None
 
         if screen_array is not None and len(screen_array) == 2:
             # This is the correct stim ON/OFF scenario
@@ -47,7 +50,7 @@ class VisualTrialHandler(TrialHandler):
         elif screen_array is not None and len(screen_array) == 1:
             self._trial["t_vstimstart_rig"] = screen_array[0, 0]
             self.was_screen_off = False
-        else:
+        elif screen_array is not None:
             raise ScreenPulseError(
                 f"[TRIAL-{self._trial['trial_no']}] Funky screen pulses with length {len(screen_array)}"
             )
@@ -61,7 +64,10 @@ class VisualTrialHandler(TrialHandler):
             (pl.col("duinotime") >= self._trial["t_trialstart"])
             & (pl.col("duinotime") <= self._trial["t_trialend"])
         )
-        if len(_screen_new) == 2:
+        if _screen_new is None:
+            return None
+        
+        if _screen_new is not None and len(_screen_new) == 2:
             # ON and OFF values, check they have the same value for same stim
             if _screen_new.n_unique("value") == 1:
                 # found new screen event, add it
@@ -80,25 +86,30 @@ class VisualTrialHandler(TrialHandler):
         _vstim = self.data["vstim"]
 
         _rig_onset = self._trial["t_vstimstart_rig"]
-        _state_onset = _state.filter(pl.col("transition") == "stimstart")[0, "elapsed"]
+        if _rig_onset is None:
+            # no screen event to sync
+            vstim_diff = 0
+            state_diff = 0
+        else:
+            _state_onset = _state.filter(pl.col("transition") == "stimstart")[0, "elapsed"]
 
-        # some stimpy version has inverted photostim values, so adaptively set it
-        # first entry is always the inverse of "stim_on"
-        photo_stim = not _vstim["photo"].drop_nulls()[0]
-        try:
-            _vstim_onset = (
-                _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"] * 1000
-            )  # ms
-        except:
-            _vstim_onset = (
-                _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"]
-                * 1000
-            )  # ms
+            # some stimpy version has inverted photostim values, so adaptively set it
+            # first entry is always the inverse of "stim_on"
+            photo_stim = not _vstim["photo"].drop_nulls()[0]
+            try:
+                _vstim_onset = (
+                    _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"] * 1000
+                )  # ms
+            except Exception:
+                _vstim_onset = (
+                    _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"]
+                    * 1000
+                )  # ms
 
-        # if difference is negative, that means the rig_onset time happened after the python timing
-        vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
-        state_diff = float(round(_state_onset - _rig_onset, 3))
-
+            # if difference is negative, that means the rig_onset time happened after the python timing
+            vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
+            state_diff = float(round(_state_onset - _rig_onset, 3))
+            
         # update the data
         _state = _state.with_columns(
             (pl.col("elapsed") - state_diff).alias("corrected_elapsed")
@@ -127,13 +138,16 @@ class VisualTrialHandler(TrialHandler):
         ignore = ["code", "presentTime", "stim_idx", "duinotime", "photo", "reward"]
 
         _vstim = self.data["vstim"]
-        _vstim = _vstim.filter(
-            (
-                pl.col("corrected_presentTime").is_between(
-                    self._trial["t_vstimstart_rig"], self._trial["t_vstimend_rig"]
+        if self._trial["t_vstimstart_rig"] is None:
+            _vstim = _vstim.filter(pl.col("photo")!=self.data["vstim"][0,"photo"])
+        else:
+            _vstim = _vstim.filter(
+                (
+                    pl.col("corrected_presentTime").is_between(
+                        self._trial["t_vstimstart_rig"], self._trial["t_vstimend_rig"]
+                    )
                 )
             )
-        )
 
         for col in _vstim.columns:
             if col in ignore:

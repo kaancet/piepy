@@ -10,7 +10,7 @@ import polars as pl
 import scipy.io as sio
 from tqdm import tqdm
 
-from ..gsheet_functions import GSheet
+from .gsheet_functions import GSheet
 from .config import config
 from .exceptions import StateMachineError, WrongSessionTypeError
 from .io import display
@@ -386,6 +386,9 @@ class Run:
         """Saves the run data"""
         if self.data is not None:
             for s_path in self.paths.save:
+                if not pexists(s_path):
+                    os.makedirs(s_path)
+                    # os.makedirs(s_path)
                 self.data.save_data(s_path, save_mat)
                 display(f"Saved session data to {s_path}", color="green")
 
