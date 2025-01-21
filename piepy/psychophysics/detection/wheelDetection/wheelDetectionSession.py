@@ -35,14 +35,22 @@ class WheelDetectionRunData(RunData):
         super().__init__(data)
 
     def set_data(self, data: pl.DataFrame) -> None:
-        """Sets the data of the session and augments it"""
+        """Sets the data of the session and augments it
+
+        Args:
+            data: Dataframe
+        """
         if data is not None:
             super().set_data(data)
             self.add_qolumns()
             self.add_rig_response_time()
 
     def set_outcome(self, outcome_type: str = "state") -> None:
-        """Sets the outcome column to the selected column"""
+        """Sets the outcome column to the selected column
+
+        Args:
+            outcome_type: The column name to set the "outcome" column as
+        """
         display(f"Setting outcome to {outcome_type}")
         col_name = f"{outcome_type}_outcome"
         if "outcome" not in self.data.columns:
@@ -115,13 +123,13 @@ class WheelDetectionRunData(RunData):
             .otherwise(None)
             .alias("contrast_type")
         )
-        
+
     def add_rig_response_time(self) -> None:
         """Transforms the response time of trials that dont't have rig_response_time to that time frame"""
         with_rig_time = self.data.drop_nulls("rig_response_time")
         resp_time = with_rig_time["state_response_time"]
         rig_time = with_rig_time["rig_response_time"]
-        
+
         def m1_func(x, a):
             m = 1
             return m * x + a
@@ -145,12 +153,14 @@ class WheelDetectionRunData(RunData):
                 .alias("response_time")
             )
             # drop the temp column
-            self.data = self.data.drop("temp_response_times")            
+            self.data = self.data.drop("temp_response_times")
         else:
             print("NO RIG TIME TO INTERPOLATE, COPYING STATE TIME")
-            self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
+            self.data = self.data.with_columns(
+                pl.col("state_response_time").alias("response_time")
+            )
 
-    def add_pattern_related_columns(self) -> None:
+    def add_pattern_related_columns(self, pattern_path: str) -> None:
         """Adds columns related to the silencing pattern if they exist"""
         if len(self.data["opto"].unique()) == 1:
             # Regular training sessions
@@ -163,14 +173,24 @@ class WheelDetectionRunData(RunData):
             # add stim_label for legends and stuff
             self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
-            if isinstance(self.pattern_names, dict):
+            if pattern_path is not None and os.path.exists(pattern_path):
+                pattern_names = {}
+                for im in os.listdir(pattern_path):
+                    if im.endswith(".tif"):
+                        pattern_id = int(im[:-4].split("_")[-1])
+                        if pattern_id == -1:
+                            pattern_names[pattern_id] = "nonopto"
+                        else:
+                            name = im[:-4].split("_")[-2]
+                            pattern_names[pattern_id] = name
+
                 try:
                     # add the pattern name depending on pattern id
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
                         .map_elements(
                             lambda x: (
-                                self.pattern_names[x["opto_pattern"]]
+                                pattern_names[x["opto_pattern"]]
                                 if x["state_outcome"] != -1
                                 else None
                             ),
@@ -182,23 +202,14 @@ class WheelDetectionRunData(RunData):
                     raise KeyError(
                         "Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to an integer (0,-1,1,..)!"
                     )
-            elif isinstance(self.pattern_names, str):
-                display(f"{self.paths.opto_pattern} NO OPTO PATTERN DIRECTORY!!")
-                self.data = self.data.with_columns(
-                    pl.struct(["opto_pattern", "state_outcome"])
-                    .apply(
-                        lambda x: self.pattern_names if x["state_outcome"] != -1 else None
-                    )
-                    .alias("opto_region")
-                )
             else:
-                raise ValueError(f"Weird pattern name: {self.pattern_names}")
+                raise ValueError(f"{pattern_path} is not a valid path")
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias(
-                    "stimkey"
-                )
+                (
+                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
+                ).alias("stimkey")
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
@@ -208,37 +219,28 @@ class WheelDetectionRunData(RunData):
             )
 
     @staticmethod
-    def get_pattern_size(pattern_img: np.ndarray) -> float:
-        """Gets the pattern size using the x and y vertices from"""
-        pass
+    def read_pattern_images(pattern_path: str) -> dict:
+        """Reads the related run images(window, pattern, etc) and returns a dict with images
 
-    def get_opto_images(self, get_from: str) -> None:
-        """Reads the related run images(window, pattern, etc)
-        Returns a dict with images and also a dict that"""
-        if get_from is not None and os.path.exists(get_from):
-            self.sesh_imgs = {}
-            self.pattern_names = {}
-            self.sesh_patterns = {}
-            for im in os.listdir(get_from):
-                if im.endswith(".tif"):
-                    pattern_id = int(im[:-4].split("_")[-1])
-                    read_img = tf.imread(pjoin(get_from, im))
-                    if pattern_id == -1:
-                        self.sesh_imgs["window"] = read_img
-                        self.pattern_names[pattern_id] = "nonopto"
-                    else:
-                        name = im[:-4].split("_")[-2]
-                        self.pattern_names[pattern_id] = name
-                        self.sesh_imgs[name] = read_img
-                elif im.endswith(".bmp"):
-                    pattern_id = int(im.split("_")[0])
-                    name = im.split("_")[1]
-                    read_bmp = np.array(Image.open(pjoin(get_from, im)).convert("L"))
-                    self.sesh_patterns[name] = read_bmp[::-1, ::-1]
-        else:
-            self.sesh_imgs = None
-            self.sesh_patterns = None
-            self.pattern_names = None  # '*'+self.paths.pattern.split('_')[4]+'*'
+        Args:
+            path: path to pattern directory
+        """
+        imgs = {}
+        for im in os.listdir(pattern_path):
+            if im.endswith(".tif"):
+                pattern_id = int(im[:-4].split("_")[-1])
+                read_img = tf.imread(pjoin(pattern_path, im))
+                if pattern_id == -1:
+                    imgs["window"] = read_img
+                else:
+                    name = im[:-4].split("_")[-2]
+                    imgs[name] = read_img
+            elif im.endswith(".bmp"):
+                pattern_id = int(im.split("_")[0])
+                name = im.split("_")[1]
+                read_bmp = np.array(Image.open(pjoin(pattern_path, im)).convert("L"))
+                imgs[f"pattern_{name}"] = read_bmp
+        return imgs
 
 
 class WheelDetectionRun(Run):
@@ -257,12 +259,14 @@ class WheelDetectionRun(Run):
         return _base + _stats
 
     def analyze_run(self, transform_dict: dict) -> None:
-        """Main loop to extract data from rawdata"""
+        """Main loop to extract data from rawdata
+
+        Args:
+            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
         super().analyze_run(transform_dict)
 
-        # get related images(silencing patterns etc)
-        self.data.get_opto_images(self.paths.opto_pattern)
-        self.data.add_pattern_related_columns()
+        self.data.add_pattern_related_columns(self.paths.opto_pattern)
 
         self.stats = get_run_stats(self.data.data)
 

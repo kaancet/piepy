@@ -37,7 +37,13 @@ class WheelTrace:
     @classmethod
     def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
         """Resets the time ticks to be zero at reset_time_point"""
-        return t - reset_time_point
+        ret = t - reset_time_point
+
+        # check if trace has zero crossing
+        if ((ret[:-1] * ret[1:]) < 0).sum() < 1:
+            # means the wheel movement was recorded after the given reset time point
+            ret -= ret[0]  # make the first point 0
+        return ret
 
     @classmethod
     def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
@@ -49,14 +55,11 @@ class WheelTrace:
             return _temp.astype(int)
 
     @classmethod
-    def reset_and_interpolate(cls,
-             t:np.ndarray,
-             pos:np.ndarray,
-             reset_time:float,
-             interp_freq:float=5
-             ) -> tuple[np.ndarray,np.ndarray,np.ndarray,np.ndarray]:
+    def reset_and_interpolate(
+        cls, t: np.ndarray, pos: np.ndarray, reset_time: float, interp_freq: float = 5
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """ """
-        #reset the time-frame
+        # reset the time-frame
         reset_t = cls.reset_time_frame(t, reset_time)
         # init interpolator with ticks first
         cls.init_interpolator(reset_t, pos)
@@ -66,9 +69,9 @@ class WheelTrace:
         cls.init_interpolator(reset_t, reset_tick)
         # interpolate the whole trace
         t_interp, tick_interp = cls.interpolate_trace(reset_t, reset_tick, interp_freq)
-        
-        return reset_t, reset_tick, t_interp,tick_interp
-    
+
+        return reset_t, reset_tick, t_interp, tick_interp
+
     @classmethod
     def interpolate_trace(
         cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
@@ -95,7 +98,7 @@ class WheelTrace:
                 # only single value, means no wheel movement
                 # add another point with same pos but incremented t
                 t = np.append(t, t[0] + 10)
-            
+
             interp_t = np.arange(
                 t[0], t[-1], 1 / interp_freq
             )  # Evenly resample at frequency
