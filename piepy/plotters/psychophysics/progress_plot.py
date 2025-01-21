@@ -24,11 +24,11 @@ def moving_average(a, n):
     """ """
     ret = np.nancumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n
+    return ret[n - 1 :] / n
 
 
 def plot_performance(
-    data:pl.DataFrame,
+    data: pl.DataFrame,
     ax: plt.Axes = None,
     plot_in_time: bool = False,
     seperate_by: list = ["stimkey"],
@@ -37,62 +37,68 @@ def plot_performance(
     **kwargs,
 ) -> plt.Axes:
     """Plots the accuracy of subset of trials through the run"""
-    
+
     clr_obj = Color()
-    set_style(kwargs.get("style","presentation"))
+    set_style(kwargs.get("style", "presentation"))
     if mpl_kwargs is None:
         mpl_kwargs = {}
-        
+
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
     else:
         fig = None
-        
-    def _get_perf_(arr: np.ndarray,) -> np.ndarray:
+
+    def _get_perf_(
+        arr: np.ndarray,
+    ) -> np.ndarray:
         """Returns the hit rates as an array"""
         arr = arr.astype(float)
         # convert -1(earlies) to np.nan if they exist
         arr[arr == -1] = np.nan
         # cumulative count of hits ignoring nans (1 hit, 0 miss)
         _hits = np.nancumsum(arr)
-        # cumulative counts of all not nans (earlies in this case)
+        # cumulative counts of all not nans (non earlies in this case)
         _non_earlies = np.cumsum(~np.isnan(arr))
         return (_hits / _non_earlies) * 100
-    
+
     data = data.with_columns((pl.col("t_trialend") / 60_000).alias("trial_time"))
-    
+
     for filt_tup in make_subsets(data, seperate_by):
         filt_df = filt_tup[-1]
-        filt_sep = filt_tup[0]
-        if seperate_by == "stimkey":
-            clr = clr_obj.stim_keys[filt_sep]
-        elif seperate_by == "contrast":
-            clr = clr_obj.contrast_keys[str(filt_sep)]
+        if "stimkey" in seperate_by and "contrast" in seperate_by:
+            clr = {"color": clr_obj.make_key_mixed_color(filt_tup[0], str(filt_tup[1]))}
+        elif len(seperate_by) == 1 and "stimkey" in seperate_by:
+            clr = {"color": clr_obj.stim_keys[filt_tup[0]]["color"]}
+        elif len(seperate_by) == 1 and "contrast" in seperate_by:
+            clr = {"color": clr_obj.contrast_keys[str(filt_tup[0])]["color"]}
+        else:
+            clr = {}
 
         acc = _get_perf_(filt_df["state_outcome"].to_numpy())
-        
         if plot_in_time:
             x = filt_df["trial_time"].to_numpy()
         else:
             x = filt_df["trial_no"].to_numpy()
 
-        filt_df = filt_df.with_columns(pl.Series("accuracy",acc).rolling_mean(rolling_window).alias("accuracy"))
-        y = filt_df["accuracy"].to_numpy()
+        filt_df = filt_df.with_columns(
+            pl.Series("hit_rate", acc)
+            .rolling_mean(rolling_window, center=True)
+            .alias("hit_rate")
+        )
+        y = filt_df["hit_rate"].to_numpy()
 
-        ax.plot(x, y, label=f"{filt_tup[:-1]}", 
-                **clr, 
-                **mpl_kwargs)
+        ax.plot(x, y, label=f"{filt_tup[:-1]}", **clr, **mpl_kwargs)
 
     ax.set_ylim([0, 110])
     ax.set_xlabel("Time (mins)" if plot_in_time else "Trial no.")
-    ax.set_ylabel("Accuracy(%)")
-    ax.legend(frameon=False)
-    return fig,ax
+    ax.set_ylabel("Hit rate (%)")
+    ax.legend(loc="center left", frameon=False, fontsize=5)
+    return fig, ax
 
 
 def plot_reactiontime(
-    data:pl.DataFrame,
+    data: pl.DataFrame,
     ax: plt.Axes = None,
     reaction_of: str = "response_time",
     include_miss: bool = False,
@@ -104,12 +110,12 @@ def plot_reactiontime(
     **kwargs,
 ) -> plt.Axes:
     """ """
-    
+
     clr_obj = Color()
-    set_style(kwargs.get("style","presentation"))
+    set_style(kwargs.get("style", "presentation"))
     if mpl_kwargs is None:
         mpl_kwargs = {}
-        
+
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
@@ -122,33 +128,40 @@ def plot_reactiontime(
     data = data.with_columns((pl.col("t_trialend") / 60_000).alias("trial_time"))
     if not include_zero:
         # for some reason filtering only for 0 contrast also filters out null values, this is a workaround...
-        _ne_contrast = data.filter((pl.col("outcome")!="early") & (pl.col("contrast")!=0)) # non early contrast trials(excludes 0-150 ms responses too)
-        _early = data.filter((pl.col("outcome")=="early") & (pl.col("contrast").is_null())) # early trials (still excludes 0-150ms)
-        _early_after_stim = data.filter((pl.col("outcome")=="early") & (pl.col("contrast")!=0)) # 0-150 ms trials
-        plot_data = pl.concat([_ne_contrast,_early,_early_after_stim]).sort("trial_no")
-        
-    plot_data = plot_data.filter(pl.col("outcome")!="early")
+        _ne_contrast = data.filter(
+            (pl.col("outcome") != "early") & (pl.col("contrast") != 0)
+        )  # non early contrast trials(excludes 0-150 ms responses too)
+        _early = data.filter(
+            (pl.col("outcome") == "early") & (pl.col("contrast").is_null())
+        )  # early trials (still excludes 0-150ms)
+        _early_after_stim = data.filter(
+            (pl.col("outcome") == "early") & (pl.col("contrast") != 0)
+        )  # 0-150 ms trials
+        plot_data = pl.concat([_ne_contrast, _early, _early_after_stim]).sort("trial_no")
+
+    plot_data = plot_data.filter(pl.col("outcome") != "early")
     for filt_tup in make_subsets(plot_data, seperate_by):
         filt_df = filt_tup[-1]
-        filt_sep = filt_tup[0]
-        if seperate_by == "stimkey":
-            clr = clr_obj.stim_keys[filt_sep]
-        elif seperate_by == "contrast":
-            clr = clr_obj.contrast_keys[str(filt_sep)]
+        if "stimkey" in seperate_by and "contrast" in seperate_by:
+            clr = {"color": clr_obj.make_key_mixed_color(filt_tup[0], str(filt_tup[1]))}
+        elif len(seperate_by) == 1 and "stimkey" in seperate_by:
+            clr = {"color": clr_obj.stim_keys[filt_tup[0]]["color"]}
+        elif len(seperate_by) == 1 and "contrast" in seperate_by:
+            clr = {"color": clr_obj.contrast_keys[str(filt_tup[0])]["color"]}
+        else:
+            clr = {}
 
         if plot_in_time:
             x = filt_df["trial_time"].to_numpy()
         else:
             x = filt_df["trial_no"].to_numpy()
-    
-        filt_df = filt_df.with_columns(pl.col(reaction_of)
-                                       .rolling_mean(rolling_window)
-                                       .alias(f"roll_{reaction_of}"))
+
+        filt_df = filt_df.with_columns(
+            pl.col(reaction_of).rolling_mean(rolling_window).alias(f"roll_{reaction_of}")
+        )
         y = filt_df[f"roll_{reaction_of}"].to_numpy()
 
-        ax.plot(x, y, label=f"{filt_tup[:-1]}", 
-                **clr,
-                **mpl_kwargs)
+        ax.plot(x, y, label=f"{filt_tup[:-1]}", **clr, **mpl_kwargs)
 
     ax.set_xlabel("Time (mins)" if plot_in_time else "Trial no.")
     # parse the axis label
@@ -160,12 +173,12 @@ def plot_reactiontime(
     ax.yaxis.set_minor_formatter(plt.FormatStrFormatter("%d"))
     ax.yaxis.set_major_locator(ticker.FixedLocator([100, 1000, 10000]))
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
-    ax.legend(frameon=False)
+    ax.legend(loc="center left", frameon=False, fontsize=5)
     return fig, ax
 
 
 def plot_lick(
-    data:pl.DataFrame,
+    data: pl.DataFrame,
     ax: plt.Axes = None,
     plot_in_time: bool = False,
     mpl_kwargs: dict = None,
@@ -173,10 +186,10 @@ def plot_lick(
 ) -> plt.Axes:
     """ """
 
-    set_style(kwargs.get("style","presentation"))
+    set_style(kwargs.get("style", "presentation"))
     if mpl_kwargs is None:
         mpl_kwargs = {}
-    
+
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)

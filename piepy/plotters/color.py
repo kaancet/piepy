@@ -10,12 +10,16 @@ from ..core.config import config as cfg
 
 
 class Color:
-    __slots__ = ["colorkey_path", "stim_keys", "contrast_keys", "outcome_keys"]
-
     def __init__(self):
         # this is hardcoded for now, fix this
         self.colorkey_path = cfg.paths["colors"][0]
         self.read_colors()
+
+    @staticmethod
+    def check_hex(hex_code: str) -> None:
+        """Makes sure hex code is in correct form"""
+        if not (hex_code.startswith("#") and len(hex_code) == 7):
+            raise ValueError("Both colors must be in the format '#RRGGBB'.")
 
     def read_colors(self) -> None:
         """Reads the colorkey.json and returns a dict of color keys for different sftf and contrast values"""
@@ -25,7 +29,7 @@ class Color:
             self.contrast_keys = keys["contrast"]
             self.outcome_keys = keys["outcome"]
 
-    def check_stim_colors(self, keys):
+    def check_stim_colors(self, keys: list[str]) -> None:
         """Checks if the stim key has a corresponding color value, if not adds a randomly selected color the key"""
         new_colors = {}
         for k in keys:
@@ -45,7 +49,7 @@ class Color:
         else:
             print("Stimulus colors checkout!!")
 
-    def check_contrast_colors(self, contrasts):
+    def check_contrast_colors(self, contrasts: list[str]) -> None:
         """Checks if the contrast key has a corresponding color value, if not adds a randomly selected color the key"""
         new_colors = {}
         for c in contrasts:
@@ -65,57 +69,74 @@ class Color:
         else:
             print("Contrast colors checkout!!")
 
-    @staticmethod
-    def name2hsv(color_name: str) -> tuple:
+    def make_key_mixed_color(self, stim_key: str, contrast_key: str) -> str:
+        """ """
+        s_color = self.stim_keys[stim_key]["color"]
+        c_color = self.contrast_keys[contrast_key]["color"]
+        return self.mix_colors(s_color, c_color)
+
+    @classmethod
+    def name2hsv(cls, color_name: str) -> tuple[float, float, float]:
         rgb = mcolors.to_rgb(color_name)
         return Color.rgb2hsv(
             rgb, normalize=False
         )  # no need to normalize here, already 0-1 range from mcolors method
 
-    @staticmethod
-    def hex2rgb(hex_code):
+    @classmethod
+    def hex2rgb(cls, hex_code: str) -> tuple[float, float, float]:
         hex_code = hex_code.lstrip("#")
         return tuple(int(hex_code[i : i + 2], 16) for i in (0, 2, 4))
 
-    @staticmethod
-    def rgb2hex(rgb_tuple):
+    @classmethod
+    def rgb2hex(cls, rgb_tuple: tuple[float, float, float]) -> str:
         def clamp(x):
             return max(0, min(x, 255))
 
-        rgb_tuple = tuple(int(clamp(i) * 255) for i in rgb_tuple)
+        rgb_tuple = tuple(int(clamp(i)) for i in rgb_tuple)
         r, g, b = rgb_tuple
         return f"#{r:02x}{g:02x}{b:02x}"
 
-    @staticmethod
-    def normalize_rgb(rgb_tuple):
+    @classmethod
+    def normalize_rgb(
+        cls, rgb_tuple: tuple[float, float, float]
+    ) -> tuple[float, float, float]:
         return tuple(i / 255.0 for i in rgb_tuple)
 
-    @staticmethod
-    def rgb2hsv(rgb_tuple, normalize: bool = True):
+    @classmethod
+    def rgb2hsv(
+        cls, rgb_tuple: tuple[float, float, float], normalize: bool = True
+    ) -> tuple[float, float, float]:
         if normalize:
             rgb_tuple = Color.normalize_rgb(rgb_tuple)
         r, g, b = rgb_tuple
         return colorsys.rgb_to_hsv(r, g, b)
 
-    @staticmethod
-    def hsv2rgb(hsv_tuple):
+    @classmethod
+    def hsv2rgb(cls, hsv_tuple: tuple[float, float, float]) -> tuple[float, float, float]:
         h, s, v = hsv_tuple
         return colorsys.hsv_to_rgb(h, s, v)
 
-    @staticmethod
-    def lighten(hsv_tuple, l_coeff: float = 0.33):
+    @classmethod
+    def lighten(cls, hex_color: str, l_coeff: float = 0.33) -> str:
         """Lightens the hsv_tuple by l_coeff percent, aka from S subtracts l_coeff percent of the S value"""
+
+        hsv_tuple = cls.rgb2hsv(cls.hex2rgb(hex_color))
+
         if not l_coeff <= 1 and l_coeff >= 0:
             raise ValueError(
                 f"The l_coeff value needs to be 0<=l_coeff<= 1, got {l_coeff} instead"
             )
         h, s, v = hsv_tuple
         s_new = s - (s * l_coeff)
-        return Color.rgb2hex(Color.hsv2rgb((h, s_new, v)))
+        return cls.rgb2hex(cls.hsv2rgb((h, s_new, v)))
 
-    @staticmethod
+    @classmethod
     def make_color_range(
-        start_color: str, rng: int, s_limit: list = [20, 100], v_limit: list = [20, 100]
+        cls,
+        start_color: str,
+        rng: int,
+        s_limit: list = [20, 100],
+        v_limit: list = [20, 100],
     ) -> list:
         """Returns a list of hex colors ranging from start color to specific limit values"""
         rgb = Color.hex2rgb(start_color)
@@ -138,8 +159,25 @@ class Color:
 
         return color_range
 
-    @staticmethod
-    def gen_color(cmap, n, reverse=False):
+    @classmethod
+    def mix_colors(cls, hex_color1: str, hex_color2: str) -> str:
+        """Mixes the two input hex colors"""
+
+        cls.check_hex(hex_color1)
+        cls.check_hex(hex_color2)
+
+        r1, g1, b1 = cls.hex2rgb(hex_color1)
+        r2, g2, b2 = cls.hex2rgb(hex_color2)
+
+        # Calculate the average for each channel
+        r_mix = round((r1 + r2) / 2)
+        g_mix = round((g1 + g2) / 2)
+        b_mix = round((b1 + b2) / 2)
+
+        return cls.rgb2hex(rgb_tuple=(r_mix, g_mix, b_mix))
+
+    @classmethod
+    def gen_color(cls, cmap, n, reverse=False):
         """Generates n distinct color from a given colormap. From https://github.com/binodbhttr/mycolorpy/tree/master
 
         Args:
@@ -170,8 +208,9 @@ class Color:
             colorlist.reverse()
         return colorlist
 
-    @staticmethod
+    @classmethod
     def gen_color_normalized(
+        cls,
         cmap,
         data_arr,
         reverse: bool = False,
