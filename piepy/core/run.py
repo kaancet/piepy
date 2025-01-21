@@ -39,7 +39,12 @@ class RunMeta:
 
     @classmethod
     def get_meta(cls, path: Paths, skip_google: bool = True) -> dict:
-        """A wrapper function that calls"""
+        """A wrapper function that calls
+
+        Args:
+            path: Paths object that has the
+            skip_google: Flag to skip parsing google sheets
+        """
         _temp = path.prot.split(os.sep)
         if not os.path.isdir(_temp[-1]):
             sessiondir = _temp[-2]
@@ -84,7 +89,11 @@ class RunMeta:
 
     @staticmethod
     def get_prot(prot_path: str) -> dict:
-        """Gets the options and parameters from prot file"""
+        """Gets the options and parameters from prot file
+
+        Args:
+            prot_path: The path to protocol file
+        """
         prot_dict = {}
         prot_dict["run_name"] = prot_path.split(os.sep)[-1].split(".")[0]
         opts, params, _ = parse_protocol(prot_path)
@@ -115,12 +124,21 @@ class RunMeta:
 
     @staticmethod
     def get_pref(pref_path: str) -> dict:
-        """Returns the parsed preference file"""
+        """Returns the parsed preference file
+
+        Args:
+            pref_path: The path to preference file
+        """
         return parse_preference(pref_path)
 
     @staticmethod
     def get_run_weight_and_water(animalid: str, baredate: str) -> dict:
-        """Gets the session weight from google sheet"""
+        """Gets the session weight from google sheet
+
+        Args:
+            animalid: Id of the animal (KC133)
+            baredate: The date of the experiment as abare string (231108)
+        """
         logsheet = GSheet("Mouse Database_new")
         gsheet_df = logsheet.read_sheet(2)
         gsheet_df = gsheet_df[
@@ -143,11 +161,19 @@ class RunData:
         self.set_data(data)
 
     def set_data(self, data: pl.DataFrame) -> None:
-        """Sets the data of the class"""
+        """Sets the data of the
+
+        Args:
+            data: The dataframe that has the trials
+        """
         self.data = data
 
     def add_metadata_columns(self, metadata: dict) -> None:
-        """Adds some metadata to run data for ease of manipulation"""
+        """Adds some metadata to run data for ease of manipulation
+
+        Args:
+            metadata: Adds metadata columns to the dataframe
+        """
         # animal id and baredate as str
         self.data = self.data.with_columns(
             [
@@ -165,7 +191,12 @@ class RunData:
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
-        """Saves the run data as .parquet (and .mat file if desired)"""
+        """Saves the run data as .parquet (and .mat file if desired)
+
+        Args:
+            save_path: The path to save the dataframe as a parquet
+            save_mat: Flag to save the dataframe as a .mat file
+        """
         data_save_path = pjoin(save_path, "runData.parquet")
         self.data.write_parquet(data_save_path)
         if save_mat:
@@ -173,13 +204,21 @@ class RunData:
             display(f"Saved .mat file at {save_path}", color="green")
 
     def load_data(self, load_path: str) -> pl.DataFrame:
-        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
+        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame
+
+        Args:
+            load_path: The path to load the data from
+        """
         # data = pd.read_csv(self.paths.data)
         data = pl.read_parquet(load_path)
         self.set_data(data)
 
     def save_as_mat(self, save_path: str) -> None:
-        """Helper method to convert the data into a .mat file"""
+        """Helper method to convert the data into a .mat file
+
+        Args:
+            save_path: The path to save the .mat file to
+        """
         datafile = pjoin(save_path, "sessionData.mat")
 
         save_dict = {name: col.values for name, col in self.data.stim_data.items()}
@@ -207,7 +246,11 @@ class Run:
         return f"{_controller}{_dat}"
 
     def set_meta(self, skip_google: bool = True) -> None:
-        """Sets the run meta"""
+        """Sets the run meta
+
+        Args:
+            skip_google: Flag to skip parsing google sheets
+        """
         self.meta = RunMeta().get_meta(self.paths, skip_google=skip_google)
 
     def create_save_paths(self) -> None:
@@ -219,7 +262,10 @@ class Run:
 
     def analyze_run(self, transform_dict: dict) -> None:
         """Main loop to extract data from rawdata, should be overwritten in child classes
-        NOTE: direct call to this function will"""
+
+        Args:
+            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
         self.read_run_data()
         self.translate_state_changes(transform_dict)
 
@@ -261,7 +307,12 @@ class Run:
     def read_combine_logs(
         stimlog_path: str | list, riglog_path: str | list
     ) -> tuple[pl.DataFrame, list]:
-        """Reads the logs and combines them if multiple logs of same type exist in the run directory"""
+        """Reads the logs and combines them if multiple logs of same type exist in the run directory
+
+        Args:
+            stimlog_path: path to .stimlog file
+            riglog_path: path to .riglog file
+        """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
             assert len(stimlog_path) == len(
                 riglog_path
@@ -326,8 +377,11 @@ class Run:
 
     def translate_state_changes(self, transform_dict: dict = None) -> None:
         """Checks if state data exists and translated the state transitions according to defined translation dictionary
-        This function needs the translate transition to be defined beforehand"""
+        This function needs the translate transition to be defined beforehand
 
+        Args:
+            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
         if transform_dict is None:
             display(
                 ">> WARNING! << No state transofrmation dictionary provided, using a generic one. It is very likely this will cause issues",
@@ -383,7 +437,11 @@ class Run:
         return loadable
 
     def save_run(self, save_mat: bool = False) -> None:
-        """Saves the run data"""
+        """Saves the run data
+
+        Args:
+            save_mat: Flag to save the dataframe as a .mat file
+        """
         if self.data is not None:
             for s_path in self.paths.save:
                 if not pexists(s_path):

@@ -5,7 +5,11 @@ from scipy.interpolate import interp1d
 
 
 def add_total_iStim(rawdata: dict) -> dict:
-    """Adds another column to the DataFrame where iStim increments for each presentation"""
+    """Adds another column to the DataFrame where iStim increments for each presentation
+
+    Args:
+        rawdata: The dictionary that has all the session data
+    """
     display("Adding total iStim column")
 
     # if either iStim  or iTrial are not in the columns, make dummy zero arrays
@@ -54,7 +58,11 @@ def add_total_iStim(rawdata: dict) -> dict:
 
 
 def compare_cam_logging(rawdata: dict) -> dict:
-    """Compares the camlogs with corresponding riglog recordings"""
+    """Compares the camlogs with corresponding riglog recordings
+
+    Args:
+        rawdata: The dictionary that has all the session data
+    """
     # !! IMPORTANT !!
     # rawdata keys that end only with 'cam' are from the rig
     # the ones that end with 'cam_log' are from labcams
@@ -91,7 +99,11 @@ def compare_cam_logging(rawdata: dict) -> dict:
 
 
 def extract_trial_count(rawdata: dict) -> dict:
-    """Extracts the trial no from state changes, this works for stimpy for now"""
+    """Extracts the trial no from state changes, this works for stimpy for now
+
+    Args:
+        rawdata: The dictionary that has all the session data
+    """
     if len(rawdata["statemachine"].unique()) == 1:
         # if no trial change logged iin state data
         display(
@@ -119,14 +131,19 @@ def extract_trial_count(rawdata: dict) -> dict:
     return rawdata
 
 
-def stitch_logs(data_list: list, isStimlog: bool) -> dict:
-    """Stitches the seperate log files"""
+def stitch_logs(data_list: list, is_stimlog: bool) -> dict:
+    """Stitches the seperate log files
+
+    Args:
+        data_list: List of dataframes to be stitched
+        is_stimlog: Flag to indicate the data is stimlog or not
+    """
 
     final_data = data_list[0]
     for i in range(len(data_list) - 1):
         to_append = data_list[i + 1]  # skipping the first
         for k, v in final_data.items():
-            if isStimlog:
+            if is_stimlog:
                 # stimlog
                 if k == "vstim":
                     to_append[k] = to_append[k].with_columns(
@@ -166,39 +183,39 @@ def stitch_logs(data_list: list, isStimlog: bool) -> dict:
     return final_data
 
 
-def extrapolate_time(data):
+def extrapolate_time(rawdata: dict):
     """Extrapolates duinotime from screen indicator
 
-    :param data:
-    :type data: dict
+    Args:
+        rawdata: The dictionary that has all the session data
     """
-    if "vstim" in data.keys() and "screen" in data.keys():
+    if "vstim" in rawdata.keys() and "screen" in rawdata.keys():
 
         indkey = "not found"
         fliploc = []
-        if "indicatorFlag" in data["vstim"].columns:
+        if "indicatorFlag" in rawdata["vstim"].columns:
             indkey = "indicatorFlag"
             fliploc = np.where(
-                np.diff(np.hstack([0, data["vstim"]["indicatorFlag"], 0])) != 0
+                np.diff(np.hstack([0, rawdata["vstim"]["indicatorFlag"], 0])) != 0
             )[0]
-        elif "photo" in data["vstim"].columns:
+        elif "photo" in rawdata["vstim"].columns:
             indkey = "photo"
-            vstim_data = data["vstim"].to_pandas()
+            vstim_data = rawdata["vstim"].to_pandas()
             fliploc = np.where(np.diff(np.hstack([0, vstim_data["photo"] == 0, 0])) != 0)[
                 0
             ]
 
-        if len(data["screen"]) == len(fliploc):
+        if len(rawdata["screen"]) == len(fliploc):
             temp = interp1d(
-                fliploc, data["screen"]["duinotime"], fill_value="extrapolate"
-            )(np.arange(len(data["vstim"]))).tolist()
+                fliploc, rawdata["screen"]["duinotime"], fill_value="extrapolate"
+            )(np.arange(len(rawdata["vstim"]))).tolist()
             temp_df = pl.Series("duinotime", temp)
-            data["vstim"] = data["vstim"].hstack([temp_df])
+            rawdata["vstim"] = rawdata["vstim"].hstack([temp_df])
         else:
             display(
                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
-                    len(data["screen"]), indkey, len(fliploc)
+                    len(rawdata["screen"]), indkey, len(fliploc)
                 ),
                 color="yellow",
             )
-    return data
+    return rawdata

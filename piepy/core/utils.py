@@ -5,14 +5,24 @@ from numpy.typing import ArrayLike
 
 
 def unique_except(x: ArrayLike, exceptions: list) -> np.ndarray:
-    """Returns the unique values in an array except the given list"""
+    """Returns the unique values in an array except the given list
+
+    Args:
+        x: The array to be searched
+        exceptions: The values that should be excluded froom unique search
+    """
     uniq = np.unique(x)
     ret = [i for i in uniq if i not in exceptions]
     return np.asarray(ret)
 
 
 def nonan_unique(x: ArrayLike, sort: bool = False) -> np.ndarray:
-    """Returns the unique list without nan values"""
+    """Returns the unique list without nan values
+
+    Args:
+        x: The array to be searched
+        sort: Flag to sort the resulting unique array
+    """
     x = np.array(x)
     u = np.unique(x[~np.isnan(x)])
     if sort:

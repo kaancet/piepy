@@ -5,17 +5,16 @@ from .pathfinder import Paths, PathFinder
 
 
 class Session:
-    """A base Session object, reads and aggregates the recorded data which can then be used in user specific
-    analysis pipelines
-    :param sessiondir: directory of the session inside the presentation folder(e.g. 200619_KC033_wheel_KC)
-    :param load_flag:  flag to either load previously parsed data or to parse it again
-    :param save_mat:   flag to make the parser also output a .mat file to be used in MATLAB  scripts
-    :type sessiondir:  str
-    :type load_flag:   bool
-    :type save_mat:    bool
-    """
-
     def __init__(self, sessiondir, load_flag=False, save_mat=False):
+        """A base Session object, reads and aggregates the recorded data which can then be used in user specific
+        analysis pipelines
+
+        Args:
+            sessiondir: directory of the session inside the presentation folder(e.g. 200619_KC033_wheel_KC)
+            load_flag:  flag to either load previously parsed data or to parse it again
+            save_mat:   flag to make the parser also output a .mat file to be used in MATLAB scripts
+
+        """
         self.sessiondir = sessiondir
         self.load_flag = load_flag
         self.save_mat = save_mat
@@ -30,8 +29,11 @@ class Session:
         self.run_count = len(self.paths.all_paths["stimlog"])
 
     def init_session_runs(self, skip_google: bool = True) -> None:
-        """Initializes runs in a session,
-        to be overwritten by other Session types(e.g. WheelDetectionSession)"""
+        """Initializes runs in a session, to be overwritten by other Session types(e.g. WheelDetectionSession)
+
+        Args:
+            skip_google: Flag to skip parsing google sheets
+        """
         for r in range(self.run_count):
             _path = Paths(self.paths.all_paths, r)
             self.runs.append(Run(_path))

@@ -9,6 +9,7 @@ from .exceptions import PathSettingError
 
 class Paths:
     """Paths for single run"""
+
     def __init__(self, paths_dict: dict, path_idx: int = None) -> None:
         for name, path in paths_dict.items():
             if isinstance(path, list):
@@ -113,8 +114,11 @@ class PathFinder:
 
     @staticmethod
     def look_for_runs(dir_path: str) -> None:
-        """Looks for existing run directories inside session directories,
-        returns them as a list if present"""
+        """Looks for existing run directories inside session directories, returns them as a list if present
+
+        Args:
+            dir_path: path to directory that will be searched if more run directories exist in it
+        """
         for root, dirs, files in os.walk(dir_path):
             if len(dirs) == 0:
                 # this will happen if

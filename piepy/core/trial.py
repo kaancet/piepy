@@ -1,7 +1,7 @@
 import numpy as np
 import polars as pl
 import patito as pt
-from typing import Any
+from typing import Any, Literal
 from .exceptions import StateMachineError
 
 
@@ -23,7 +23,11 @@ class TrialHandler:
         self.set_model(Trial)
 
     def set_model(self, model: pt.Model) -> None:
-        """Sets the model the handler will use to validate the trial"""
+        """Sets the model the handler will use to validate the trial
+
+        Args:
+            model: The patito model the handler class will use to validate the parsed trial
+        """
         self.trial_model = model
 
     def _update_model(self) -> None:
@@ -36,15 +40,32 @@ class TrialHandler:
             else:
                 return (type(field_val), None)
 
+        # adding new columns (this should only work in the first trial)
         _new_cols = {
             k: list_field_fixer(v)
             for k, v in self._trial.items()
             if k not in self.trial_model.columns
         }
-        self.trial_model = self.trial_model.with_fields(**_new_cols)
+        if len(_new_cols):
+            self.trial_model = self.trial_model.with_fields(**_new_cols)
 
-    def _update_and_return(self, return_as: str = "dict") -> pt.DataFrame | dict | list:
-        """First validates, then returns the self._trial in the form given in return_as"""
+        # making sure no column has None(Null) as a dtype
+        _retry_none_type_cols = {
+            k: list_field_fixer(self._trial[k])
+            for k, m_dt in self.trial_model.dtypes.items()
+            if isinstance(m_dt, pl.datatypes.Null)
+        }
+        if len(_retry_none_type_cols):
+            self.trial_model = self.trial_model.with_fields(**_retry_none_type_cols)
+
+    def _update_and_return(
+        self, return_as: Literal["df", "dict", "list"] = "dict"
+    ) -> pt.DataFrame | dict | list:
+        """First validates, then returns the self._trial in the form given in return_as
+
+        Args:
+            return_as: The type
+        """
         # update the model with new vstim columns
         self._update_model()
         _t = pt.DataFrame(self._trial)
@@ -75,9 +96,18 @@ class TrialHandler:
         self._trial = {k: None for k in self.trial_model.columns}
 
     def get_trial(
-        self, trial_no: int, rawdata: dict, return_as: str = "dict"
+        self,
+        trial_no: int,
+        rawdata: dict,
+        return_as: Literal["df", "dict", "list"] = "dict",
     ) -> pt.DataFrame | dict | list | None:
-        """Main function that is called from outside, sets the trial, validates data type and returns it"""
+        """Main function that is called from outside, sets the trial, validates data type and returns it
+
+        Args:
+            trial_no: The trial number fo the trial to be parsed
+            rawdata: Rawdata dictionary that has all of the session data
+            return_as: How to return the dataframe
+        """
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
 
@@ -87,7 +117,12 @@ class TrialHandler:
             return self._update_and_return(return_as)
 
     def set_trial(self, trial_no: int, rawdata: dict) -> bool:
-        """Sets the trialstart and end times, and sets the data slice corresponding to the current trial"""
+        """Sets the trialstart and end times, and sets the data slice corresponding to the current trial
+
+        Args:
+            trial_no: The trial number fo the trial to be parsed
+            rawdata: Rawdata dictionary that has all of the session data
+        """
         self._trial["trial_no"] = trial_no
 
         _state = rawdata["statemachine"].filter(pl.col("trialNo") == trial_no)
@@ -149,11 +184,17 @@ class TrialHandler:
         self._trial["opto"] = _is_opto
         self._trial["opto_pulse"] = _opto_time
 
-    def set_frame_endpoints(self, imaging_mode: str, epoch_enpoints: list) -> tuple:
+    def set_frame_endpoints(
+        self, imaging_mode: Literal["onep", "twop", "face", "eye"], epoch_enpoints: list
+    ) -> tuple:
         """Gets the start and end frame ids for the provided imaging mode, given that it exists in the logged data
         NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving),
         if there is onepcam frame TTL signals coming into the Arduino, it will save them as pulses.
         This will lead to having frame_ids column to be created BUT there will be no actual camera frames recorded that correspond to the frame signals
+
+        Args:
+            imaging_mode: The selected imaging mode
+            epoch_endpoints: The start and end time points to get the frames in between
         """
         frames_data = self._get_rig_event(imaging_mode)
         frames_data = frames_data.filter(
@@ -172,7 +213,11 @@ class TrialHandler:
 
     @staticmethod
     def is_trial_complete(transitions: list) -> bool:
-        """Check if the trial starts and ends correctly, using transitions from the state machine"""
+        """Check if the trial starts and ends correctly, using transitions from the state machine
+
+        Args:
+            transitions: The list of transition the state machine goes through in a sessions (trialstart,stimstart,stimend,trialend)
+        """
 
         # Trial start
         if "trialstart" not in transitions:
@@ -189,7 +234,11 @@ class TrialHandler:
     # HARDWARE EVENTS RELATED TO THE TRIALS
     # =====================================
     def _get_rig_event(self, event_name: str) -> np.ndarray:
-        """Gets the hardware TTL entries(duinotime,value) from given event_name"""
+        """Gets the hardware TTL entries(duinotime,value) from given event_name
+
+        Args:
+            event_name: The name of the event column (lick, reward, opto,...)
+        """
         if event_name not in self.data.keys():
             # raise LogTypeMissingError(f"No hardware event logged with the name: {event_name}")
             # display(f"No hardware event logged with the name: {event_name}")

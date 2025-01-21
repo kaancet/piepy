@@ -4,11 +4,17 @@ import numpy as np
 from colorama import Fore, Style
 from datetime import datetime as dt
 
-
 from .config import config
 
 
 def display(*msgs: str, color: str = "white", timestamp: bool = True):
+    """Prints message to console
+
+    Args:
+        msgs: Message strings to be printed
+        color: color to be printed in
+        timestamp: Flag to include timestamp
+    """
     if config.verbose:
         try:
             fg_color = getattr(Fore, color.upper())
@@ -30,8 +36,12 @@ def JSONConverter(obj):
         return obj.tolist()
 
 
-def jsonify(data):
-    """Jsonifies the numpy arrays inside the analysis dictionary, mostly for saving and pretty printing"""
+def jsonify(data: dict):
+    """Jsonifies the numpy arrays inside the analysis dictionary, mostly for saving and pretty printing
+
+    Args:
+        data: Data as a dict to be saved
+    """
     jsonified = {}
 
     for key, value in data.items():
@@ -47,7 +57,11 @@ def jsonify(data):
 
 
 def save_dict_json(path: str, dict_in: dict) -> None:
-    """Saves a dictionary as a .json file"""
+    """Saves a dictionary as a .json file
+
+    Args:
+        path: The path to save the json
+    """
     with open(path, "w") as fp:
         jsonstr = json.dumps(dict_in, indent=4, default=JSONConverter)
         fp.write(jsonstr)
@@ -55,8 +69,9 @@ def save_dict_json(path: str, dict_in: dict) -> None:
 
 def load_json_dict(path: str) -> dict:
     """Loads .json file as a dict
-    :param path : path of the .json file
-    :type path  : path string
+
+    Args:
+        path : path of the .json file
     """
     with open(path) as f_in:
         return json.load(f_in)

@@ -10,7 +10,14 @@ def make_subsets(
     do_sort: bool = True,
 ) -> Generator:
     """Generates subsets of the data given the col names
-    NOTE: The length of returned Generator depends on the length of columns you provide"""
+    NOTE: The length of returned Generator depends on the length of columns you provide
+
+    Args:
+        data: DataFrame to be filtered in subsets
+        col_name: Name(s) of the column(s)
+        no_nan: Flag to drop the null values of the columns
+        do_sort: Flag to sort the data
+    """
     if isinstance(col_name, str):
         col_name = [col_name]
 

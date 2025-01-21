@@ -17,12 +17,22 @@ from .config import config
 
 
 def parse_preference(preffile: str) -> dict:
+    """Parses the preference file
+
+    Args:
+        preffile: The path to the preference file
+    """
     with open(preffile, "r") as infile:
         pref = json.load(infile)
         return pref
 
 
-def parse_protocol(protfile):
+def parse_protocol(protfile: str):
+    """Parses the protocol file
+
+    Args:
+        preffile: The path to the protocol file
+    """
     options = {}
     comments = []
     with open(protfile, "r") as fid:
@@ -80,9 +90,11 @@ def parse_protocol(protfile):
     return options, params, comments
 
 
-def parse_labcams_log(fname):
-    """
-    Parses the camlog
+def parse_labcams_log(fname: str):
+    """Parses the camlog
+
+    Args:
+        fname: Path to labcams file
     """
     comments = []
     with open(fname, "r") as fd:
@@ -104,11 +116,11 @@ def parse_labcams_log(fname):
     return camdata, comments, commit
 
 
-def parse_stimpy_log(fname):
+def parse_stimpy_log(fname: str):
     """Parses the log file (riglog or stimlog) and returns data and comments
 
-    :return: data and comments
-    :rtype: DataFrame and list
+    Args:
+        fname: path to stimlog file
     """
     comments = []
     faulty = False
@@ -216,8 +228,12 @@ def parse_stimpy_log(fname):
     return data, comments
 
 
-def parse_stimpygithub_log(fname) -> dict:
-    """ """
+def parse_stimpygithub_log(fname: str) -> dict:
+    """Parses the log file (riglog or stimlog) and returns data and comments
+
+    Args:
+        fname: path to stimlog file
+    """
     headers = []
     markers = []
     sources = []
