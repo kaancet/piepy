@@ -8,6 +8,10 @@ from ...core.trial import Trial, TrialHandler
 class VisualTrial(Trial):
     t_vstimstart_rig: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
     t_vstimend_rig: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
+    t_vstimstart: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
+    t_vstimend: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
+    vstim_time_diff: float | None = pt.Field(default=None, dtype=pl.Float64)
+    state_time_diff: float | None = pt.Field(default=None, dtype=pl.Float64)
 
 
 class VisualTrialHandler(TrialHandler):
@@ -38,7 +42,7 @@ class VisualTrialHandler(TrialHandler):
     def set_screen_events(self) -> None:
         """Sets the visual stimulus start and end times from screen photodiode events"""
         screen_array = self._get_rig_event("screen")
-        
+
         if screen_array is None:
             self._trial["t_vstimstart_rig"] = None
             self._trial["t_vstimend_rig"] = None
@@ -66,7 +70,7 @@ class VisualTrialHandler(TrialHandler):
         )
         if _screen_new is None:
             return None
-        
+
         if _screen_new is not None and len(_screen_new) == 2:
             # ON and OFF values, check they have the same value for same stim
             if _screen_new.n_unique("value") == 1:
@@ -88,10 +92,12 @@ class VisualTrialHandler(TrialHandler):
         _rig_onset = self._trial["t_vstimstart_rig"]
         if _rig_onset is None:
             # no screen event to sync
-            vstim_diff = 0
-            state_diff = 0
+            vstim_diff = 0.0
+            state_diff = 0.0
         else:
-            _state_onset = _state.filter(pl.col("transition") == "stimstart")[0, "elapsed"]
+            _state_onset = _state.filter(pl.col("transition") == "stimstart")[
+                0, "elapsed"
+            ]
 
             # some stimpy version has inverted photostim values, so adaptively set it
             # first entry is always the inverse of "stim_on"
@@ -109,7 +115,7 @@ class VisualTrialHandler(TrialHandler):
             # if difference is negative, that means the rig_onset time happened after the python timing
             vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
             state_diff = float(round(_state_onset - _rig_onset, 3))
-            
+
         # update the data
         _state = _state.with_columns(
             (pl.col("elapsed") - state_diff).alias("corrected_elapsed")
@@ -139,7 +145,7 @@ class VisualTrialHandler(TrialHandler):
 
         _vstim = self.data["vstim"]
         if self._trial["t_vstimstart_rig"] is None:
-            _vstim = _vstim.filter(pl.col("photo")!=self.data["vstim"][0,"photo"])
+            _vstim = _vstim.filter(pl.col("photo") != self.data["vstim"][0, "photo"])
         else:
             _vstim = _vstim.filter(
                 (
@@ -156,8 +162,8 @@ class VisualTrialHandler(TrialHandler):
             _entries = _vstim[col].drop_nulls().to_list()
 
             if col in ["iStim", "iTrial", "total_iStim"]:
-                self._trial[col] = int(_entries[0])
-                # also update the VisualTrial patito model
+                self._trial[col] = int(_entries[0]) if len(_entries) else None
+
             else:
                 if len(_entries):
                     if len(nonan_unique(_entries)) == 1:
