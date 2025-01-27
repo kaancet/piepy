@@ -29,12 +29,18 @@ def add_total_iStim(rawdata: dict) -> dict:
     if len(_iStim_monot) and np.all(_iStim_monot > 0):
         # istim monotonic, take that (scenario 1)
         rawdata["vstim"] = rawdata["vstim"].with_columns(
-            (pl.col("iStim") + 1).alias("total_iStim")
+            pl.when(pl.col("iTrial").first() == 0)
+            .then(pl.col("iStim") + 1)
+            .otherwise(pl.col("iStim"))
+            .alias("total_iStim")
         )
     elif len(_iTrial_monot) and np.all(_iTrial_monot > 0):
         # itrial is monotonic, take that (scenario 3)
         rawdata["vstim"] = rawdata["vstim"].with_columns(
-            (pl.col("iTrial") + 1).alias("total_iStim")
+            pl.when(pl.col("iTrial").first() == 0)
+            .then((pl.col("iTrial") + 1))
+            .otherwise(pl.col("iTrial"))
+            .alias("total_iStim")
         )
     else:
         # for every unique iTrial, run on istims
@@ -104,7 +110,7 @@ def extract_trial_count(rawdata: dict) -> dict:
     Args:
         rawdata: The dictionary that has all the session data
     """
-    if len(rawdata["statemachine"].unique()) == 1:
+    if len(rawdata["statemachine"]["trialNo"].unique()) == 1:
         # if no trial change logged iin state data
         display(
             "State machine trial increment faulty, extracting from state changes...",

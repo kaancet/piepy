@@ -46,10 +46,13 @@ class RunMeta:
             skip_google: Flag to skip parsing google sheets
         """
         _temp = path.prot.split(os.sep)
-        if not os.path.isdir(_temp[-1]):
-            sessiondir = _temp[-2]
-        else:
-            sessiondir = _temp[-1]
+        _cntr = -1
+        while True:
+            sessiondir = _temp[_cntr]
+            if not sessiondir.startswith("run"):
+                break
+            _cntr -= 1
+
         _general = {}
         _general["sessiondir"] = sessiondir
 

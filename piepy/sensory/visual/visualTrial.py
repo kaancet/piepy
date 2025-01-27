@@ -1,6 +1,6 @@
 import polars as pl
 import patito as pt
-from ...core.exceptions import ScreenPulseError
+from ...core.io import display
 from ...core.utils import nonan_unique
 from ...core.trial import Trial, TrialHandler
 
@@ -25,19 +25,32 @@ class VisualTrialHandler(TrialHandler):
     ) -> pt.DataFrame | dict | list:
         """Main function that is called from outside, sets the trial, validates data type and returns it"""
         self.init_trial()
-        self.set_trial(trial_no, rawdata)
-        self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
-        self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
+        _is_trial_set = self.set_trial(trial_no, rawdata)
 
-        # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
-        # this causes a trial to have a single screen event (ON) to be parsed into a given trial
-        # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
-        if not self.was_screen_off:
-            self.recheck_screen_events(rawdata["screen"])
+        if not _is_trial_set:
+            return None
+        else:
+            self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
+            self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
 
-        self.set_vstim_properties()  # should be run after sync_timeframes
+            # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
+            # this causes a trial to have a single screen event (ON) to be parsed into a given trial
+            # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
+            if not self.was_screen_off:
+                self.recheck_screen_events(rawdata["screen"])
 
-        return self._update_and_return(return_as)
+            self.set_vstim_properties()  # should be run after sync_timeframes
+            # get the frame endpoints for 2P and/or cam data
+            for f_col in ["imaging", "onepcam", "facecam", "eyecam"]:
+                self.set_frame_endpoints(
+                    f_col,
+                    epoch_endpoints=[
+                        self._trial["t_vstimstart_rig"],
+                        self._trial["t_vstimend_rig"],
+                    ],
+                )
+
+            return self._update_and_return(return_as)
 
     def set_screen_events(self) -> None:
         """Sets the visual stimulus start and end times from screen photodiode events"""
@@ -57,8 +70,12 @@ class VisualTrialHandler(TrialHandler):
         elif screen_array is not None and len(screen_array) > 2:
             # sometimes the screen pulses are weird
             # try to get the signals that make sense from the state machine
-            s1 = self.data["state"].filter(pl.col("transition")=="stimstart")[0,"elapsed"]
-            s2 = self.data["state"].filter(pl.col("transition").is_in(["hit","miss"]))[0,"elapsed"]
+            s1 = self.data["state"].filter(pl.col("transition") == "stimstart")[
+                0, "elapsed"
+            ]
+            s2 = self.data["state"].filter(pl.col("transition").is_in(["hit", "miss"]))[
+                0, "elapsed"
+            ]
 
             self._trial["t_vstimstart_rig"] = s1
             self._trial["t_vstimend_rig"] = s2
@@ -87,9 +104,10 @@ class VisualTrialHandler(TrialHandler):
                 _found_it = True
 
         if not _found_it:
-            raise ScreenPulseError(
-                f"""[TRIAL-{self._trial['trial_no']}] Only 1 screen event for stimulus ON.\n
-                                   Tried checking after syncing rig and state machine times, issue persists..."""
+            display(
+                f"""[TRIAL-{self._trial['trial_no']}] Only 1 screen event for stimulus ON.
+                                   Tried checking after syncing rig and state machine times, issue persists...""",
+                color="yellow",
             )
 
     def sync_timeframes(self) -> None:
@@ -152,7 +170,10 @@ class VisualTrialHandler(TrialHandler):
         ignore = ["code", "presentTime", "stim_idx", "duinotime", "photo", "reward"]
 
         _vstim = self.data["vstim"]
-        if self._trial["t_vstimstart_rig"] is None:
+        if (
+            self._trial["t_vstimstart_rig"] is None
+            or self._trial["t_vstimend_rig"] is None
+        ):
             _vstim = _vstim.filter(pl.col("photo") != self.data["vstim"][0, "photo"])
         else:
             _vstim = _vstim.filter(

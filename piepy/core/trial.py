@@ -36,7 +36,10 @@ class TrialHandler:
         def list_field_fixer(field_val) -> tuple[type, Any]:
             """Fixes the typing and defult value for lists"""
             if isinstance(field_val, list):
-                return (list[float], [])
+                if isinstance(field_val[0], int):
+                    return (list[int], [])
+                else:
+                    return (list[float], [])
             else:
                 return (type(field_val), None)
 
@@ -149,6 +152,9 @@ class TrialHandler:
             if k == "statemachine":
                 self.data["state"] = _state
                 continue
+            if "timestamp" in v.columns:
+                # skipping the camlogs, they will be read later
+                continue
             if not v.is_empty():
                 if "presentTime" not in v.columns:
                     temp_v = v.filter(
@@ -185,8 +191,10 @@ class TrialHandler:
         self._trial["opto_pulse"] = _opto_time
 
     def set_frame_endpoints(
-        self, imaging_mode: Literal["onep", "twop", "face", "eye"], epoch_enpoints: list
-    ) -> tuple:
+        self,
+        imaging_mode: Literal["imaging", "onepcam", "facecam", "eyecam"],
+        epoch_endpoints: list,
+    ) -> list[int] | None:
         """Gets the start and end frame ids for the provided imaging mode, given that it exists in the logged data
         NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving),
         if there is onepcam frame TTL signals coming into the Arduino, it will save them as pulses.
@@ -196,20 +204,21 @@ class TrialHandler:
             imaging_mode: The selected imaging mode
             epoch_endpoints: The start and end time points to get the frames in between
         """
+        frame_ids = None
         frames_data = self._get_rig_event(imaging_mode)
-        frames_data = frames_data.filter(
-            (pl.col("duinotime") >= epoch_enpoints[0])
-            & (pl.col("duinotime") <= epoch_enpoints[0])
-        )
-        if len(frames_data):
-            frame_ids = (
-                int(frames_data[0, "value"]),
-                int(frames_data[-1, "value"]),
+        if frames_data is not None:
+            _idx = np.logical_and(
+                frames_data[:, 0] >= epoch_endpoints[0],
+                frames_data[:, 0] <= epoch_endpoints[1],
             )
-        else:
-            frame_ids = None
+            frames_data = frames_data[_idx, :]
+            if len(frames_data):
+                frame_ids = [
+                    int(frames_data[0, 1]),
+                    int(frames_data[-1, 1]),
+                ]
 
-        self._trial[f"{imaging_mode}_frame"] = frame_ids
+        self._trial[f"{imaging_mode}_frame"] = [frame_ids]
 
     @staticmethod
     def is_trial_complete(transitions: list) -> bool:

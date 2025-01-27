@@ -190,12 +190,22 @@ def parse_stimpy_log(fname: str):
 
     elif fname.endswith(".stimlog"):
         display("Parsing stimlog...")
-
-        # assume all are float
-        _schema = {k: pl.Float64 for k in vlogheader}
-        logdata = pl.read_csv(
-            fname, has_header=False, comment_prefix="#", schema=_schema, separator=","
-        )
+        try:
+            # assume all are float
+            _schema = {k: pl.Float64 for k in vlogheader}
+            logdata = pl.read_csv(
+                fname, has_header=False, comment_prefix="#", schema=_schema, separator=","
+            )
+        except Exception:
+            _schema = {k: pl.Float64 for k in vlogheader}
+            logdata = pl.read_csv(
+                fname,
+                has_header=False,
+                comment_prefix="#",
+                schema=_schema,
+                separator=",",
+                ignore_errors=True,
+            )
 
     data = {}
     not_found = []

@@ -24,7 +24,6 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
     def __init__(self):
         super().__init__()
         self._trial = {k: None for k in WheelDetectionTrial.columns}
-        self.is_early = False
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDetectionTrial)
 
@@ -34,58 +33,54 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         """Main function that is called from outside, sets the trial, validates data type and returns it"""
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
-        self.is_early = self.check_early()
+        _is_trial_early = "early" in self.data["state"]["transition"].to_list()
 
         if not _is_trial_set:
             return None
-        
-        self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
-        self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
-
-        # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
-        # this causes a trial to have a single screen event (ON) to be parsed into a given trial
-        # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
-        if not self.was_screen_off:
-            self.recheck_screen_events(rawdata["screen"])
-
-        self.set_state_events()  # should be run after sync_timeframes, needs the corrected time columns
-        self.set_vstim_properties()  # should be run after sync_timeframes
-
-        self.adjust_rig_response()
-        if not self.is_early:
-            if self._trial["t_vstimstart_rig"] is not None:
-                self.set_wheel_traces(self._trial["t_vstimstart_rig"])
-            else:
-                self.set_wheel_traces(self._trial["t_vstimstart"])
         else:
-            self.set_wheel_traces(
-                self._trial["t_trialinit"] + self._trial["duration_blank"]
-            )  # would be stimulus start
-            
-        self.set_outcome()
-        self.set_licks()
-        self.set_reward()
-        self.set_opto()
-        return self._update_and_return(return_as)
-        
-    def check_early(self) -> bool:
-        """ Checks if the trial is early"""
-        _ret = False
-        if "early" in self.data["state"]["transition"].to_list():
-            _ret = True
-        else:
-            if "hit" in self.data["state"]["transition"].to_list():
-                _name = "hit"
-            elif "miss" in self.data["state"]["transition"].to_list():
-                _name = "miss"
+            self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
+            self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
+
+            # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
+            # this causes a trial to have a single screen event (ON) to be parsed into a given trial
+            # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
+            if not self.was_screen_off:
+                self.recheck_screen_events(rawdata["screen"])
+
+            self.set_state_events()  # should be run after sync_timeframes, needs the corrected time columns
+            if self._trial["state_outcome"] == -1:
+                _is_trial_early = True
+            self.set_vstim_properties(
+                _is_trial_early
+            )  # should be run after sync_timeframes
+
+            # else:
+            #     # here we manually set corrected columns,
+            #     # not pretty, but necessary to keep different trial types independent and modular
+            #     self.data["state"] = self.data["state"].with_columns(
+            #         pl.col("elapsed").alias("corrected_elapsed")
+            #     )
+            #     self.data["vstim"] = self.data["vstim"].with_columns(
+            #         pl.col("presentTime").alias("corrected_presentTime")
+            #     )
+
+            if not _is_trial_early:
+                if self._trial["t_vstimstart_rig"] is not None:
+                    self.set_wheel_traces(self._trial["t_vstimstart_rig"])
+                else:
+                    self.set_wheel_traces(self._trial["t_vstimstart"])
             else:
-                raise ValueError("ijbasdjsdobwdfibwdefiubweiubwef")
-                
-            _reps = self.data["state"].filter(pl.col("transition") == _name)[0,"stateElapsed"]
-            if _reps <= 200:
-                _ret = True
-        return _ret
-        
+                self.set_wheel_traces(
+                    self._trial["t_trialinit"] + self._trial["duration_blank"]
+                )  # would be stimulus start
+
+            self.adjust_rig_response()
+            self.set_outcome()
+            self.set_licks()
+            self.set_reward()
+            self.set_opto()
+            return self._update_and_return(return_as)
+
     def set_state_events(self) -> None:
         """Goes over the transitions to set state based timings and also sets the state_outcome"""
         # iscatch?
@@ -161,7 +156,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         if len(trial_end):
             self._trial["t_trialend"] = trial_end[0, "corrected_elapsed"]
 
-    def set_vstim_properties(self) -> None:
+    def set_vstim_properties(self, is_early_trial: bool) -> None:
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties,
         Also converts some properties to be scalars instead of lists(this is experiment specific)
         """
@@ -197,7 +192,8 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
         if (
             "rig_react_diff" in self._trial.keys()
-            and self._trial["rig_react_diff"] is not None):
+            and self._trial["rig_react_diff"] is not None
+        ):
             _tiks = self._trial["rig_react_diff"][0]
             _idx = next((i for i, x in enumerate(_tiks) if x != -1), None)
             self._trial["rig_response_tick"] = (
@@ -222,10 +218,12 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 _time_temp = unique_except(self._trial["rig_react_t"][0], [-1])
                 if len(_time_temp) == 1:
                     if self._trial["t_vstimstart_rig"] is None:
-                        print("NO RIG VSTIM TIME IN A NON_EARLY TRIAL THIS SHOULD NOT HAPPEN, USING STATE TIME")
+                        print(
+                            "NO RIG VSTIM TIME IN A NON_EARLY TRIAL THIS SHOULD NOT HAPPEN, USING STATE TIME"
+                        )
                         self._trial["t_vstimstart_rig"] = int(self._trial["t_vstimstart"])
                         self._trial["t_vstimend_rig"] = int(self._trial["t_vstimend"])
-                    
+
                     self._trial["rig_response_time"] = float(
                         _time_temp[0] * 1000 - self._trial["t_vstimstart_rig"]
                     )
@@ -258,9 +256,9 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         if wheel_array is not None and len(wheel_array):
             t = wheel_array[:, 0]
             pos = wheel_array[:, 1]
-            
+
             # check for timing recording errors, sometimes t is not monotonically increasing
-            t,pos = trace.fix_trace_timing(t,pos)
+            t, pos = trace.fix_trace_timing(t, pos)
 
             self._trial["wheel_t"] = [t.tolist()]
             self._trial["wheel_pos"] = [pos.tolist()]
@@ -278,7 +276,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 pos_thresh=0.0005,  # rads, 0.02 for ticks
                 t_thresh=1,
                 min_dur=20,
-                min_gap=30
+                min_gap=30,
             )
 
             _resp = self._trial["state_response_time"]
@@ -288,24 +286,29 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 if _resp < _off and _resp >= _on:
                     # this is the movement that registered the animals answer
                     self._trial["reaction_time"] = float(_on)
-                    self._trial["peak_speed"] = float(mov_dict["speed_peaks"][i, 1] * 1000)
+                    self._trial["peak_speed"] = float(
+                        mov_dict["speed_peaks"][i, 1] * 1000
+                    )
                     break
                 # sometimes the response is in between two movements
                 elif _resp >= _off and _resp <= _off + 100:
                     self._trial["reaction_time"] = float(_on)
-                    self._trial["peak_speed"] = float(mov_dict["speed_peaks"][i, 1] * 1000)
+                    self._trial["peak_speed"] = float(
+                        mov_dict["speed_peaks"][i, 1] * 1000
+                    )
                     break
 
             if self._trial["state_outcome"] == 1 and self._trial["reaction_time"] is None:
-                #sometimes the even the rig response time is not recorded on time, so 
+                # sometimes the even the rig response time is not recorded on time, so
                 # we get the peak speed time as response
-                _temp = mov_dict["speed_peaks"][:,0].astype(int)
-                velo_times = t_interp[_temp] # time of highest speed
-                idx_val = np.where(velo_times>150)[0][0]
+                _temp = mov_dict["speed_peaks"][:, 0].astype(int)
+                velo_times = t_interp[_temp]  # time of highest speed
+                idx_val = np.where(velo_times > 150)[0][0]
                 self._trial["rig_response_time"] = float(velo_times[idx_val])
-                self._trial["reaction_time"] = float(mov_dict["onsets"][:,1][idx_val])
-                self._trial["peak_speed"] = float(mov_dict["speed_peaks"][:, 1][idx_val] * 1000)
+                self._trial["reaction_time"] = float(mov_dict["onsets"][:, 1][idx_val])
+                self._trial["peak_speed"] = float(
+                    mov_dict["speed_peaks"][:, 1][idx_val] * 1000
+                )
                 print(self._trial["trial_no"])
                 print(f"old:{_resp}")
                 print(f"new:{float(velo_times[idx_val])}")
-                
