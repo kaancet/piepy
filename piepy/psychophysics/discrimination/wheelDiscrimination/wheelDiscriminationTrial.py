@@ -54,7 +54,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
     def set_state_events(self) -> None:
         """Goes over the transitions to set state based timings and also sets the state_outcome"""
 
-        self._trial["t_stimstart"] = self.data["state"].filter(
+        self._trial["t_vstimstart"] = self.data["state"].filter(
             pl.col("transition") == "stimstart"
         )[0, "corrected_elapsed"]
 
@@ -70,7 +70,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
 
         stim_end = self.data["state"].filter(pl.col("transition").str.contains("stimend"))
         if len(stim_end):
-            self._trial["t_stimend"] = stim_end[0, "corrected_elapsed"]
+            self._trial["t_vstimend"] = stim_end[0, "corrected_elapsed"]
 
         trial_end = self.data["state"].filter(
             pl.col("transition").str.contains("trialend")
@@ -81,22 +81,59 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
     def set_vstim_properties(self):
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties"""
         super().set_vstim_properties()
-
+        columns_to_modify = ["contrast", "sf", "tf", "posx"]
         self._trial["prob"] = self._trial["prob"][0][0]
         self._trial["fraction_r"] = self._trial["fraction_r"][0][0]
+        
+        _correct = self._trial.pop("correct")[0][0]
+        _side = "_r" if _correct else "_l"  # right if 1, left if 0
+        _other_side = "_l" if _correct else "_r"  # right if 1, left if 0
 
     def set_wheel_traces(self, reset_time_point: float) -> None:
         """Sets the wheel"""
         wheel_array = self._get_rig_event("position")
+        trace = WheelTrace()
         if wheel_array is not None:
             t = wheel_array[:, 0]
             pos = wheel_array[:, 1]
-            WheelTrace.init_interpolator(t, pos)
-            self._trial["wheel_t"] = [
-                WheelTrace().reset_time_frame(t, reset_time_point).tolist()
-            ]
-            self._trial["wheel_pos"] = [WheelTrace().reset_position(pos, 0).tolist()]
+            
+            # check for timing recording errors, sometimes t is not monotonically increasing
+            t,pos = trace.fix_trace_timing(t,pos)
+            
+            self._trial["wheel_t"] = [t.tolist()]
+            self._trial["wheel_pos"] = [pos.tolist()]
+            
+            _, _, t_interp, tick_interp = trace.reset_and_interpolate(
+                t, pos, reset_time_point, 5
+            )
+            
+            pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
 
+            mov_dict = trace.get_movements(
+                t_interp,
+                pos_interp,
+                freq=5,
+                pos_thresh=0.00015,  # rads, 0.02 for ticks
+                t_thresh=0.5,
+            )
+
+            self._trial["reaction_time"] = None
+            if "_rig_response_time" in self._trial.keys():
+                _resp = self._trial["rig_response_time"]
+            else:
+                _resp = self._trial["state_response_time"]
+            for i in range(len(mov_dict["onsets"])):
+                _on = mov_dict["onsets"][i, 1]
+                _off = mov_dict["offsets"][i, 1]
+                if _resp < _off and _resp >= _on:
+                    # this is the movement that registered the animals answer
+                    self._trial["reaction_time"] = float(_on)
+                    break
+                # sometimes the response is in between two movements
+                if _resp >= _off and _resp <= _off + 100:
+                    self._trial["reaction_time"] = float(_on)
+                    break
+            
     def set_outcome(self) -> None:
         """Sets the trial outcome by using the integer state outcome value"""
         if self._trial["state_outcome"] is not None:

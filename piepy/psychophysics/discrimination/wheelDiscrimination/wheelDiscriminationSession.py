@@ -1,12 +1,13 @@
 import time
-import scipy.stats as st
+import os
 from os.path import join as pjoin
+import polars as pl
 
-from ....core.run import *
-from ....core.pathfinder import *
-from ....core.config import config
+
+from ....core.run import RunData, Run
+from ....core.pathfinder import Paths
 from ....core.session import Session
-from ....core.log_repair_functions import *
+from ....core.io import display, load_json_dict, save_dict_json
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
 
@@ -14,7 +15,6 @@ STATE_TRANSITION_KEYS = {
     "0->1": "trialstart",
     "1->2": "stimstart",
     "2->3": "responsestart",
-    "2->5": "",
     "3->4": "correct",
     "3->5": "incorrect",
     "3->6": "catch",
@@ -27,6 +27,125 @@ STATE_TRANSITION_KEYS = {
 class WheelDiscriminationRunData(RunData):
     def __init__(self, data=None):
         super().__init__(data)
+        
+    def set_data(self, data: pl.DataFrame) -> None:
+        """Sets the data of the session and augments it
+
+        Args:
+            data: Dataframe
+        """
+        if data is not None:
+            super().set_data(data)
+            self.add_qolumns()
+            self.add_rig_response_time()
+    
+    def add_qolumns(self) -> None:
+        """ Adds some quality of life (qol) columns """
+        
+        # add a stim_side column for ease of access
+        self.data = self.data.with_columns(
+            pl.when(pl.col("stim_pos") > 0)
+            .then(pl.lit("contra"))
+            .when(pl.col("stim_pos") < 0)
+            .then(pl.lit("ipsi"))
+            .when(pl.col("stim_pos") == 0)
+            .then(pl.lit("catch"))
+            .otherwise(None)
+            .alias("stim_side")
+        )
+        
+        # round sf and tf
+        self.data = self.data.with_columns(
+            [
+                (pl.col("sf").round(2).alias("sf")),
+                (pl.col("tf").round(1).alias("tf")),
+            ]
+        )
+
+        # adds string stimtype
+        self.data = self.data.with_columns(
+            (
+                pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz"
+            ).alias("stim_type")
+        )
+
+        # add signed contrast
+        self.data = self.data.with_columns(
+            pl.when(pl.col("stim_side") == "ipsi")
+            .then((pl.col("contrast") * -1))
+            .otherwise(pl.col("contrast"))
+            .alias("signed_contrast")
+        )
+
+        # add easy/hard contrast type groups
+        self.data = self.data.with_columns(
+            pl.when(pl.col("contrast") >= 25)
+            .then(pl.lit("easy"))
+            .when((pl.col("contrast") < 25) & (pl.col("contrast") > 0))
+            .then(pl.lit("hard"))
+            .when(pl.col("contrast") == 0)
+            .then(pl.lit("catch"))
+            .otherwise(None)
+            .alias("contrast_type")
+        )
+        
+    def add_pattern_related_columns(self, pattern_path: str) -> None:
+        """Adds columns related to the silencing pattern if they exist"""
+        if len(self.data["opto"].unique()) == 1:
+            # Regular training sessions
+            # add the pattern name depending on pattern id
+            self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
+            # add 'stimkey' from sftf
+            self.data = self.data.with_columns(
+                (pl.col("stim_type") + "_-1").alias("stimkey")
+            )
+            # add stim_label for legends and stuff
+            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
+        else:
+            if pattern_path is not None and os.path.exists(pattern_path):
+                pattern_names = {}
+                for im in os.listdir(pattern_path):
+                    if im.endswith(".tif"):
+                        pattern_id = int(im[:-4].split("_")[-1])
+                        if pattern_id == -1:
+                            pattern_names[pattern_id] = "nonopto"
+                        else:
+                            name = im[:-4].split("_")[-2]
+                            pattern_names[pattern_id] = name
+
+                try:
+                    # add the pattern name depending on pattern id
+                    self.data = self.data.with_columns(
+                        pl.struct(["opto_pattern", "state_outcome"])
+                        .map_elements(
+                            lambda x: (
+                                pattern_names[x["opto_pattern"]]
+                                if x["state_outcome"] != -1
+                                else None
+                            ),
+                            return_dtype=str,
+                        )
+                        .alias("opto_region")
+                    )
+                except KeyError:
+                    raise KeyError(
+                        "Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to an integer (0,-1,1,..)!"
+                    )
+            else:
+                raise ValueError(f"{pattern_path} is not a valid path")
+
+            # add 'stimkey' from sftf
+            self.data = self.data.with_columns(
+                (
+                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
+                ).alias("stimkey")
+            )
+            # add stim_label for legends and stuff
+            self.data = self.data.with_columns(
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
+                    "stim_label"
+                )
+            )
 
 
 class WheelDiscriminationRun(Run):
