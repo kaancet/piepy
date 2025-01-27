@@ -20,6 +20,21 @@ class WheelTrace:
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
         return np.nanargmin(np.abs(arr - value))
+    
+    @staticmethod
+    def fix_trace_timing(t:np.ndarray,pos:np.ndarray) -> tuple[np.ndarray,np.ndarray]:
+        """ Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing) """
+        while not np.all(np.diff(t) > 0):
+            if np.diff(t)[-1] < 0:
+                # sometimes the last element is problematic
+                t = t[:-1]
+                pos = pos[:-1]
+            else:
+                # find and delete that fucker
+                _idx = np.where(np.diff(t) <= 0)[0]
+                t = np.delete(t, _idx)
+                pos = np.delete(pos, _idx)
+        return t,pos
 
     @classmethod
     def init_interpolator(cls, t: ArrayLike, pos: ArrayLike) -> None:
@@ -37,13 +52,7 @@ class WheelTrace:
     @classmethod
     def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
         """Resets the time ticks to be zero at reset_time_point"""
-        ret = t - reset_time_point
-
-        # check if trace has zero crossing
-        if ((ret[:-1] * ret[1:]) < 0).sum() < 1:
-            # means the wheel movement was recorded after the given reset time point
-            ret -= ret[0]  # make the first point 0
-        return ret
+        return t - reset_time_point
 
     @classmethod
     def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
@@ -59,8 +68,17 @@ class WheelTrace:
         cls, t: np.ndarray, pos: np.ndarray, reset_time: float, interp_freq: float = 5
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """ """
-        # reset the time-frame
+        if not reset_time > t[0]:
+            # means that the first wheel movement was recorded after the given reset time point
+            # fill_in the time and pos until reaching the reset_time
+            add_t = np.arange(reset_time,t[0],50)
+            add_pos = np.array([pos[0]]*len(add_t))
+            
+            t = np.append(add_t,t)
+            pos = np.append(add_pos,pos)
+
         reset_t = cls.reset_time_frame(t, reset_time)
+            
         # init interpolator with ticks first
         cls.init_interpolator(reset_t, pos)
         # reset positions
@@ -276,9 +294,17 @@ class WheelTrace:
                 for m, n in zip(onset_samps, offset_samps)
             ]
         )
-        peak_amps = np.fromiter(peaks, dtype=float, count=onsets.size)
+        peak_samps = np.array(
+            [
+                m + np.abs(pos[m:n] - pos[m]).argmax()
+                for m, n in zip(onset_samps, offset_samps)
+            ]
+        )
+        peaks = np.array([pos[_i] - pos[_o] for _i,_o in zip(peak_samps,onset_samps)])
+        # peak_amps = np.fromiter(peaks, dtype=float, count=onsets.size)
+        
         movement_dict["peaks"] = np.hstack(
-            (peaks.reshape(-1, 1), peak_amps.reshape(-1, 1))
+            (peak_samps.reshape(-1, 1), peaks.reshape(-1, 1))
         )
 
         N = 10  # Number of points in the Gaussian
@@ -287,14 +313,16 @@ class WheelTrace:
             N, STDEV
         )  # A 10-point Gaussian window of a given s.d.
         vel = scipy.signal.convolve(np.diff(np.insert(pos, 0, 0)), gauss, mode="same")
+        vel = cls.get_filtered_velocity(pos,interp_freq=freq)
 
         # For each movement period, find the timestamp where the absolute velocity was greatest
-        vel_peaks = np.array(
-            [t[m + np.abs(vel[m:n]).argmax()] for m, n in zip(onset_samps, offset_samps)]
+        speed_peak_samps = np.array(
+            [m + np.abs(vel[m:n]).argmax() for m, n in zip(onset_samps, offset_samps)]
         )
-        vel_peak_times = np.fromiter(vel_peaks, dtype=float, count=onsets.size)
-        movement_dict["velo_peaks"] = np.hstack(
-            (vel_peak_times.reshape(-1, 1), vel_peaks.reshape(-1, 1))
+        speed_peaks = np.array([np.abs(vel[_v]) for _v in speed_peak_samps])
+        speed_peaks = np.fromiter(speed_peaks, dtype=float, count=onsets.size)
+        movement_dict["speed_peaks"] = np.hstack(
+            (speed_peak_samps.reshape(-1, 1), speed_peaks.reshape(-1, 1))
         )
 
         return movement_dict

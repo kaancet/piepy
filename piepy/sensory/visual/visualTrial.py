@@ -54,10 +54,18 @@ class VisualTrialHandler(TrialHandler):
         elif screen_array is not None and len(screen_array) == 1:
             self._trial["t_vstimstart_rig"] = screen_array[0, 0]
             self.was_screen_off = False
-        elif screen_array is not None:
-            raise ScreenPulseError(
-                f"[TRIAL-{self._trial['trial_no']}] Funky screen pulses with length {len(screen_array)}"
-            )
+        elif screen_array is not None and len(screen_array) > 2:
+            # sometimes the screen pulses are weird
+            # try to get the signals that make sense from the state machine
+            s1 = self.data["state"].filter(pl.col("transition")=="stimstart")[0,"elapsed"]
+            s2 = self.data["state"].filter(pl.col("transition").is_in(["hit","miss"]))[0,"elapsed"]
+
+            self._trial["t_vstimstart_rig"] = s1
+            self._trial["t_vstimend_rig"] = s2
+        # else:
+        #     raise ScreenPulseError(
+        #         f"[TRIAL-{self._trial['trial_no']}] Funky screen pulses with length {len(screen_array)}"
+        #     )
 
     def recheck_screen_events(self, screen_data: pl.DataFrame) -> None:
         """Takes the screen dataframe to check the screen events once again

@@ -291,7 +291,7 @@ class WheelDetectionRun(Run):
 class WheelDetectionSession(Session):
     def __init__(
         self,
-        sessiondir,
+        sessiondir: str,
         load_flag: bool,
         save_mat: bool = False,
         skip_google: bool = True,

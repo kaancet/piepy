@@ -183,6 +183,7 @@ def parse_stimpy_log(fname: str):
                 pl.col("value")
                 .str.strip_chars("]")
                 .str.strip_chars(" ")
+                .cast(pl.Float64)
                 .cast(pl.Int64, strict=False),
             ]
         ).collect()
@@ -388,100 +389,3 @@ def parse_stimpygithub_log(fname: str) -> dict:
 
 
 # can add new parsers below
-
-
-# def parseVStimLog(fname):
-#     comments = []
-#     faulty = True
-#     with open(fname, "r") as fd:
-#         for line in fd:
-#             if line.startswith("#"):
-#                 comments.append(line.strip("\n").strip("\r"))
-#                 if "# CODES: stateMachine=20" in line:
-#                     faulty = False
-
-#     # # if state machine init not present
-#     # if faulty:
-#     #     display('LOGGING INITIALIZATION FAULTY, FIXING COMMENT HEADERS')
-#     #     comments += ['# Started state machine v1.2 - timing sync to rig',
-#     #     '# CODES: stateMachine=20',
-#     #     '# STATE HEADER: code,elapsed,cycle,newState,oldState,stateElapsed,trialType',
-#     #     '# CODES: vstim=10',
-#     #     '# VLOG HEADER:code,presentTime,iStim,iTrial,iFrame,blank,contrast,posx,posy,indicatorFlag']
-
-#     codes = {}
-#     vlogheader = []
-#     righeader = []
-#     for c in comments:
-#         if c.startswith("# CODES:"):
-#             cod = c.strip("# CODES:").strip(" ").split(",")
-#             for cd in cod:
-#                 k, v = cd.split("=")
-#                 codes[int(v)] = k
-#         elif c.startswith("# VLOG HEADER:"):
-#             cod = c.strip("# VLOG HEADER:").strip(" ").split(",")
-#             vlogheader = [c.replace(" ", "") for c in cod]
-#         elif c.startswith("# RIG CSV:"):
-#             cod = c.strip("# RIG CSV:").strip(" ").split(",")
-#             righeader = [c.replace(" ", "") for c in cod]
-
-#     logdata = pd.read_csv(
-#         fname,
-#         names=[i for i in range(len(vlogheader))],
-#         delimiter=",",
-#         header=None,
-#         comment="#",
-#         engine="c",
-#     )
-
-#     data = dict()
-#     for v in codes.keys():
-#         k = codes[v]
-#         data[k] = logdata[logdata[0] == v]
-#         if len(data[k]):
-
-#             # get the columns from most filled row
-#             tmp_nona = data[k].dropna()
-#             if len(tmp_nona):
-#                 tmp = tmp_nona.iloc[0].copy()
-#             else:
-#                 tmp = data[k].iloc[0].copy()
-#             ii = np.where([type(t) is str for t in tmp])
-#             for i in ii:
-#                 tmp[i] = 0
-
-#             idx = np.where([~np.isnan(d) for d in tmp])[0]
-#             data[k] = data[k][idx]
-#             if len(idx) <= len(righeader):
-#                 cols = righeader
-#             else:
-#                 cols = vlogheader[: len(idx)]
-#             data[k] = pd.DataFrame(data=data[k])
-#             data[k].columns = cols
-
-#     if "vstim" in data.keys() and "screen" in data.keys():
-#         # extrapolate duinotime from screen indicator
-#         indkey = "not found"
-#         fliploc = []
-#         if "indicatorFlag" in data["vstim"].keys():
-#             indkey = "indicatorFlag"
-#             fliploc = np.where(
-#                 np.diff(np.hstack([0, data["vstim"]["indicatorFlag"], 0])) != 0
-#             )[0]
-#         elif "blank" in data["vstim"].keys():
-#             indkey = "blank"
-#             fliploc = np.where(
-#                 np.diff(np.hstack([0, data["vstim"]["blank"] == 0, 0])) != 0
-#             )[0]
-#         if len(data["screen"]) == len(fliploc):
-#             data["vstim"]["duinotime"] = interp1d(
-#                 fliploc, data["screen"]["duinotime"], fill_value="extrapolate"
-#             )(np.arange(len(data["vstim"])))
-#         else:
-
-#             display(
-#                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
-#                     len(data["screen"]), indkey, len(fliploc)
-#                 ), color="yellow"
-#             )
-#     return data, comments
