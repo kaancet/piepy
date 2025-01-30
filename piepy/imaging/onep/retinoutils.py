@@ -1,4 +1,5 @@
 import os
+import math
 import numpy as np
 from tqdm import tqdm
 import tifffile as tf
@@ -14,18 +15,18 @@ def downsample_image(image, block_size=2, func=np.mean):
     else:
         assert (
             block_size[0] == block_size[1]
-        ), f"Only square kernels allowed for downsapling"
+        ), "Only square kernels allowed for downsapling"
 
     if len(image.shape) > 2:
         if image.shape[0] == 1:
             # a 2d image in a 3d matrix shape
             image = image[0, :, :]
         else:
-            raise ValueError(f"Input image can't have a 3rd dimension bigger than 1!")
+            raise ValueError("Input image can't have a 3rd dimension bigger than 1!")
     elif len(image.shape) == 2:
         pass
     else:
-        raise ValueError(f"Input image is not 2D!!")
+        raise ValueError("Input image is not 2D!!")
 
     return block_reduce(image, block_size=block_size, func=func)
 
@@ -131,7 +132,7 @@ def read_avgs(experiment_dir, downsample=0, downsample_func=np.mean):
 
                     try:
                         avg_mov_dict[key] = temp_mov[:, 0, :, :]
-                    except:
+                    except Exception:
                         avg_mov_dict[key] = temp_mov
 
                     if downsample:

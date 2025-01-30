@@ -1,5 +1,13 @@
+import os
 import cv2
-from ..cameraAnalysis import *
+import numpy as np
+import polars as pl
+import tifffile as tf
+from tqdm import tqdm
+from os.path import join as pjoin
+
+from ..retinoutils import downsample_movie
+from ..cameraAnalysis import CamDataAnalysis
 
 
 class OnePAnalysis(CamDataAnalysis):
@@ -175,7 +183,7 @@ class OnePAnalysis(CamDataAnalysis):
             # TODO: Test this with batches
             try:
                 batch_last_frame_div = np.where(end_frames == curr_batch[-1])[0][0]
-            except:
+            except Exception:
                 batch_last_frame_div = np.where(end_frames == end_frames[-1])[0][0]
 
             npbar = tqdm(range(batch_last_frame_div - prev_last_frame))
@@ -197,7 +205,7 @@ class OnePAnalysis(CamDataAnalysis):
         mov_dir = pjoin(save_path, "movies")
         if not os.path.exists(mov_dir):
             os.makedirs(mov_dir)
-        save_name = pjoin(mov_dir, f"avg")
+        save_name = pjoin(mov_dir, "avg")
         for k, v in kwargs.items():
             save_name += f"_{k}{int(v)}"
         save_name += ".tif"

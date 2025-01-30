@@ -1,8 +1,5 @@
 import os
-import math
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
 
 
 def load_dat(filename, nframes=None, offset=0, shape=None, dtype="uint16"):
