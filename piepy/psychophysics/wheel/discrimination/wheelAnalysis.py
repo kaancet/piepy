@@ -8,7 +8,7 @@ from ..fit_funcs import *
 from ..model.transformer import GLMHMMTransfromer
 from ..model.glmModel import Glm
 from ..utils import display, save_dict_json
-from ..statistics import *
+from ..wheelGroupedAggregator import *
 from .wheelSession import *
 
 

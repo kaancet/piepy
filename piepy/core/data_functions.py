@@ -1,11 +1,11 @@
-import polars as pl
 import itertools
+import polars as pl
 from collections.abc import Generator
 
 
 def make_subsets(
     data: pl.DataFrame,
-    col_name: str | list,
+    col_name: str | list[str],
     no_nan: bool = True,
     do_sort: bool = True,
 ) -> Generator:

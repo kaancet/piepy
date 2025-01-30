@@ -7,7 +7,7 @@ from ....core.exceptions import StateMachineError, VstimLoggingError
 from ....core.utils import unique_except
 from ....sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from ...psychophysicalTrial import PsychophysicalTrial, PsychophysicalTrialHandler
-from ...wheelTrace import WheelTrace
+from ..wheelTrace import WheelTrace
 
 
 OUTCOMES = {-1: "early", 1: "hit", 0: "miss"}
@@ -24,6 +24,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
     def __init__(self):
         super().__init__()
         self._trial = {k: None for k in WheelDetectionTrial.columns}
+        self.is_early = False
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDetectionTrial)
 
@@ -33,54 +34,58 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         """Main function that is called from outside, sets the trial, validates data type and returns it"""
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
-        _is_trial_early = "early" in self.data["state"]["transition"].to_list()
+        self.is_early = self.check_early()
 
         if not _is_trial_set:
             return None
-        else:
-            self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
-            self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
 
-            # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
-            # this causes a trial to have a single screen event (ON) to be parsed into a given trial
-            # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
-            if not self.was_screen_off:
-                self.recheck_screen_events(rawdata["screen"])
+        self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
+        self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
 
-            self.set_state_events()  # should be run after sync_timeframes, needs the corrected time columns
-            if self._trial["state_outcome"] == -1:
-                _is_trial_early = True
-            self.set_vstim_properties(
-                _is_trial_early
-            )  # should be run after sync_timeframes
+        # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
+        # this causes a trial to have a single screen event (ON) to be parsed into a given trial
+        # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
+        if not self.was_screen_off:
+            self.recheck_screen_events(rawdata["screen"])
 
-            # else:
-            #     # here we manually set corrected columns,
-            #     # not pretty, but necessary to keep different trial types independent and modular
-            #     self.data["state"] = self.data["state"].with_columns(
-            #         pl.col("elapsed").alias("corrected_elapsed")
-            #     )
-            #     self.data["vstim"] = self.data["vstim"].with_columns(
-            #         pl.col("presentTime").alias("corrected_presentTime")
-            #     )
+        self.set_state_events()  # should be run after sync_timeframes, needs the corrected time columns
+        self.set_vstim_properties()  # should be run after sync_timeframes
 
-            if not _is_trial_early:
-                if self._trial["t_vstimstart_rig"] is not None:
-                    self.set_wheel_traces(self._trial["t_vstimstart_rig"])
-                else:
-                    self.set_wheel_traces(self._trial["t_vstimstart"])
+        self.adjust_rig_response()
+        if not self.is_early:
+            if self._trial["t_vstimstart_rig"] is not None:
+                self.set_wheel_traces(self._trial["t_vstimstart_rig"])
             else:
-                self.set_wheel_traces(
-                    self._trial["t_trialinit"] + self._trial["duration_blank"]
-                )  # would be stimulus start
+                self.set_wheel_traces(self._trial["t_vstimstart"])
+        else:
+            self.set_wheel_traces(
+                self._trial["t_trialinit"] + self._trial["duration_blank"]
+            )  # would be stimulus start
+            
+        self.set_outcome()
+        self.set_licks()
+        self.set_reward()
+        self.set_opto()
+        return self._update_and_return(return_as)
 
-            self.adjust_rig_response()
-            self.set_outcome()
-            self.set_licks()
-            self.set_reward()
-            self.set_opto()
-            return self._update_and_return(return_as)
-
+    def check_early(self) -> bool:
+        """ Checks if the trial is early"""
+        _ret = False
+        if "early" in self.data["state"]["transition"].to_list():
+            _ret = True
+        else:
+            if "hit" in self.data["state"]["transition"].to_list():
+                _name = "hit"
+            elif "miss" in self.data["state"]["transition"].to_list():
+                _name = "miss"
+            else:
+                raise ValueError("ijbasdjsdobwdfibwdefiubweiubwef")
+                
+            _reps = self.data["state"].filter(pl.col("transition") == _name)[0,"stateElapsed"]
+            if _reps <= 200:
+                _ret = True
+        return _ret   
+    
     def set_state_events(self) -> None:
         """Goes over the transitions to set state based timings and also sets the state_outcome"""
         # iscatch?
@@ -156,7 +161,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         if len(trial_end):
             self._trial["t_trialend"] = trial_end[0, "corrected_elapsed"]
 
-    def set_vstim_properties(self, is_early_trial: bool) -> None:
+    def set_vstim_properties(self) -> None:
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties,
         Also converts some properties to be scalars instead of lists(this is experiment specific)
         """
@@ -192,8 +197,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
         if (
             "rig_react_diff" in self._trial.keys()
-            and self._trial["rig_react_diff"] is not None
-        ):
+            and self._trial["rig_react_diff"] is not None):
             _tiks = self._trial["rig_react_diff"][0]
             _idx = next((i for i, x in enumerate(_tiks) if x != -1), None)
             self._trial["rig_response_tick"] = (
@@ -232,14 +236,6 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 else:
                     raise VstimLoggingError("Reaction time logging is weird!")
 
-                # _diff_temp = unique_except(self._trial["rig_react_diff"][0], [-1])
-                # if len(_diff_temp) == 1:
-                #     self._trial["rig_response_diff"] = float(_diff_temp[0])
-                # elif len(_diff_temp) == 0:
-                #     self._trial["rig_response_diff"] = None
-                # else:
-                #     raise VstimLoggingError("Reaction time logging is weird!")
-
     def set_outcome(self) -> None:
         """Sets the trial outcome by using the integer state outcome value"""
         if self._trial["state_outcome"] is not None:
@@ -273,7 +269,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 t_interp,
                 pos_interp,
                 freq=5,
-                pos_thresh=0.0005,  # rads, 0.02 for ticks
+                pos_thresh=0.0003,  # rads, 0.02 for ticks
                 t_thresh=1,
                 min_dur=20,
                 min_gap=30,

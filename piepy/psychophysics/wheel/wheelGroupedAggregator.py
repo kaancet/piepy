@@ -5,52 +5,60 @@ from scipy.stats import (
     chi2,
     mannwhitneyu,
     wilcoxon,
-    fisher_exact,
-    barnard_exact,
-    boschloo_exact,
 )
 
-from ..core.data_functions import make_subsets
 
-
-class GroupedAggregator:
+class WheelGroupedAggregator:
     def __init__(self) -> None:
-        pass
-
-    def set_data(self, data: pl.DataFrame, outcomes:list, **kwargs) -> None:
+        self.data = None
+        self.outcomes = None
+    
+    def set_outcomes(self,outcomes:list[str]) -> None:
+        """ Sets the outcomes that the aggregator will group data into. 
+        If the data has been set before, checks if the outcomes are valid
+        
+        Args:
+            outcomes: A list of outcome values
+        """
+        if self.data is not None:
+            for o in outcomes:
+                if o not in self.data["outcome"]:
+                    raise ValueError(f"{o} is not a valid outcome type that is present in the outcome column of the data")
+            
+            if len(outcomes) < self.data["outcome"].drop_nulls().n_unique():
+                print(f" >WARNING< There are unused outcome values {outcomes} vs {self.data['outcome'].unique().to_list()}")
+        self.outcomes = outcomes
+        
+    def set_data(self, data:pl.DataFrame) -> None:
         """ Sets the data to be grouped/aggregated and statsed on
+        If the outcomes has been set before, checks if the data has valid values in it's outcome column
         
         Args:
             data: DataFrame of the run/session
-            outcomes: list of outcomes to aggregate under
         """
+        if self.outcomes is not None:
+            for o in self.outcomes:
+                if o not in data["outcome"]:
+                    raise ValueError("Provided dataframe has not all the values in corresponding to previously set outcomes!")
+                
+            if len(self.outcomes) < data["outcome"].drop_nulls().n_unique():
+                print(f" >WARNING< There are unused outcome values {self.outcomes} vs {data['outcome'].unique().to_list()}")
         self.data = data
-        self.grouped_data = self.group_data(outcomes,
-            kwargs.get("group_by", None), kwargs.get("do_sort", True)
-        )
-        # self.calculate_hit_rates(kwargs.get("p_method", "barnard"))
-
-    def group_data(
-        self, outcomes:list, group_by: list[str] = None, do_sort: bool = True
-    ) -> pl.DataFrame:
+        
+    def group_data(self, group_by: list[str], do_sort: bool = True) -> None:
         """Groups the data by given group_by column names
         
         Args:
             outcomes: list of outcomes to aggregate under
-            group_by: List oo=f column names to group the data by
+            group_by: List of column names to group the data by
             do_sort: falg to indicate whether to sort the data in the order of group_by
         """
-
-        for o in outcomes:
-            if o not in self.data["outcome"]:
-                raise ValueError(f"{o} is not a valid outcome type that is present in the outcome column of the data")
-
-        if group_by is None:
-            group_by = ["stim_type", "contrast", "stim_side", "opto_pattern"]
 
         for c_name in group_by:
             if c_name not in self.data.columns:
                 raise ValueError(f"{c_name} not in data columns!!")
+            
+        self.group_by = group_by
 
         q = self.data.group_by(group_by).agg(
             [
@@ -58,7 +66,7 @@ class GroupedAggregator:
                 pl.count().alias("count"),
             ]+ 
             [
-                (pl.col("outcome")==o).sum().alias(f"{o}_count") for o in outcomes
+                (pl.col("outcome")==o).sum().alias(f"{o}_count") for o in self.outcomes
             ]+
             [
                 (pl.col("response_time").alias("response_times")),
@@ -70,7 +78,7 @@ class GroupedAggregator:
                     pl.col("response_time")
                     .filter(pl.col("outcome") == o)
                     .alias(f"{o}_response_times")
-                ) for o in outcomes
+                ) for o in self.outcomes
             ]+
             [
                 (
@@ -78,14 +86,14 @@ class GroupedAggregator:
                     .filter(pl.col("outcome") == o)
                     .median()
                     .alias(f"{o}_median_response_time")
-                ) for o in outcomes
+                ) for o in self.outcomes
             ] +
             [
                 (
                     pl.col("rig_response_time")
                     .filter(pl.col("outcome") == o)
                     .alias(f"{o}_rig_response_times")
-                ) for o in outcomes
+                ) for o in self.outcomes
             ]+
             [
                 (
@@ -93,14 +101,14 @@ class GroupedAggregator:
                     .filter(pl.col("outcome") == o)
                     .median()
                     .alias(f"{o}_median_rig_response_time")
-                ) for o in outcomes
+                ) for o in self.outcomes
             ] + 
             [
                 (
                     pl.col("reaction_time")
                     .filter(pl.col("outcome") == o)
                     .alias(f"{o}_reaction_times")
-                )
+                ) for o in self.outcomes
             ] +
             [
                 (
@@ -108,7 +116,7 @@ class GroupedAggregator:
                     .filter(pl.col("outcome") == o)
                     .median()
                     .alias(f"{o}_median_reaction_time")
-                ) for o in outcomes
+                ) for o in self.outcomes
             ]+
             [
                 (pl.col("wheel_t")),
@@ -122,69 +130,8 @@ class GroupedAggregator:
 
         if do_sort:
             q = q.sort(group_by)
-        return q
+        self.grouped_data = q
 
-    def calculate_hit_rates(self, 
-                            positive:str, 
-                            negative:str,
-                            p_method: Literal["barnard", "boschloo", "fischer"] = "barnard") -> None:
-        """Sets the hit rates for each condition based on binomial distribution of hit count,
-        Needs data to be grouped first
-        
-        Args:
-            positive: name to positive outcome (hit, correct)
-            negative: name of the negative outcome (miss, incorrect)
-            p_method: method to calculate the p-value
-        """
-        # hit rates
-        self.grouped_data = self.grouped_data.with_columns(
-            (pl.col(f"{positive}_count") / pl.col("count")).alias("hit_rate")
-        )
-        self.grouped_data = self.grouped_data.with_columns(
-            (
-                1.96
-                * np.sqrt(
-                    (pl.col("hit_rate") * (1.0 - pl.col("hit_rate"))) / pl.col("count")
-                )
-            ).alias("confs")
-        )
-
-        # p-values
-        p_vals = []
-        non_early = self.grouped_data.filter(pl.col("stim_type").is_not_null())
-        for filt_tup in make_subsets(non_early, ["stim_type", "contrast", "stim_side"]):
-            _df = filt_tup[-1]
-            p = None
-            if 0 not in _df["opto_pattern"]:
-                # print("CAN'T DO P-VALUE ANALYSIS, MISSING OPTO COMPONENTS!! RETURNING AN EMPTY DATAFRAME")
-                pass
-
-            if len(_df):
-                table = _df[:, [f"{positive}_count", f"{negative}_count"]].to_numpy()
-                if table.shape == (2, 2) and not np.any(np.isnan(table)):
-                    # all elements are filled
-                    if p_method == "barnard":
-                        res = barnard_exact(table, alternative="two-sided")
-                    elif p_method == "boschloo":
-                        res = boschloo_exact(table, alternative="two-sided")
-                    elif p_method == "fischer":
-                        res = fisher_exact(table, alternative="two-sided")
-                    p = res.pvalue
-                    p_vals.extend([None, p])
-                else:
-                    p_vals.extend([p] * len(_df))
-            else:
-                p_vals.extend([p] * len(_df))
-
-        len_diff = len(self.grouped_data) - len(p_vals)
-        if len_diff < 0:
-            raise
-        p_vals = [None] * len_diff + p_vals
-        # p values are ordered because make_subsets sorts the dataframe and then runs through it
-        self.grouped_data = self.grouped_data.with_columns(
-            pl.Series("p_hit_rate", p_vals)
-        )
-        
     @staticmethod
     def get_pvalues_nonparametric(x1, x2, method: Literal["mannu","wilcoxon"] = "mannu") -> dict:
         """Returns the significance value of two distributions"""
