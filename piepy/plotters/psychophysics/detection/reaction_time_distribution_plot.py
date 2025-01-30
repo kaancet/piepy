@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 from ...color import Color
-from ...plotting_utils import set_style
+from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
 
 
@@ -28,9 +28,11 @@ def plot_reaction_time_distribution(
     **kwargs
 ) -> plt.Axes:
     """ """
-    set_style(kwargs.get("style","presentation"))
+    
     if mpl_kwargs is None:
         mpl_kwargs = {}
+    set_style(kwargs.get("style","presentation"))
+    override_plots()    
 
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (5, 5)))
@@ -55,7 +57,7 @@ def plot_reaction_time_distribution(
         bin_edges_early = np.arange(np.nanmin(early_times), np.nanmax(early_times)+bin_width, bin_width)
         early_counts, _ = np.histogram(early_times, bins=bin_edges_early)    
         
-        ax.step(bin_edges_early[1:], early_counts, where="pre",color="#9c9c9c",**mpl_kwargs)
+        ax._step(bin_edges_early[1:], early_counts, where="pre",color="#9c9c9c",mpl_kwargs=mpl_kwargs)
     
     nonearly_data = plot_data.filter(pl.col("outcome")!="early")
     for filt_tup in make_subsets(nonearly_data,["stimkey"]):
@@ -70,9 +72,9 @@ def plot_reaction_time_distribution(
             bin_edges = np.hstack((bin_edges, bin_edges_miss))
             
             counts, _ = np.histogram(times, bins=bin_edges)
-            ax.step(bin_edges[:-1], counts, 
+            ax._step(bin_edges[:-1], counts, 
                     color=clr.stim_keys[filt_key]["color"],
-                    **mpl_kwargs)
+                    mpl_kwargs=mpl_kwargs)
 
             # zero line
             ax.axvline(x=0, color="k", linewidth=1)

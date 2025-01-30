@@ -6,8 +6,7 @@ import matplotlib.transforms as transforms
 from sklearn.neighbors import KernelDensity
 
 from ...color import Color
-from ....psychophysics.wheelTrace import WheelTrace
-from ...plotting_utils import set_style
+from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
 
 
@@ -26,13 +25,13 @@ def plot_wheel_slope_and_offset(
     This is to see how the wheel movement dynamics change with different experimental conditions
     NOTE: It is better to call this function after filtering other conditions"""
     
-    clr = Color()
-    trace = WheelTrace()
-    trace_interp_freq = kwargs.get("interp_freq", 5)
-    set_style(kwargs.get("style","presentation"))
+    
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
+    clr = Color()
+    set_style(kwargs.get("style","presentation"))
+    override_plots()
 
     fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
     gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5),
@@ -55,66 +54,29 @@ def plot_wheel_slope_and_offset(
         sep = filt_tup[0]
         
         filt_df = filt_df.filter(pl.col("outcome")=="hit")
-        mov_onset = []
-        mov_slope = []
-        for i, trial in enumerate(filt_df.iter_rows(named=True)):
-            wheel_t = np.array(trial["wheel_t"])
-            wheel_tick = np.array(trial["wheel_pos"])
-            reset_time_point = trial[time_reset]
-            _,_, t_interp, tick_interp = trace.reset_and_interpolate(wheel_t, 
-                                                                     wheel_tick, 
-                                                                     reset_time_point, 
-                                                                     trace_interp_freq)
-            
-            # convert the interpolation
-            pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
-            
-            mov_dict = trace.get_movements(
-                t_interp,
-                pos_interp,
-                freq=trace_interp_freq,
-                pos_thresh=kwargs.get("pos_thresh", 0.00015),
-                t_thresh=kwargs.get("t_thresh", 0.5),
-            )
-            
-            wheel_react = trial["reaction_time"]
-            if wheel_react is not None:
-                for i in range(len(mov_dict["onsets"])):
-                    _on = mov_dict["onsets"][i,1]
-                    _off = mov_dict["offsets"][i,1]
-                    if wheel_react < _off and wheel_react >= _on:
-                        y0 = pos_interp[int(mov_dict["onsets"][i,0])]
-                        y1 = pos_interp[int(mov_dict["offsets"][i,0])]
-                        slope = (y1 - y0) / (_off - _on)
-                        break
-                    else:
-                        pass
-                
-                # uncertainty_idx = _on/slope
-                mov_onset.append(_on)
-                mov_slope.append(slope*1000)
-                
-        
-        ax.scatter(mov_slope,mov_onset,
+        mov_onset = filt_df["reaction_time"].to_numpy()
+        mov_peak_speed = filt_df["peak_speed"].to_numpy()
+
+        ax._scatter(mov_peak_speed,mov_onset,
                    c=clr.contrast_keys[str(sep)]["color"],
                    alpha=0.5,
-                   **mpl_kwargs)
+                   mpl_kwargs=mpl_kwargs)
         
-        x_d = np.linspace(np.nanmin(mov_slope)-2, np.nanmax(mov_slope)+2, 100)
-        kde = KernelDensity(bandwidth=np.abs(np.nanmin(mov_slope)/2), kernel='gaussian')
-        kde.fit(np.array(mov_slope)[:, None])
+        x_d = np.linspace(np.nanmin(mov_peak_speed)-1, np.nanmax(mov_peak_speed)+1, 100)
+        kde = KernelDensity(bandwidth="scott", kernel='gaussian')
+        kde.fit(np.array(mov_peak_speed)[:, None])
         logprob_slope = kde.score_samples(x_d[:, None])
         
-        ax_kdex.plot(x_d,np.exp(logprob_slope),color=clr.contrast_keys[str(sep)]["color"])
+        ax_kdex._plot(x_d,np.exp(logprob_slope),color=clr.contrast_keys[str(sep)]["color"],mpl_kwargs=mpl_kwargs)
         
-        y_d = np.linspace(np.nanmin(mov_onset)-2, np.nanmax(mov_onset)+2, 100)
-        kde = KernelDensity(bandwidth=np.nanmin(mov_onset)/2, kernel='gaussian')
+        y_d = np.linspace(np.nanmin(mov_onset)-1, np.nanmax(mov_onset)+1, 100)
+        kde = KernelDensity(bandwidth="scott", kernel='gaussian')
         kde.fit(np.array(mov_onset)[:, None])
         logprob_onset = kde.score_samples(y_d[:, None])
         
-        ax_kdey.plot(np.exp(logprob_onset),y_d,color=clr.contrast_keys[str(sep)]["color"])
+        ax_kdey._plot(np.exp(logprob_onset),y_d,color=clr.contrast_keys[str(sep)]["color"],mpl_kwargs=mpl_kwargs)
         
-        contrast_points = np.array([mov_slope,mov_onset])
+        contrast_points = np.array([mov_peak_speed,mov_onset])
         # Calculate the eigenvectors and eigenvalues
         covariance = np.cov(contrast_points)
 
@@ -139,10 +101,11 @@ def plot_wheel_slope_and_offset(
         ellipse.set_transform(transf + ax.transData)
         ax.add_patch(ellipse)
 
-    ax.set_xlabel("Slope (A.U)")
+    ax.set_xlabel("Slope (rad/ms)")
     ax.set_ylabel("Onset (ms)")
     ax.legend(frameon=False)
-    
+    ax.set_xlim()
+    #[np.nanmin(mov_peak_speed),np.nanmax(mov_peak_speed)]
     ax_kdex.set_axis_off()
     ax_kdey.set_axis_off()
     return fig

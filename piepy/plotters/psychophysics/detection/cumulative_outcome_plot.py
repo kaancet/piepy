@@ -1,7 +1,7 @@
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
-from ...plotting_utils import set_style
+from ...plotting_utils import set_style,override_plots
 
 
 def get_cumulative(time_data_arr: np.ndarray, bin_edges: np.ndarray) -> np.ndarray:
@@ -36,7 +36,7 @@ def plot_cumulative_outcome(data:pl.DataFrame,
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
         ax = fig.add_subplot(1, 1, 1)
     set_style(kwargs.get("style","presentation"))
-    
+    override_plots()
     if not include_zero:
         # for some reason filtering only for 0 contrast also filters out null values, this is a workaround...
         _ne_contrast = data.filter((pl.col("outcome")!="early") & (pl.col("contrast")!=0)) # non early contrast trials(excludes 0-150 ms responses too)
@@ -57,9 +57,9 @@ def plot_cumulative_outcome(data:pl.DataFrame,
         hit_start = np.where(bin_edges >= 150)[0][0]
         hit_end = np.where(bin_edges >= 1000)[0][0]
 
-        ax.step(bin_edges[0:hit_start], cum_sum[0:hit_start], color="#9c9c9c",where="pre")
-        ax.step(bin_edges[hit_end - 1 : -1], cum_sum[hit_end - 1 :], color="#CA0000",where="pre")
-        ax.step(bin_edges[hit_start:hit_end], cum_sum[hit_start:hit_end], color="#039612",where="pre")
+        ax._step(bin_edges[0:hit_start], cum_sum[0:hit_start], color="#9c9c9c",where="pre", mpl_kwargs=mpl_kwargs)
+        ax._step(bin_edges[hit_end - 1 : -1], cum_sum[hit_end - 1 :], color="#CA0000",where="pre", mpl_kwargs=mpl_kwargs)
+        ax._step(bin_edges[hit_start:hit_end], cum_sum[hit_start:hit_end], color="#039612",where="pre", mpl_kwargs=mpl_kwargs)
 
         ax.set_ylabel("Fraction of Trials")
         ax.set_xlabel("Time from Stimulus Onset(ms)")

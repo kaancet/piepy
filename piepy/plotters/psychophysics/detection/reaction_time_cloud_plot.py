@@ -4,11 +4,9 @@ import matplotlib.pyplot as plt
 
 
 from ...color import Color
-from ...plotting_utils import set_style, make_linear_axis
+from ...plotting_utils import set_style, make_linear_axis, override_plots
 from ....core.data_functions import make_subsets
-from ....psychophysics.detection.wheelDetection.wheelDetectionGroupedAnalyzer import (
-    WheelDetectionGroupedAnalyzer,
-)
+from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
 
 
 # TODO: change nbins to bin width
@@ -69,16 +67,22 @@ def plot_reaction_time_cloud(
 ) -> plt.Axes:
     """ """
 
-    set_style(kwargs.get("style", "presentation"))
+    
     if mpl_kwargs is None:
         mpl_kwargs = {}
+    set_style(kwargs.get("style", "presentation"))
+    override_plots()    
 
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
         ax = fig.add_subplot(1, 1, 1)
 
     clr = Color()
-    analyzer = WheelDetectionGroupedAnalyzer(data, **kwargs)
+    analyzer = WheelDetectionGroupedAggregator()
+    analyzer.set_data(data=data)
+    analyzer.group_data(group_by=["stim_type", "stim_side", "contrast", "opto_pattern"])
+    analyzer.calculate_hit_rates()
+    analyzer.calculate_opto_pvalues()
     grouped_nonearly_data = analyzer.grouped_data.drop_nulls("contrast")
 
     if hit_only:
@@ -123,17 +127,19 @@ def plot_reaction_time_cloud(
                             low=-jit, high=jit, size=x_dots.shape[0]
                         )
 
-                        ax.scatter(
+                        ax._scatter(
                             x_dots,
                             times,
                             s=(plt.rcParams["lines.markersize"] ** 2) / 2,
+                            linewidths = 0.5,
+                            edgecolors = "w",
                             color=clr.stim_keys[stim_filt_key]["color"],
                             label=(
                                 filt_df[0, "stim_label"]
                                 if filt_tup[1] == "contra" and filt_tup[2] == 12.5
                                 else "_"
                             ),
-                            **mpl_kwargs,
+                            mpl_kwargs=mpl_kwargs,
                         )
 
             if len(filt_df) >= 2:

@@ -4,8 +4,8 @@ from scipy import stats
 import matplotlib.pyplot as plt
 
 from ...color import Color
-from ....psychophysics.wheelTrace import WheelTrace
-from ...plotting_utils import set_style
+from ....psychophysics.wheel.wheelTrace import WheelTrace
+from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
 
 
@@ -24,14 +24,17 @@ def plot_wheel_profile(
     Seperates the data by one variable and plots it on a single axes
     This is to see how the average wheel trajectory profile looks like for a given condition
     NOTE: It is better to call this function after filtering other conditions"""
-
-    clr = Color()
-    trace = WheelTrace()
-    trace_interp_freq = kwargs.get("interp_freq", 5)
-    set_style(kwargs.get("style", "presentation"))
+    
     if mpl_kwargs is None:
         mpl_kwargs = {}
-
+        
+    clr = Color()
+    set_style(kwargs.get("style", "presentation"))
+    override_plots()
+    
+    trace = WheelTrace()
+    trace_interp_freq = kwargs.get("interp_freq", 5)
+    
     time_lims = kwargs.pop("time_lims", None)
     if time_lims is None:
         time_lims = [-200, 1500]
@@ -122,7 +125,7 @@ def plot_wheel_profile(
             alpha=0.2,
             linewidth=0,
         )
-        ax.plot(_longest_time, avg, **clr.contrast_keys[str(sep)], **mpl_kwargs)
+        ax._plot(_longest_time, avg, **clr.contrast_keys[str(sep)],mpl_kwargs=mpl_kwargs)
 
     thresh_mean = np.mean(all_thresh)
     ax.axhline(thresh_mean, color="#147800", linewidth=0.5, alpha=0.8)
@@ -171,6 +174,7 @@ def plot_all_wheel_profiles(
     # if single axes
     if not isinstance(axes, np.ndarray):
         axes = [axes]
+    axes = axes.flatten()
 
     _target_id = uniq_opto[0]
     _stim_name = uniq_stim[0]
@@ -192,6 +196,7 @@ def plot_all_wheel_profiles(
             include_misses=include_misses,
             plot_speed=plot_speed,
             time_reset=time_reset,
+            mpl_kwargs=mpl_kwargs,
             **kwargs,
         )
 

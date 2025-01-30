@@ -3,9 +3,9 @@ import polars as pl
 import matplotlib.pyplot as plt
 
 from ...color import Color
-from ...plotting_utils import set_style,make_linear_axis,make_label
+from ...plotting_utils import set_style,make_linear_axis,make_label,override_plots
 from ....core.data_functions import make_subsets
-from ....psychophysics.detection.wheelDetection.wheelDetectionGroupedAnalyzer import WheelDetectionGroupedAnalyzer
+from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
 
 
 def plot_psychometric(
@@ -23,6 +23,7 @@ def plot_psychometric(
     Returns:
     plt.axes: Axes object
     """
+    override_plots()
     set_style(kwargs.get("style","presentation"))
     if mpl_kwargs is None:
         mpl_kwargs = {}
@@ -32,7 +33,12 @@ def plot_psychometric(
         ax = fig.add_subplot(1, 1, 1)
     
     clr = Color()
-    analyzer = WheelDetectionGroupedAnalyzer(data,**kwargs)
+    analyzer = WheelDetectionGroupedAggregator()
+    analyzer.set_data(data=data)
+    analyzer.group_data(group_by=["stim_type", "stim_side", "contrast", "opto_pattern"])
+    analyzer.calculate_hit_rates()
+    analyzer.calculate_opto_pvalues()
+    
     nonearly_data = analyzer.grouped_data.drop_nulls("contrast")
     
     lin_axis_dict = make_linear_axis(nonearly_data,"signed_contrast")
@@ -55,7 +61,7 @@ def plot_psychometric(
             stim_label = filt_df["stim_label"].unique().to_numpy()
             p_val = filt_df["p_hit_rate"].to_numpy()
             
-            ax.errorbar(
+            ax._errorbar(
                     lin_ax,
                     hr,
                     confs,
@@ -65,22 +71,24 @@ def plot_psychometric(
                     linewidth=plt.rcParams["lines.linewidth"] * 2,
                     elinewidth=plt.rcParams["lines.linewidth"],
                     linestyle=clr.stim_keys[filt_key]["linestyle"],
-                    **mpl_kwargs,
+                    mpl_kwargs = mpl_kwargs,
                 )
-            
-            for i,p in enumerate(p_val):
-                stars = ""
-                if p < 0.0001:
-                    stars = "****"
-                elif 0.0001 <= p < 0.001:
-                    stars = "***"
-                elif 0.001 <= p < 0.01:
-                    stars = "**"
-                elif 0.01 <= p < 0.05:
-                    stars = "*"
-                ax.text(
-                    lin_ax[i], 102 + 2 * i, stars, color=clr.stim_keys[filt_key]["color"]
-                )
+            if not np.all(p_val[:,0]==-1):
+                _p = p_val[:,0]
+                for i,p in enumerate(_p):
+                    stars = ""
+                    if p < 0.0001:
+                        stars = "****"
+                    elif 0.0001 <= p < 0.001:
+                        stars = "***"
+                    elif 0.001 <= p < 0.01:
+                        stars = "**"
+                    elif 0.01 <= p < 0.05:
+                        stars = "*"
+                    _rand_jit = np.random.randint(0,3,1)
+                    ax.text(
+                        lin_ax[i], 102 + _rand_jit, stars, color=clr.stim_keys[filt_key]["color"]
+                    )
                 
     # baseline
     baseline = nonearly_data.filter((pl.col("stim_side") == "catch") & (pl.col("opto") == False))  # noqa: E712
@@ -88,14 +96,14 @@ def plot_psychometric(
         cnt = baseline["count"].to_numpy()
         base_hr = np.sum(baseline["hit_count"].to_numpy()) / np.sum(cnt)
         base_conf = 1.96 * np.sqrt((base_hr * (1.0 - base_hr)) / np.sum(cnt))
-        ax.errorbar(
+        ax._errorbar(
             0,
             100 * base_hr,
             100 * base_conf,
             marker="o",
             label=f"Catch Trials{make_label([0],cnt)}",
             color="#909090",
-            **mpl_kwargs,
+            mpl_kwargs = mpl_kwargs,
         )
         ax.axhline(100 * base_hr, color="k", linestyle=":", linewidth=2, alpha=0.7)
             

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from ....psychophysics.wheelTrace import WheelTrace
+from ....psychophysics.wheel.wheelTrace import WheelTrace
 
 
 def plot_trial(
@@ -31,7 +31,7 @@ def plot_trial(
         reset_time = _trial[_start_name]
     else:
         if _trial["outcome"] == "early":
-            reset_time = _trial["t_trialinit"] + _trial["duratiion_blank"]
+            reset_time = _trial["t_trialinit"] + _trial["duration_blank"]
         else:
             reset_time = _trial["t_vstimstart"]
     
@@ -52,6 +52,9 @@ def plot_trial(
     wheel_pos_rad = trace.cm_to_rad(trace.ticks_to_cm(reset_tick))
     # convert the interpolation
     interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
+    
+    # get speed
+    speed = np.abs(trace.get_filtered_velocity(interp_pos,interp_freq)) * 1000
     
     # plot interp
     ax.plot(t_interp, interp_pos)
@@ -81,8 +84,11 @@ def plot_trial(
         t_interp,
         interp_pos,
         freq=interp_freq,
-        pos_thresh=kwargs.get("pos_thresh", 0.0001),
-        t_thresh=kwargs.get("t_thresh", 0.5),
+        pos_thresh=kwargs.get("pos_thresh", 0.0005),
+        t_thresh=kwargs.get("t_thresh", 1),
+        min_gap=kwargs.get("min_gap", 30),
+        pos_thresh_onset=kwargs.get("pos_thresh_onset", 1.5),
+        min_dur=kwargs.get("min_dur", 20),
     )
 
     for i in range(len(mov_dict["onsets"])):
@@ -90,3 +96,20 @@ def plot_trial(
         ax.scatter(_t[1], interp_pos[int(_t[0])], color="b")
         _e = mov_dict["offsets"][i]
         ax.scatter(_e[1], interp_pos[int(_e[0])], color="r")
+        
+    ax_speed = ax.twinx()
+    ax_speed.plot(t_interp,speed,c='r')
+        
+    _resp = _trial["rig_response_time"]
+    ax.axvline(_resp)
+    for i in range(len(mov_dict["onsets"])):
+        _on = mov_dict["onsets"][i, 1]
+        _off = mov_dict["offsets"][i, 1]
+        if _resp < _off and _resp >= _on:
+            # this is the movement that registered the animals answer
+            ax.axvline(_on)
+            break
+        # sometimes the response is in between two movements
+        elif _resp >= _off and _resp <= _off + 100:
+            ax.axvline(_on)
+            break

@@ -2,7 +2,7 @@ from matplotlib.pyplot import axes
 from ..basePlotters import *
 from scipy.stats import fisher_exact, barnard_exact
 
-
+#done
 class DetectionPsychometricPlotter(BasePlotter):
     def __init__(self, data: pl.DataFrame, **kwargs) -> None:
         super().__init__(data, **kwargs)
@@ -176,28 +176,28 @@ class DetectionPsychometricPlotter(BasePlotter):
         # ax.legend(loc='center left',bbox_to_anchor=(1,0.5),frameon=False)
         return ax
 
-
+#done
 class DetectionPerformancePlotter(PerformancePlotter):
     __slots__ = []
 
     def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
 
-
+# done
 class DetectionResponseTimeScatterCloudPlotter(ReactionTimeDistributionPlotter):
     __slots__ = []
 
     def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
 
-
+#done
 class DetectionReactionCumulativePlotter(ReactionCumulativePlotter):
     __slots__ = []
 
     def __init__(self, data: pl.DataFrame, **kwargs):
         super().__init__(data, **kwargs)
 
-
+#done
 class DetectionCumulativeReactionTimePlotter(CumulativeReactionTimePlotter):
     __slots__ = []
 
@@ -448,7 +448,7 @@ class DetectionResponseTypeBarPlotter(ResponseTypeBarPlotter):
 
         return ax
 
-
+# ?
 class DetectionResponseScatterPlotter(BasePlotter):
     __slots__ = ["stimkey", "plot_data"]
 
@@ -699,7 +699,7 @@ class DetectionLickScatterPlotter(LickScatterPlotter):
 
         return ax
 
-
+#done
 class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
     __slots__ = []
 
@@ -730,75 +730,3 @@ class DetectionWheelTrajectoryPlotter(WheelTrajectoryPlotter):
         #     ax_density.set_yticklabels([])
 
         return ax
-
-
-class DetectionSummaryPlotter:
-    __slots__ = ["data", "fig", "plotters", "stimkey"]
-
-    def __init__(self, data, **kwargs):
-        self.data = data  # gets the stim data dict
-        self.fig = None
-        self.init_plotters()
-
-    def init_plotters(self):
-        # TODO: Make this changable
-        self.plotters = {
-            "performance": DetectionPerformancePlotter(self.data),
-            "responsepertype": DetectionResponseTimeScatterCloudPlotter(self.data),
-            "resptype": DetectionResponseTypeBarPlotter(self.data),
-            "licktotal": LickPlotter(self.data),
-            "resphist": DetectionResponseHistogramPlotter(self.data),
-            "respscatter": DetectionResponseScatterPlotter(self.data),
-            "lickdist": DetectionLickScatterPlotter(self.data),
-        }
-
-    def plot(self, **kwargs):
-        self.fig = plt.figure(figsize=kwargs.get("figsize", (20, 10)))
-        widths = [2, 2, 1]
-        heights = [1, 1]
-        gs = self.fig.add_gridspec(
-            ncols=3,
-            nrows=2,
-            width_ratios=widths,
-            height_ratios=heights,
-            left=kwargs.get("left", 0),
-            right=kwargs.get("right", 1),
-            wspace=kwargs.get("wspace", 0.3),
-            hspace=kwargs.get("hspace", 0.4),
-        )
-
-        gs_in1 = gs[:, 0].subgridspec(nrows=2, ncols=1, hspace=0.3)
-
-        ax_perf = self.fig.add_subplot(gs_in1[1, 0])
-        ax_perf = self.plotters["performance"].plot(ax=ax_perf, seperate_by="contrast")
-
-        ax_lick = ax_perf.twinx()
-        ax_lick = self.plotters["licktotal"].plot(ax=ax_lick)
-        ax_lick.grid(False)
-
-        ax_resp = self.fig.add_subplot(gs_in1[0, 0])
-        ax_resp = self.plotters["resphist"].plot(ax=ax_resp)
-
-        ax_resp2 = self.fig.add_subplot(gs[0, 1])
-        ax_resp2 = self.plotters["responsepertype"].plot(ax=ax_resp2)
-
-        ax_type = self.fig.add_subplot(gs[0, 2])
-        ax_type = self.plotters["resptype"].plot(ax=ax_type)
-
-        ax_scatter = self.fig.add_subplot(gs[1, 1])
-        ax_scatter = self.plotters["respscatter"].plot(ax=ax_scatter)
-
-        ax_ldist = self.fig.add_subplot(gs[1, 2])
-        ax_ldist = self.plotters["lickdist"].plot(ax=ax_ldist)
-
-        self.fig.tight_layout()
-
-    def save(self, saveloc, date, animalid):
-        if self.fig is not None:
-            saveloc = pjoin(saveloc, "figures")
-            if not os.path.exists(saveloc):
-                os.mkdir(saveloc)
-            savename = f"{date}_sessionSummary_{animalid}.pdf"
-            saveloc = pjoin(saveloc, savename)
-            self.fig.savefig(saveloc, bbox_inches="tight")
-            display(f"Saved {savename} plot")

@@ -1,47 +1,41 @@
 import numpy as np
 import polars as pl
+from typing import Literal
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
 from ...core.data_functions import make_subsets
-from ..plotting_utils import set_style
+from ..plotting_utils import set_style, override_plots
 from ..color import Color
-
-
-def set_x_axis(data: pl.DataFrame, is_time: bool = False) -> tuple[str, np.ndarray]:
-    """Returns the label title and xaxis depending on is_time plotting flag"""
-    if is_time:
-        _x_label = "Time (mins)"
-        _x = data["t_trialend"].to_numpy() / 60_000
-    else:
-        _x = data["trial_no"].to_numpy()
-        _x_label = "Trial No"
-
-    return _x_label, _x
-
-
-def moving_average(a, n):
-    """ """
-    ret = np.nancumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1 :] / n
 
 
 def plot_performance(
     data: pl.DataFrame,
-    ax: plt.Axes = None,
+    ax: plt.Axes|None = None,
     plot_in_time: bool = False,
-    seperate_by: list = ["stimkey"],
+    seperate_by: list[str] = ["stimkey"],
     rolling_window: int = 0,
-    mpl_kwargs: dict = None,
+    mpl_kwargs: dict|None = None,
     **kwargs,
 ) -> plt.Axes:
-    """Plots the accuracy of subset of trials through the run"""
+    """ Plots the accuracy of subset of trials through the run 
+    
+    Args:
+        data: dataframe of trials to plot
+        ax: axes object to plot on
+        plot_in_time: flag to either plot the x-axis in time (mins) or trial count
+        seperate_by: column names to seperate the data by (e.g. stimkey, contrast)
+        rolling_window: width of the window to do rolling average
+        mpl_kwargs: keyword arguments to be used in matplotlib function calls
+    """
 
-    clr_obj = Color()
-    set_style(kwargs.get("style", "presentation"))
+    
     if mpl_kwargs is None:
         mpl_kwargs = {}
+        
+    clr_obj = Color()
+    set_style(kwargs.get("style", "presentation"))
+    override_plots()
 
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
@@ -88,7 +82,7 @@ def plot_performance(
         )
         y = filt_df["hit_rate"].to_numpy()
 
-        ax.plot(x, y, label=f"{filt_tup[:-1]}", **clr, **mpl_kwargs)
+        ax._plot(x, y, label=f"{filt_tup[:-1]}", **clr, mpl_kwargs=mpl_kwargs)
 
     ax.set_ylim([0, 110])
     ax.set_xlabel("Time (mins)" if plot_in_time else "Trial no.")
@@ -100,7 +94,7 @@ def plot_performance(
 def plot_reactiontime(
     data: pl.DataFrame,
     ax: plt.Axes = None,
-    reaction_of: str = "response_time",
+    reaction_of: Literal["reaction_time","response_time"] = "response_time",
     include_miss: bool = False,
     include_zero: bool = False,
     plot_in_time: bool = False,
@@ -109,12 +103,25 @@ def plot_reactiontime(
     mpl_kwargs: dict = None,
     **kwargs,
 ) -> plt.Axes:
-    """ """
+    """ Plots the change of reaction time of different type of trials through the run 
+    
+    Args:
+        data: dataframe of trials to plot
+        ax: axes object to plot on
+        reaction_of: column name of which type of reaction time to use (e.g. reaction_time or response_time)
+        include_zero: Include zero contrast trials or not
+        plot_in_time: flag to either plot the x-axis in time (mins) or trial count
+        seperate_by: column names to seperate the data by (e.g. stimkey, contrast)
+        rolling_window: width of the window to do rolling average
+        mpl_kwargs: keyword arguments to be used in matplotlib function calls
+    """
 
-    clr_obj = Color()
-    set_style(kwargs.get("style", "presentation"))
     if mpl_kwargs is None:
         mpl_kwargs = {}
+        
+    clr_obj = Color()
+    set_style(kwargs.get("style", "presentation"))
+    override_plots()
 
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
@@ -161,7 +168,7 @@ def plot_reactiontime(
         )
         y = filt_df[f"roll_{reaction_of}"].to_numpy()
 
-        ax.plot(x, y, label=f"{filt_tup[:-1]}", **clr, **mpl_kwargs)
+        ax._plot(x, y, label=f"{filt_tup[:-1]}", **clr, mpl_kwargs=mpl_kwargs)
 
     ax.set_xlabel("Time (mins)" if plot_in_time else "Trial no.")
     # parse the axis label
@@ -184,11 +191,20 @@ def plot_lick(
     mpl_kwargs: dict = None,
     **kwargs,
 ) -> plt.Axes:
-    """ """
-
-    set_style(kwargs.get("style", "presentation"))
+    """ Plots the cumulative amount of licks throughout the run
+    
+    Args:
+        data: dataframe of trials to plot
+        ax: axes object to plot on
+        plot_in_time: flag to either plot the x-axis in time (mins) or trial count
+        rolling_window: width of the window to do rolling average
+        mpl_kwargs: keyword arguments to be used in matplotlib function calls
+    """
     if mpl_kwargs is None:
-        mpl_kwargs = {}
+        mpl_kwargs = {"color":"#00BBFF"}
+    
+    set_style(kwargs.get("style", "presentation"))    
+    override_plots()
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=mpl_kwargs.pop("figsize", (15, 8)))
@@ -210,7 +226,7 @@ def plot_lick(
         x = df["lick_trial_nos"].explode().to_numpy()
 
     y = np.arange(1, len(x) + 1)
-    ax.plot(x, y, color="#00BBFF")
+    ax._plot(x, y, mpl_kwargs=mpl_kwargs)
 
     ax.set_xlabel(_x_label)
     ax.set_ylabel("Lick count")
