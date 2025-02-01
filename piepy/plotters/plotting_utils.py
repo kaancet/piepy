@@ -5,6 +5,7 @@ import functools
 import numpy as np
 import polars as pl
 import matplotlib.axes
+from typing import Literal
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from matplotlib.artist import ArtistInspector
@@ -202,8 +203,8 @@ def make_named_axes(data:pl.DataFrame,col_names:list[str],**kwargs) -> tuple[plt
     The col names will be used for row and column generation, respectively 
     
     Args:
-        data:
-        col_names:
+        data: DataFRame to get the unique values from
+        col_names: Names of the columns
     """
     assert len(col_names) <=2, "Can't have more than 2 column names(row and column of axes)"
     
@@ -226,7 +227,6 @@ def make_named_axes(data:pl.DataFrame,col_names:list[str],**kwargs) -> tuple[plt
             axes_dict[key] = axes[i,j]
 
     return f,axes_dict
-
 
 def get_valid_mpl_kwargs(plot_type:str, mpl_kwargs:dict) -> dict:
     """ Returns the subset of values that are valid for the given plot type 
@@ -256,6 +256,7 @@ def get_valid_mpl_kwargs(plot_type:str, mpl_kwargs:dict) -> dict:
 
 
 def make_label(name: np.ndarray, count: np.ndarray) -> str:
+    """ """
     ret = """\nN=["""
     for i, n in enumerate(name):
         ret += rf"""{float(n)}:$\bf{count[i]}$, """
@@ -264,7 +265,13 @@ def make_label(name: np.ndarray, count: np.ndarray) -> str:
     return ret
 
 def make_linear_axis(data: pl.DataFrame, column_name: str, mid_value: float = 0) -> dict:
-    """Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis"""
+    """Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis
+    
+    Args:
+        data: 
+        columns_name:
+        mid_value:
+    """
     if column_name not in data.columns:
         raise ValueError(f"{column_name} is not a valid column")
 
@@ -278,8 +285,8 @@ def make_linear_axis(data: pl.DataFrame, column_name: str, mid_value: float = 0)
 
     return {k: v for k, v in zip(dep_lst, ax_list)}
 
-def set_style(styledict: str = "presentation") -> None:
-    """Sets the styleof"""
+def set_style(styledict: str = Literal["presentation","print"]) -> None:
+    """Sets the style of the figure """
     if styledict in ["presentation", "print", "presentation_dark"]:
         plt.style.use(mplstyledict[styledict])
     else:
@@ -288,15 +295,47 @@ def set_style(styledict: str = "presentation") -> None:
         except KeyError:
             plt.style.use("default")
 
-
-def dates_to_deltadays(date_arr: list, start_date=dt.date):
+def dates_to_deltadays(date_arr: list, start_date=dt.date) -> list:
     """Converts the date to days from first start"""
     date_diff = [(day - start_date).days for day in date_arr]
     return date_diff
 
+def pval_plotter(
+    ax:plt.Axes,
+    p_val:float,
+    pos:list[float,float],
+    loc:float,
+    tail_height:float=0.05,
+    **kwargs) -> plt.Axes:
+    """ Annotates the p-val between two locations
+    
+    Args:
+        ax : axes object to draw the annotation on
+        txt : the text to be written
+        pos : the position
+        loc :
+        tail_height : height of annotation line tails as a proprtion of loc
+    """
+    x1,x2 = pos
+    h = loc*tail_height
+    
+    stars = "ns"
+    if p_val < 0.0001:
+        stars = "****"
+    elif 0.0001 <= p_val < 0.001:
+        stars = "***"
+    elif 0.001 <= p_val < 0.01:
+        stars = "**"
+    elif 0.01 <= p_val < 0.05:
+        stars = "*"
+    if stars != "ns":
+        ax.plot([x1, x1, x2, x2], [loc, loc+h, loc+h, loc], lw=1, c=kwargs.get("color","k"))
+        ax.text((x1+x2)*.5, loc, stars, ha='center', va='center', color=kwargs.get("color","k"))
+    return ax
 
 def override_plots(methods_to_override:list[str]|None=None) -> None:
-    # wrapping matplotlib functions to allow 
+    """ Overrides matplotlib.axes plots with "_" prepended to the name,
+    Currently the overriding function checks and filters the valid kwargs for the overriden plot"""
     if methods_to_override is None:
         methods_to_override = ["plot","errorbar","scatter","bar","step","fill_between"]
     

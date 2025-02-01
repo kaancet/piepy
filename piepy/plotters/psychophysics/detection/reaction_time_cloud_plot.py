@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 
 
 from ...color import Color
-from ...plotting_utils import set_style, make_linear_axis, override_plots
+from ...plotting_utils import set_style, make_linear_axis, override_plots, pval_plotter
 from ....core.data_functions import make_subsets
+from ....core.statistics import nonparametric_pvalues
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
 
 
@@ -147,22 +148,14 @@ def plot_reaction_time_cloud(
                 for k in range(1, len(filt_df)):
                     times_opto = filt_df[k, reaction_of].to_numpy()
                     if len(times_opto):
-                        p = analyzer.get_pvalues_nonparametric(times_non_opto, times_opto)
-                        stars = ""
-                        if p < 0.0001:
-                            stars = "****"
-                        elif 0.0001 <= p < 0.001:
-                            stars = "***"
-                        elif 0.001 <= p < 0.01:
-                            stars = "**"
-                        elif 0.01 <= p < 0.05:
-                            stars = "*"
-                        ax.text(
-                            lin_ax,
-                            1020 + 2 * k,
-                            stars,
-                            color=clr.stim_keys[filt_df[k, "stimkey"]]["color"],
-                        )
+                        p = nonparametric_pvalues(times_non_opto, times_opto)
+                        
+                        ax = pval_plotter(ax,p,
+                                          pos=[lin_ax,lin_ax],
+                                          loc=1020 + 2 * k,
+                                          tail_height=0,
+                                          color=clr.stim_keys[filt_df[k, "stimkey"]]["color"])
+                        
     # mid line
     ax.plot([0, 0], ax.get_ylim(), color="gray", linewidth=2, alpha=0.5)
 

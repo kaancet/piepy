@@ -29,7 +29,6 @@ def plot_wheel_profile(
         mpl_kwargs = {}
         
     clr = Color()
-    set_style(kwargs.get("style", "presentation"))
     override_plots()
     
     trace = WheelTrace()
@@ -156,6 +155,7 @@ def plot_all_wheel_profiles(
     **kwargs,
 ) -> plt.Figure:
     """Runs through opto patterns and stimulus types to plot them on seperate axes"""
+    set_style(kwargs.get("style", "presentation"))
     uniq_opto = data["opto_pattern"].drop_nulls().unique().sort().to_list()
     n_opto = len(uniq_opto)
 
@@ -173,7 +173,7 @@ def plot_all_wheel_profiles(
 
     # if single axes
     if not isinstance(axes, np.ndarray):
-        axes = [axes]
+        axes = np.array([axes])
     axes = axes.flatten()
 
     _target_id = uniq_opto[0]

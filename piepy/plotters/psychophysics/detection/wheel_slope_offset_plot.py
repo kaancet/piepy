@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
@@ -6,16 +7,116 @@ import matplotlib.transforms as transforms
 from sklearn.neighbors import KernelDensity
 
 from ...color import Color
-from ...plotting_utils import set_style, override_plots
+from ...plotting_utils import set_style, override_plots, pval_plotter
 from ....core.data_functions import make_subsets
+from ....core.statistics import mean_confidence_interval,ks2s_2d
 
 
-def plot_wheel_slope_and_offset(
+def plot_wheel_slope_and_offset_xyerror(
+    data:pl.DataFrame,
+    ax:plt.Axes|None=None,
+    seperate_by:list[str] = ["stimkey","contrast"],
+    include_misses:bool=False,
+    include_zero:bool=False,
+    mpl_kwargs:dict=None,
+    **kwargs
+) -> tuple[plt.Figure,plt.Axes]:
+    """ 
+    Plots the slope vs onset distributions of trials with 95%CI ranges
+    Seperates the data by one variable and plots it on a single axes
+    This is to see how the wheel movement dynamics change with different experimental conditions
+
+    Args:
+    
+    """
+    if mpl_kwargs is None:
+        mpl_kwargs = {}
+        
+    clr_obj = Color()
+    set_style(kwargs.get("style","presentation"))
+    override_plots()
+
+    if ax is None:
+        fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
+        ax = fig.add_subplot(1, 1, 1)
+    
+    if include_misses:
+        plot_data = data.filter(pl.col("outcome") != "early")
+    else:
+        plot_data = data.filter(pl.col("outcome") == "hit")
+        
+    if not include_zero:
+        # for some reason filtering only for 0 contrast also filters out null values, this is a workaround...
+        _ne_contrast = data.filter((pl.col("outcome")!="early") & (pl.col("contrast")!=0)) # non early contrast trials(excludes 0-150 ms responses too)
+        _early = data.filter((pl.col("outcome")=="early") & (pl.col("contrast").is_null())) # early trials (still excludes 0-150ms)
+        _early_after_stim = data.filter((pl.col("outcome")=="early") & (pl.col("contrast")!=0)) # 0-150 ms trials
+        plot_data = pl.concat([_ne_contrast,_early,_early_after_stim]).sort("trial_no")
+        
+    _temp_dict = {}
+    for filt_tup in make_subsets(plot_data,seperate_by):
+        filt_df = filt_tup[-1]
+        
+        filt_df = filt_df.filter(pl.col("outcome")=="hit")
+        mov_onset = filt_df["reaction_time"].to_numpy()
+        mov_peak_speed = filt_df["peak_speed"].to_numpy()
+        
+        onset_mean,onset_ci = mean_confidence_interval(mov_onset)
+        peak_speed_mean,peak_speed_ci = mean_confidence_interval(mov_peak_speed)
+        
+        _key = f"{[k for k in filt_tup[:-1]]}".strip("[").strip("]")
+        _temp_dict[_key] = np.hstack((mov_peak_speed.reshape(-1,1),
+                                      mov_onset.reshape(-1,1)))
+
+        if "stimkey" in seperate_by and "contrast" in seperate_by:
+            clr = {"color": clr_obj.make_key_mixed_color(filt_tup[0], str(filt_tup[1]))}
+        elif len(seperate_by) == 1 and "stimkey" in seperate_by:
+            clr = {"color": clr_obj.stim_keys[filt_tup[0]]["color"]}
+        elif len(seperate_by) == 1 and "contrast" in seperate_by:
+            clr = {"color": clr_obj.contrast_keys[str(filt_tup[0])]["color"]}
+        else:
+            clr = {}
+        
+        ax._scatter(mov_peak_speed,mov_onset,
+                   c=clr["color"],
+                   alpha=0.2,
+                   mpl_kwargs=mpl_kwargs)
+
+        ax.errorbar(peak_speed_mean,
+                    onset_mean,
+                    xerr=peak_speed_ci,
+                    yerr=onset_ci,
+                    c=clr["color"],
+                    marker='o', 
+                    markersize=10,
+                    label=f"{[k for k in filt_tup[:-1]]}")
+        
+    
+    for i,keys in enumerate(list(itertools.combinations(list(_temp_dict.keys()), 2))):
+        k1,k2 = keys
+        data1 = _temp_dict[k1]
+        data2 = _temp_dict[k2]
+        p,d = ks2s_2d(data1,data2,nboot=100)
+        
+        x1,_ = mean_confidence_interval(data1[:,0])
+        x2,_ = mean_confidence_interval(data2[:,0])
+        
+        y2,_ = mean_confidence_interval(data2[:,1])
+        ax = pval_plotter(ax,p,
+                          pos=[x1,x2],
+                          loc=700+i*10,
+                          tail_height=0.001)
+    
+    ax.set_xlabel("Slope (rad/s)")
+    ax.set_ylabel("Onset (ms)")
+    ax.legend(frameon=False)
+    ax.set_xlim()
+
+
+def plot_wheel_slope_and_offset_ellipse(
     data:pl.DataFrame,
     seperate_by:list[str] = ["contrast"],
     include_misses:bool=False,
     include_zero:bool=False,
-    time_reset:str="t_vstimstart_rig",
     mpl_kwargs:dict=None,
     **kwargs
 ) -> tuple[plt.Figure,plt.Axes]:
@@ -89,10 +190,10 @@ def plot_wheel_slope_and_offset(
         ell_radius_x = np.sqrt(1 + pearson)
         ell_radius_y = np.sqrt(1 - pearson)
         ellipse = Ellipse((0, 0), width=ell_radius_x * 2, 
-                            height=ell_radius_y * 2, 
-                            facecolor=clr.contrast_keys[str(sep)]["color"],
-                            alpha=0.7,
-                            label=sep)
+                                  height=ell_radius_y * 2, 
+                                  facecolor=clr.contrast_keys[str(sep)]["color"],
+                                  alpha=0.7,
+                                  label=sep)
         
         scale_x = np.sqrt(covariance[0, 0] * 2.4477)
         scale_y = np.sqrt(covariance[1, 1] * 2.4477)
@@ -111,7 +212,7 @@ def plot_wheel_slope_and_offset(
     return fig
     
     
-def plot_all_wheel_slope_and_offsets(
+def plot_all_wheel_slope_and_offset_ellipse(
     data: pl.DataFrame,
     include_misses:bool=False,
     include_zero:bool=False,
@@ -122,18 +223,18 @@ def plot_all_wheel_slope_and_offsets(
 ) -> plt.Figure:
     """ Runs through opto patterns and stimulus types to plot them in seperate figures"""
     figs = []
-
+    set_style(kwargs.get("style","presentation"))
     for filt_tup in make_subsets(data, ["opto_pattern", "stim_type"]):
         filt_df = filt_tup[-1]
 
 
-        f = plot_wheel_slope_and_offset(data=filt_df,
-                                         seperate_by=seperate_by,
-                                         include_misses=include_misses,
-                                         include_zero=include_zero,
-                                         time_reset=time_reset,
-                                         mpl_kwargs=mpl_kwargs,
-                                         **kwargs)
+        f = plot_wheel_slope_and_offset_ellipse(data=filt_df,
+                                                seperate_by=seperate_by,
+                                                include_misses=include_misses,
+                                                include_zero=include_zero,
+                                                time_reset=time_reset,
+                                                mpl_kwargs=mpl_kwargs,
+                                                **kwargs)
         f.suptitle(f"{filt_tup[1]}_{filt_tup[0]}")
         figs.append(f)
     return figs

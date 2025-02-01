@@ -3,7 +3,7 @@ import polars as pl
 import matplotlib.pyplot as plt
 
 from ...color import Color
-from ...plotting_utils import set_style,make_linear_axis,make_label,override_plots
+from ...plotting_utils import set_style,make_linear_axis,make_label,override_plots,pval_plotter
 from ....core.data_functions import make_subsets
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
 
@@ -45,9 +45,10 @@ def plot_psychometric(
     _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in nonearly_data["signed_contrast"].to_list()]
     nonearly_data = nonearly_data.with_columns(pl.Series("linear_axis",_lin_axis))
     
-    for filt_tup in make_subsets(nonearly_data, ["stimkey", "stim_side"]):
+    for filt_tup in make_subsets(nonearly_data, ["stimkey", "stim_side"],start_enumerate=0):
+        i = filt_tup[0]
         filt_df = filt_tup[-1]
-        filt_key = filt_tup[0]
+        filt_key = filt_tup[1]
         if not filt_df.is_empty():
             # don't plot nonopto catch(baseline) here, we'll do it later
             if filt_tup[1] == "catch" and not filt_df[0, "opto"]:
@@ -75,20 +76,12 @@ def plot_psychometric(
                 )
             if not np.all(p_val[:,0]==-1):
                 _p = p_val[:,0]
-                for i,p in enumerate(_p):
-                    stars = ""
-                    if p < 0.0001:
-                        stars = "****"
-                    elif 0.0001 <= p < 0.001:
-                        stars = "***"
-                    elif 0.001 <= p < 0.01:
-                        stars = "**"
-                    elif 0.01 <= p < 0.05:
-                        stars = "*"
-                    _rand_jit = np.random.randint(0,3,1)
-                    ax.text(
-                        lin_ax[i], 102 + _rand_jit, stars, color=clr.stim_keys[filt_key]["color"]
-                    )
+                for j,p in enumerate(_p):
+                    ax = pval_plotter(ax,p,
+                                      pos=[lin_ax[j],lin_ax[j]],
+                                      loc=102 + i,
+                                      tail_height=0,
+                                      color=clr.stim_keys[filt_key]["color"])
                 
     # baseline
     baseline = nonearly_data.filter((pl.col("stim_side") == "catch") & (pl.col("opto") == False))  # noqa: E712
