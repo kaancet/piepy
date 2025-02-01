@@ -69,7 +69,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         return self._update_and_return(return_as)
 
     def check_early(self) -> bool:
-        """ Checks if the trial is early"""
+        """ Checks if the trial is early, """
         _ret = False
         if "early" in self.data["state"]["transition"].to_list():
             _ret = True
@@ -78,6 +78,8 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 _name = "hit"
             elif "miss" in self.data["state"]["transition"].to_list():
                 _name = "miss"
+            elif "catch" in self.data["state"]["transition"].to_list():
+                _name = "catch"
             else:
                 raise ValueError("ijbasdjsdobwdfibwdefiubweiubwef")
                 
