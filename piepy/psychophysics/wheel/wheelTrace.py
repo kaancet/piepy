@@ -16,14 +16,30 @@ class WheelTrace:
 
     @staticmethod
     def find_nearest(arr: ArrayLike, value: float) -> int:
-        """Returns the index of the nearest"""
+        """ Returns the index of the nearest
+
+        Args:
+            arr (ArrayLike): Array of values to search in
+            value (float): Find the nearest value to this one that exists in the input arr
+
+        Returns:
+            int: index of the nearest value in the arr
+        """
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
         return np.nanargmin(np.abs(arr - value))
     
     @staticmethod
     def fix_trace_timing(t:np.ndarray,pos:np.ndarray) -> tuple[np.ndarray,np.ndarray]:
-        """ Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing) """
+        """ Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing) 
+
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            pos (np.ndarray): Position values of the wheel trace
+
+        Returns:
+            tuple[np.ndarray,np.ndarray]: Fixed time and pos values
+        """
         while not np.all(np.diff(t) > 0):
             if np.diff(t)[-1] < 0:
                 # sometimes the last element is problematic
@@ -38,6 +54,15 @@ class WheelTrace:
 
     @classmethod
     def init_interpolator(cls, t: ArrayLike, pos: ArrayLike) -> None:
+        """ Initialize the interpolator
+
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            pos (np.ndarray): Position values of the wheel trace
+
+        Raises:
+            ValueError: If lengths of t and pos are not equal
+        """
         if len(t) != len(pos):
             raise ValueError("Unequal wheel time and position!!")
 
@@ -51,13 +76,29 @@ class WheelTrace:
 
     @classmethod
     def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
-        """Resets the time ticks to be zero at reset_time_point"""
+        """ Resets the time ticks to be zero at reset_time_point
+
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            reset_time_point (float): Time value to reset the trace time values
+
+        Returns:
+            np.ndarray: reset time values
+        """
         return t - reset_time_point
 
     @classmethod
     def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
-        """Resets the positions to make position 0 at t=0
-        This method is used on the ticks so the values can (and should) be integers"""
+        """ Resets the positions to make position 0 at t=0
+        This method is used on the ticks so the values can (and should) be integers
+
+        Args:
+            pos (np.ndarray): Position values of the wheel trace
+            reset_point (int): Position point to reset the tick values of the trajectory
+
+        Returns:
+            np.ndarray: reset position values
+        """
         if cls._interpolator is not None:
             pos_at0 = round(cls._interpolator(reset_point).tolist())
             _temp = pos - pos_at0
@@ -67,7 +108,17 @@ class WheelTrace:
     def reset_and_interpolate(
         cls, t: np.ndarray, pos: np.ndarray, reset_time: float, interp_freq: float = 5
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """ """
+        """ Fundemental loop of resetting time, position and interpolating
+
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            pos (np.ndarray): Position values of the wheel trace
+            reset_time (float): Time value to reset the trace time values
+            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Reset time and position, interpolated time and position
+        """
         if not reset_time > t[0]:
             # means that the first wheel movement was recorded after the given reset time point
             # fill_in the time and pos until reaching the reset_time
@@ -94,22 +145,15 @@ class WheelTrace:
     def interpolate_trace(
         cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
     ) -> np.ndarray:
-        """
-        Interpolate wheel position.
+        """ Interpolate wheel positions
 
-        Parameters
-        ----------
-        freq : float
-            frequency in Hz of the interpolation
-        fill_gaps : float
-            Minimum gap length to fill. For gaps over this time (seconds),
-            forward fill values before interpolation
-        Returns
-        -------
-        yinterp : array
-            Interpolated position
-        t : array
-            Timestamps of interpolated positions
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            pos (np.ndarray): Position values of the wheel trace
+            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
+
+        Returns:
+            np.ndarray: Interpolated tick values from interpolated time values
         """
         if cls._interpolator is not None:
             if len(t) == 1:
@@ -140,11 +184,6 @@ class WheelTrace:
             )
 
     @classmethod
-    def select_trace_interval(cls) -> None:
-        """ """
-        pass
-
-    @classmethod
     def get_movements(
         cls,
         t: np.ndarray,
@@ -156,41 +195,26 @@ class WheelTrace:
         pos_thresh_onset=1.5,
         min_dur=0.05,
     ) -> dict:
-        """
-        Detect wheel movements. Uses interpolated positions
+        """ Detect wheel movements. Uses interpolated positions
 
-        Parameters
-        ----------
-        t : array_like
-            An array of evenly sampled wheel timestamps in absolute seconds
-        pos : array_like
-            An array of evenly sampled wheel positions
-        freq : int
-            The sampling rate of the wheel data
-        pos_thresh : float
-            The minimum required movement during the t_thresh window to be considered part of a
-            movement
-        t_thresh : float
-            The time window over which to check whether the pos_thresh has been crossed
-        min_gap : float
-            The minimum time between one movement's offset and another movement's onset in order to be
-            considered separate.  Movements with a gap smaller than this are 'stictched together'
-        pos_thresh_onset : float
-            A lower threshold for finding precise onset times.  The first position of each movement
-            transition that is this much bigger than the starting position is considered the onset
-        min_dur : float
-            The minimum duration of a valid movement.  Detected movements shorter than this are ignored
+        Args:
+            t (np.ndarray): Time values of the wheel trace
+            pos (np.ndarray): Position values of the wheel trace
+            freq (float): The sampling rate of the wheel data
+            pos_thresh (float, optional): The minimum required movement during the t_thresh window to be considered part of a. Defaults to 0.03.
+            t_thresh (float, optional): The time window over which to check whether the pos_thresh has been crossed. Defaults to 0.5.
+            min_gap (float, optional): The minimum time between one movement's offset and another movement's onset in order to be
+            considered separate.  Movements with a gap smaller than this are 'stictched together'. Defaults to 0.1.
+            pos_thresh_onset (float, optional): A lower threshold for finding precise onset times.  The first position of each movement
+            transition that is this much bigger than the starting position is considered the onset. Defaults to 1.5.
+            min_dur (float, optional): The minimum duration of a valid movement.  Detected movements shorter than this are ignored. Defaults to 0.05.
 
-        Returns
-        -------
-        onsets : np.ndarray
-            Timestamps of detected movement onsets
-        offsets : np.ndarray
-            Timestamps of detected movement offsets
-        peak_amps : np.ndarray
-            The absolute maximum amplitude of each detected movement, relative to onset position
-        peak_vel_times : np.ndarray
-            Timestamps of peak velocity for each detected movement
+        Returns:
+            dict: Dictionary that has:
+                onsets(np.ndarray): (N,2) array that has timestamps of detected movement onsets' indeces, and their values
+                offsets(np.ndarray): (N,2) array that has timestamps of detected movement offsets' indeces, and their values
+                peaks(np.ndarray) : (N,2) array that has peak positions' indeces, and their values
+                speed_peaks(np.ndarray): (N,2) array that has peak speeds' indeces, and their values
         """
         # Wheel position must be evenly sampled
         movement_dict = {}
@@ -335,23 +359,16 @@ class WheelTrace:
         corner_frequency: float = 2,
         order: int = 8,
     ) -> np.ndarray:
-        """
-        Compute wheel velocity from uniformly sampled wheel data.
+        """Compute wheel velocity from uniformly sampled wheel data.
+        
+        Args:
+            pos (np.ndarray): Position values of the wheel trace
+            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
+            corner_frequency (float, optional): Corner frequency of the filter. Defaults to 2.
+            order (int, optional): Order of the filter. Defaults to 8.
 
-        pos: array_like
-            Vector of uniformly sampled wheel positions.
-        fs : float
-            Frequency in Hz of the sampling frequency.
-        corner_frequency : float
-            Corner frequency of low-pass filter.
-        order : int
-            Order of Butterworth filter.
-
-        Returns
-        -------
-        vel : np.ndarray
-            Array of velocity values in degrees.
-
+        Returns:
+            np.ndarray: Filtered velocity values
         """
         _wn = corner_frequency / interp_freq * 2
         sos = scipy.signal.butter(N=order, Wn=_wn, btype="lowpass", output="sos")
@@ -368,17 +385,37 @@ class WheelTrace:
 
     @classmethod
     def ticks_to_cm(cls, positions: np.ndarray) -> np.ndarray:
-        """Convert wheel position samples to cm linear displacement."""
+        """Convert wheel position samples to cm linear displacement
+
+        Args:
+            positions (np.ndarray): Position values of the wheel trace
+
+        Returns:
+            np.ndarray: Array with ticks converted to cm values
+        """
         return positions / WHEEL_TICKS_PER_REV * np.pi * WHEEL_DIAMETER
 
     @classmethod
     def cm_to_rad(cls, positions: np.ndarray) -> np.ndarray:
-        """Convert wheel position to radians.  This may be useful for e.g. calculating angular velocity.
-        # Example: Convert linear cm to radians"""
+        """Convert wheel position to radians.  This may be useful for e.g. calculating angular velocity
+
+        Args:
+            positions (np.ndarray): Position values of the wheel trace
+
+        Returns:
+            np.ndarray:  Array with cm values converted to radian values
+        """
         return positions * (2 / WHEEL_DIAMETER)
 
     @classmethod
     def cm_to_deg(cls, positions: np.ndarray) -> np.ndarray:
         """Convert wheel position to degrees turned.  This may be useful for e.g. calculating velocity
-        in revolutions per second"""
+        in revolutions per second
+
+        Args:
+            positions (np.ndarray): Position values of the wheel trace
+
+        Returns:
+            np.ndarray: Array with cm values converted to degree values
+        """
         return positions / (WHEEL_DIAMETER * np.pi) * 360

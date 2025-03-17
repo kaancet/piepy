@@ -23,7 +23,16 @@ class VisualTrialHandler(TrialHandler):
     def get_trial(
         self, trial_no: int, rawdata: dict, return_as: str = "dict"
     ) -> pt.DataFrame | dict | list:
-        """Main function that is called from outside, sets the trial, validates data type and returns it"""
+        """Main function that is called from outside, sets the trial, validates data type and returns it
+        
+        Args:
+            trial_no (int): Trial number 
+            rawdata (dict): rawdata dictionary that will be used to extract the desired trial (trial_no)
+            return_as (str, optional): Return type string. Defaults to "dict".
+
+        Returns:
+            pt.DataFrame | dict | list | None: returned data
+        """
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
 
@@ -87,6 +96,9 @@ class VisualTrialHandler(TrialHandler):
     def recheck_screen_events(self, screen_data: pl.DataFrame) -> None:
         """Takes the screen dataframe to check the screen events once again
         NOTE: This function should be called after sync_timeframes, so it can check with the corrected timeframe
+        
+        Args:
+            screen_data (pl.DataFrame): Screen photodiode dataframe 
         """
         _found_it = False
         _screen_new = screen_data.filter(

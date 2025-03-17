@@ -3,7 +3,7 @@ import polars as pl
 import matplotlib.pyplot as plt
 
 
-from ...color import Color
+from ...colors.color import Color
 from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
 
@@ -26,8 +26,22 @@ def plot_reaction_time_distribution(
     include_zero:bool=False,
     mpl_kwargs:dict=None,
     **kwargs
-) -> plt.Axes:
-    """ """
+) -> tuple[plt.Figure,plt.Axes]:
+    """_summary_
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        reaction_of (str, optional): Which time readout to plot. "reaction_times" or "response_times". Defaults to "reaction_times".
+        bin_width (float, optional) : width of bins in ms, Defaults to 50.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Raises:
+        ValueError: Invalid column name to plot
+
+    Returns:
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes objects
+    """
     
     if mpl_kwargs is None:
         mpl_kwargs = {}
@@ -37,8 +51,10 @@ def plot_reaction_time_distribution(
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (5, 5)))
         ax = fig.add_subplot(1, 1, 1)
+    else:
+        fig = ax.get_figure()
         
-    clr = Color()
+    clr = Color(task="detection")
     
     if reaction_of not in ["reaction_time","response_time"]:
         raise ValueError(f"{reaction_of} is an invalid column name to plot reaction of, can be {['reaction_time','response_time']}")
@@ -57,7 +73,8 @@ def plot_reaction_time_distribution(
         bin_edges_early = np.arange(np.nanmin(early_times), np.nanmax(early_times)+bin_width, bin_width)
         early_counts, _ = np.histogram(early_times, bins=bin_edges_early)    
         
-        ax._step(bin_edges_early[1:], early_counts, where="pre",color="#9c9c9c",mpl_kwargs=mpl_kwargs)
+        # ax._step(bin_edges_early[1:], early_counts, where="pre",color="#9c9c9c",mpl_kwargs=mpl_kwargs)
+        ax._bar(bin_edges_early[1:], early_counts,width=bin_width,color="#9c9c9c",mpl_kwargs=mpl_kwargs)
     
     nonearly_data = plot_data.filter(pl.col("outcome")!="early")
     for filt_tup in make_subsets(nonearly_data,["stimkey"]):
@@ -72,10 +89,15 @@ def plot_reaction_time_distribution(
             bin_edges = np.hstack((bin_edges, bin_edges_miss))
             
             counts, _ = np.histogram(times, bins=bin_edges)
-            ax._step(bin_edges[:-1], counts, 
+            # ax._step(bin_edges[:-1], counts, 
+            #         color=clr.stim_keys[filt_key]["color"],
+            #         where='pre',
+            #         mpl_kwargs=mpl_kwargs)
+            ax._bar(bin_edges[:-1], counts, 
                     color=clr.stim_keys[filt_key]["color"],
+                    width=bin_width,
                     mpl_kwargs=mpl_kwargs)
-
+            
             # zero line
             ax.axvline(x=0, color="k", linewidth=1)
             ax.set_xlim([None, 1100])
@@ -83,4 +105,4 @@ def plot_reaction_time_distribution(
             
             ax.set_ylabel("Trial count")
             ax.set_xlabel("Time from Stimulus Onset(ms)")
-    return ax
+    return fig,ax

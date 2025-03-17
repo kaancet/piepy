@@ -1,59 +1,18 @@
 import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
-
-from ...color import Color
-from ...plotting_utils import set_style, make_linear_axis, override_plots, pval_plotter
+from ...colors.color import Color
+from ...plotting_utils import (
+    set_style, 
+    make_linear_axis, 
+    override_plots, 
+    pval_plotter,
+    make_dot_cloud)
 from ....core.data_functions import make_subsets
 from ....core.statistics import nonparametric_pvalues
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
-
-
-# TODO: change nbins to bin width
-def make_dot_cloud(
-    y_points: np.ndarray,
-    center: float = 0,
-    bin_width: float = 50,  # ms
-    width: float = 0.5,
-) -> np.ndarray:
-    """Turns the data points into a cloud by dispersing them horizontally depending on their distribution,
-    The more points in a bin, the wider the dispersion
-    Returns x-coordinates of the dispersed points"""
-
-    if len(y_points) > 1:
-        bin_edges = np.arange(
-            np.nanmin(y_points), np.nanmax(y_points) + bin_width, bin_width
-        )
-
-        # Get upper bounds of bins
-        counts, bin_edges = np.histogram(y_points, bins=bin_edges)
-
-        # get the indices that correspond to points inside the bin edges
-        idx_in_bin = []
-        for ymin, ymax in zip(bin_edges[:-1], bin_edges[1:]):
-            i = np.nonzero((y_points >= ymin) * (y_points < ymax))[0]
-            idx_in_bin.append(i)
-
-        x_coords = np.zeros(len(y_points))
-        dx = width / (np.nanmax(counts) // 2)
-
-        for i in idx_in_bin:
-            _points = y_points[i]  # value of points that fall into the bin
-            # if less then 2, leave untouched, will put it in the mid line
-            if len(i) > 1:
-                j = len(i) % 2
-                i = i[np.argsort(_points)]
-                # if even numbers of points, j will be 0, which will allocate the points equally to left and right
-                # if odd, j will be 1, then, below lines will leave idx 0 at the midline and start from idx 1
-                a = i[j::2]
-                b = i[j + 1 :: 2]
-                x_coords[a] = (0.5 + j / 3 + np.arange(len(a))) * dx
-                x_coords[b] = (0.5 + j / 3 + np.arange(len(b))) * -dx
-    else:
-        x_coords = np.array([0])
-
-    return x_coords + center
 
 
 def plot_reaction_time_cloud(
@@ -61,14 +20,30 @@ def plot_reaction_time_cloud(
     ax: plt.Axes = None,
     reaction_of: str = "reaction_times",
     hit_only: bool = True,
+    bin_width:float = 50,
     cloud_width: float = 0.33,
     include_zero: bool = False,
-    mpl_kwargs: dict = None,
+    mpl_kwargs: dict| None = None,
     **kwargs,
-) -> plt.Axes:
-    """ """
+) -> tuple[plt.Figure, plt.Axes]:
+    """ Plots the reaction(or response) times as a bee swarm plot, with medians and bootstrapped 95% CI's
 
-    
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        reaction_of (str, optional): Which time readout to plot. "reaction_times" or "response_times". Defaults to "reaction_times".
+        hit_only (bool, optional): Plot only hit trials. Defaults to True.
+        bin_width (float, optional) : width of bins in ms, Defaults to 50.
+        cloud_width (float, optional): width of the swarm plot. Defaults to 0.33.
+        include_zero (bool, optional): Whether to include catch trials. Defaults to False.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Raises:
+        ValueError: Invalid column name to plot
+
+    Returns:
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes objects
+    """
     if mpl_kwargs is None:
         mpl_kwargs = {}
     set_style(kwargs.get("style", "presentation"))
@@ -77,13 +52,13 @@ def plot_reaction_time_cloud(
     if ax is None:
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
         ax = fig.add_subplot(1, 1, 1)
+    else:
+        fig = ax.get_figure()
 
-    clr = Color()
+    clr = Color(task="detection")
     analyzer = WheelDetectionGroupedAggregator()
     analyzer.set_data(data=data)
     analyzer.group_data(group_by=["stim_type", "stim_side", "contrast", "opto_pattern"])
-    analyzer.calculate_hit_rates()
-    analyzer.calculate_opto_pvalues()
     grouped_nonearly_data = analyzer.grouped_data.drop_nulls("contrast")
 
     if hit_only:
@@ -117,30 +92,57 @@ def plot_reaction_time_cloud(
                 if not stim_filt_df.is_empty():
                     times = stim_filt_df[0, reaction_of].to_numpy()
                     times = times[~np.isnan(times)]
-                    # median = np.nanmedian(times)
                     if len(times):
                         x_dots = make_dot_cloud(
-                            times, center=lin_ax, bin_width=50, width=cloud_width
+                            times, center=lin_ax, bin_width=bin_width, width=cloud_width
                         )
                         # add a little bit jitter to x_axis, because sparse points look like a rope...
                         jit = cloud_width * 00.1  # arbitrary
                         x_dots = x_dots + np.random.uniform(
                             low=-jit, high=jit, size=x_dots.shape[0]
                         )
-
+                        
+                        medi = stim_filt_df[0,f"median_{reaction_of}"]
+                        medi_conf = stim_filt_df[0,f"median_{reaction_of}_confs"].to_numpy().reshape(-1,1)
+                        
+                        # medians
+                        ax.scatter(lin_ax,
+                                   medi,
+                                   s = (plt.rcParams["lines.markersize"] ** 2),
+                                   c = clr.stim_keys[stim_filt_key]["color"],
+                                   marker="_",
+                                   linewidths = 3,
+                                   edgecolors = "w",
+                                   zorder=3,)
+                        
+                        # individual dots
                         ax._scatter(
                             x_dots,
                             times,
                             s=(plt.rcParams["lines.markersize"] ** 2) / 2,
-                            linewidths = 0.5,
-                            edgecolors = "w",
                             color=clr.stim_keys[stim_filt_key]["color"],
+                            linewidths = 0.3,
+                            edgecolors = "w",
                             label=(
                                 filt_df[0, "stim_label"]
                                 if filt_tup[1] == "contra" and filt_tup[2] == 12.5
                                 else "_"
                             ),
+                            alpha=0.5,
+                            zorder=1,
                             mpl_kwargs=mpl_kwargs,
+                        )
+                        
+                        # shaded CI's
+                        ax.errorbar(
+                            lin_ax,
+                            medi,
+                            yerr = medi_conf,
+                            color = clr.stim_keys[stim_filt_key]["color"],
+                            alpha=0.3,
+                            zorder=2,
+                            elinewidth=cloud_width*110,
+                            markersize=0,
                         )
 
             if len(filt_df) >= 2:
@@ -169,13 +171,17 @@ def plot_reaction_time_cloud(
     x_labels = grouped_nonearly_data["signed_contrast"].unique().sort().to_numpy()
     ax.set_xticks(x_ticks)
     ax.set_xticklabels(x_labels)
-    # ax.set_yscale("symlog")
-    # minor_locs = [200, 400, 600, 800, 2000, 4000, 6000, 8000]
-    # ax.yaxis.set_minor_locator(plt.FixedLocator(minor_locs))
-    # ax.yaxis.set_minor_formatter(plt.FormatStrFormatter("%d"))
-    # ax.yaxis.set_major_locator(ticker.FixedLocator([100, 1000, 10000]))
-    # ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
+    
+    # ax.set_yticks([200,400,600,800,1000])
+    
+    ax.set_yscale("symlog")
+    minor_locs = [200, 400, 600, 800]
+    ax.yaxis.set_minor_locator(plt.FixedLocator(minor_locs))
+    ax.yaxis.set_minor_formatter(plt.FormatStrFormatter("%d"))
+    ax.yaxis.set_major_locator(ticker.FixedLocator([100, 1000, 10000]))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
+    ax.set_ylim([100,1000])
     # ax.xaxis.set_major_locator(ticker.FixedLocator(list(cpos.values())))
     # ax.xaxis.set_major_formatter(ticker.FixedFormatter([i for i in cpos.keys()]))
     ax.legend(loc="center left", bbox_to_anchor=(0.98, 0.5), frameon=False)
-    return ax
+    return fig, ax

@@ -19,7 +19,16 @@ class PsychophysicalTrialHandler(TrialHandler):
     def get_trial(
         self, trial_no: int, rawdata: dict, return_as: str = "dict"
     ) -> pt.DataFrame | dict | list:
-        """Main function that is called from outside, sets the trial, validates data type and returns it"""
+        """Main function that is called from outside, sets the trial, validates data type and returns it
+        
+        Args:
+            trial_no (int): Trial number 
+            rawdata (dict): rawdata dictionary that will be used to extract the desired trial (trial_no)
+            return_as (str, optional): Return type string. Defaults to "dict".
+
+        Returns:
+            pt.DataFrame | dict | list | None: returned data
+        """
         self.init_trial()
         self.set_trial(trial_no, rawdata)
 

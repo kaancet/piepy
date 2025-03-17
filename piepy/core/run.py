@@ -44,6 +44,9 @@ class RunMeta:
         Args:
             path: Paths object that has the
             skip_google: Flag to skip parsing google sheets
+            
+        Returns:
+            dict: metadata as a dict
         """
         _temp = path.prot.split(os.sep)
         _cntr = -1
@@ -96,6 +99,9 @@ class RunMeta:
 
         Args:
             prot_path: The path to protocol file
+            
+        Returns:
+            dict: protocol file as a dict
         """
         prot_dict = {}
         prot_dict["run_name"] = prot_path.split(os.sep)[-1].split(".")[0]
@@ -131,6 +137,9 @@ class RunMeta:
 
         Args:
             pref_path: The path to preference file
+        
+        Returns
+            dict: preferenc file as a dict
         """
         return parse_preference(pref_path)
 
@@ -141,6 +150,9 @@ class RunMeta:
         Args:
             animalid: Id of the animal (KC133)
             baredate: The date of the experiment as abare string (231108)
+            
+        Returns:
+            dict: google sheet data as a dict
         """
         logsheet = GSheet("Mouse Database_new")
         gsheet_df = logsheet.read_sheet(2)
@@ -309,12 +321,15 @@ class Run:
     @staticmethod
     def read_combine_logs(
         stimlog_path: str | list, riglog_path: str | list
-    ) -> tuple[pl.DataFrame, list]:
+    ) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
             stimlog_path: path to .stimlog file
             riglog_path: path to .riglog file
+            
+        Returns:
+            tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
             assert len(stimlog_path) == len(
@@ -428,7 +443,11 @@ class Run:
         )
 
     def is_run_saved(self) -> bool:
-        """Checks if data already exists"""
+        """Checks if data already exists
+        
+        Returns:
+            bool: True if saved ata is found, else False
+        """
         loadable = False
         for d_path in self.paths.data:
             if pexists(d_path):

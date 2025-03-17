@@ -6,7 +6,7 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 from sklearn.neighbors import KernelDensity
 
-from ...color import Color
+from ...colors.color import Color
 from ...plotting_utils import set_style, override_plots, pval_plotter
 from ....core.data_functions import make_subsets
 from ....core.statistics import mean_confidence_interval,ks2s_2d
@@ -21,18 +21,25 @@ def plot_wheel_slope_and_offset_xyerror(
     mpl_kwargs:dict=None,
     **kwargs
 ) -> tuple[plt.Figure,plt.Axes]:
-    """ 
-    Plots the slope vs onset distributions of trials with 95%CI ranges
+    """Plots the slope vs onset distributions of trials with 95%CI ranges
     Seperates the data by one variable and plots it on a single axes
     This is to see how the wheel movement dynamics change with different experimental conditions
 
     Args:
-    
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        seperate_by (list[str], optional): Conditions to seperate the data by. Defaults to ["stimkey","contrast"].
+        include_misses (bool, optional): Whether to plot miss trials. Defaults to False.
+        include_zero (bool, optional): Whether to include catch trials. Defaults to False.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Returns:
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes
     """
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
-    clr_obj = Color()
+    clr_obj = Color(task="detection")
     set_style(kwargs.get("style","presentation"))
     override_plots()
 
@@ -90,12 +97,15 @@ def plot_wheel_slope_and_offset_xyerror(
                     markersize=10,
                     label=f"{[k for k in filt_tup[:-1]]}")
         
-    
+    p_vals = {} 
+    d_vals = {}
     for i,keys in enumerate(list(itertools.combinations(list(_temp_dict.keys()), 2))):
         k1,k2 = keys
         data1 = _temp_dict[k1]
         data2 = _temp_dict[k2]
         p,d = ks2s_2d(data1,data2,nboot=100)
+        p_vals[f"{k1}={k2}"] = p
+        d_vals[f"{k1}={k2}"] = d
         
         x1,_ = mean_confidence_interval(data1[:,0])
         x2,_ = mean_confidence_interval(data2[:,0])
@@ -110,6 +120,7 @@ def plot_wheel_slope_and_offset_xyerror(
     ax.set_ylabel("Onset (ms)")
     ax.legend(frameon=False)
     ax.set_xlim()
+    return fig, ax, p_vals, d_vals
 
 
 def plot_wheel_slope_and_offset_ellipse(
@@ -120,17 +131,25 @@ def plot_wheel_slope_and_offset_ellipse(
     mpl_kwargs:dict=None,
     **kwargs
 ) -> tuple[plt.Figure,plt.Axes]:
-    """ 
-    Plots the slope vs onset distributions of trials with 95%CI ranges
+    """Plots the slope vs onset distributions of trials with 95%CI ranges
     Seperates the data by one variable and plots it on a single axes
     This is to see how the wheel movement dynamics change with different experimental conditions
-    NOTE: It is better to call this function after filtering other conditions"""
-    
-    
+    NOTE: It is better to call this function after filtering other conditions
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        seperate_by (list[str], optional): Conditions to seperate the data by. Defaults to ["stimkey","contrast"].
+        include_misses (bool, optional): Whether to plot miss trials. Defaults to False.
+        include_zero (bool, optional): Whether to include catch trials. Defaults to False.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Returns:
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes
+    """
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
-    clr = Color()
+    clr = Color(task="detection")
     set_style(kwargs.get("style","presentation"))
     override_plots()
 
@@ -214,14 +233,26 @@ def plot_wheel_slope_and_offset_ellipse(
     
 def plot_all_wheel_slope_and_offset_ellipse(
     data: pl.DataFrame,
+    seperate_by:list[str] = ["contrast"],
     include_misses:bool=False,
     include_zero:bool=False,
-    seperate_by:list[str] = ["contrast"],
     time_reset:str="t_vstimstart_rig",
     mpl_kwargs:dict=None,
     **kwargs
 ) -> plt.Figure:
-    """ Runs through opto patterns and stimulus types to plot them in seperate figures"""
+    """tuple[plt.Figure,plt.Axes]: Plotted figure and axes
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        seperate_by (list[str], optional): Conditions to seperate the data by. Defaults to ["stimkey","contrast"].
+        include_misses (bool, optional): Whether to plot miss trials. Defaults to False.
+        include_zero (bool, optional): Whether to include catch trials. Defaults to False.
+        time_reset (str, optional): _description_. Defaults to "t_vstimstart_rig".
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Returns:
+        plt.Axes: Plotted axes object
+    """
     figs = []
     set_style(kwargs.get("style","presentation"))
     for filt_tup in make_subsets(data, ["opto_pattern", "stim_type"]):

@@ -18,16 +18,19 @@ def plot_cumulative_outcome(data:pl.DataFrame,
                             reaction_of:str="reaction_time",
                             bin_width:int=10, # in ms
                             include_zero:bool=False,
-                            mpl_kwargs:dict=None,
+                            mpl_kwargs:dict|None=None,
                             **kwargs) -> tuple[plt.Figure,plt.Axes]:
-    """Plots  cumulative distribution of trial outcomes, wrt stimulus onset
-    Parameters:
-    data (pl.DataFrame) : run data
-    ax (plt.axes) : An axes object to place to plot,default is None, which creates the axes
-    bin_width(int) : width of time bins in ms
+    """ Plots  cumulative distribution of trial outcomes, wrt stimulus onset
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        reaction_of (str, optional): _description_. Defaults to "reaction_time".
+        bin_width (int, optional): width of time bins in ms. Defaults to 10.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
 
     Returns:
-    plt.axes: Axes object
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes objects
     """
     if mpl_kwargs is None:
         mpl_kwargs = {}

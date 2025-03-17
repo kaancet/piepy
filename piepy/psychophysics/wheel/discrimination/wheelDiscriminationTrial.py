@@ -2,7 +2,7 @@ import polars as pl
 import patito as pt
 from typing import Literal
 
-from ...wheelTrace import WheelTrace
+from ..wheelTrace import WheelTrace
 from ....sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from ...psychophysicalTrial import PsychophysicalTrial, PsychophysicalTrialHandler
 
@@ -21,7 +21,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         self._trial = {k: None for k in WheelDiscriminationTrial.columns}
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDiscriminationTrial)
-
+        
     def get_trial(
         self, trial_no: int, rawdata: dict, return_as="dict"
     ) -> pt.DataFrame | dict | list | None:
@@ -81,13 +81,27 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
     def set_vstim_properties(self):
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties"""
         super().set_vstim_properties()
-        columns_to_modify = ["contrast", "sf", "tf", "posx"]
+        # only look at columns that have "_l", ASSUMING there will be an "_r" counterpart of it
+        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
         self._trial["prob"] = self._trial["prob"][0][0]
         self._trial["fraction_r"] = self._trial["fraction_r"][0][0]
+        self._trial["opto_pattern"] = int(self._trial["opto_pattern"][0][0])
         
-        _correct = self._trial.pop("correct")[0][0]
-        _side = "_r" if _correct else "_l"  # right if 1, left if 0
+        _correct = self._trial.pop("correct")[0][0] # right if 1, left if 0
+        self._trial["correct_side"] = int(_correct)
+        _side = "_r" if _correct else "_l"  
         _other_side = "_l" if _correct else "_r"  # right if 1, left if 0
+        for col in columns_to_modify:
+            _targ = self._trial.pop(col + _side)  # this is the target side
+            _dist = self._trial.pop(col + _other_side)
+            if col == "posx":
+                col = "pos"
+            else:
+                _targ = _targ[0][0]
+                _dist = _dist[0][0]
+            
+            self._trial[f"target_{col}"] = _targ
+            self._trial[f"distract_{col}"] = _dist
 
     def set_wheel_traces(self, reset_time_point: float) -> None:
         """Sets the wheel"""

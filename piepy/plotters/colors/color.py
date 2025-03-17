@@ -1,23 +1,34 @@
-import colorsys
 import json
 import warnings
-
-import matplotlib.pyplot as plt
+import colorsys
 import numpy as np
+import matplotlib.pyplot as plt
+from os.path import join as pjoin
 from matplotlib import colors as mcolors
 
-from ..core.config import config as cfg
+from ...core.config import config as cfg
 
 
 class Color:
-    def __init__(self):
+    def __init__(self,task:str, user:str|None=None):
         # this is hardcoded for now, fix this
         self.colorkey_path = cfg.paths["colors"][0]
+        
+        self.colorkey_path = pjoin(self.colorkey_path,"task_colors",f"colorkey_{task}.json")
+        
+        # user overwrites default task colors
+        if user is not None:
+            self.colorkey_path = pjoin(self.colorkey_path,"user_colors",f"colorkey_{user}.json")
+        
         self.read_colors()
 
     @staticmethod
     def check_hex(hex_code: str) -> None:
-        """Makes sure hex code is in correct form"""
+        """ Makes sure hex code is in correct form 
+        
+        Args:
+            hex_code: Hex color code
+        """
         if not (hex_code.startswith("#") and len(hex_code) == 7):
             raise ValueError("Both colors must be in the format '#RRGGBB'.")
 
@@ -30,7 +41,11 @@ class Color:
             self.outcome_keys = keys["outcome"]
 
     def check_stim_colors(self, keys: list[str]) -> None:
-        """Checks if the stim key has a corresponding color value, if not adds a randomly selected color the key"""
+        """Checks if the stim key has a corresponding color value, if not adds a randomly selected color the key
+
+        Args:
+            keys (list[str]): List of stimulus keys (stimkey)
+        """
         new_colors = {}
         for k in keys:
             if k not in self.stim_keys:
@@ -50,7 +65,11 @@ class Color:
             print("Stimulus colors checkout!!")
 
     def check_contrast_colors(self, contrasts: list[str]) -> None:
-        """Checks if the contrast key has a corresponding color value, if not adds a randomly selected color the key"""
+        """ Checks if the contrast key has a corresponding color value, if not adds a randomly selected color the key
+
+        Args:
+            contrasts (list[str]): List of contrast values
+        """
         new_colors = {}
         for c in contrasts:
             str_key = str(c)
@@ -70,13 +89,29 @@ class Color:
             print("Contrast colors checkout!!")
 
     def make_key_mixed_color(self, stim_key: str, contrast_key: str) -> str:
-        """ """
+        """ Makes a mixed colors from stimkey and contrast keys
+
+        Args:
+            stim_key (str): stimulus key
+            contrast_key (str): contrast key (value)
+
+        Returns:
+            str: Hex color code of the mixed color
+        """
         s_color = self.stim_keys[stim_key]["color"]
         c_color = self.contrast_keys[contrast_key]["color"]
         return self.mix_colors(s_color, c_color)
 
     @classmethod
     def name2hsv(cls, color_name: str) -> tuple[float, float, float]:
+        """ Converts matplotlib color name to HSV values
+
+        Args:
+            color_name (str): Matplotlib color name
+
+        Returns:
+            tuple[float, float, float]: Hue(H), Saturation(S), Value(V)
+        """
         rgb = mcolors.to_rgb(color_name)
         return Color.rgb2hsv(
             rgb, normalize=False
@@ -84,11 +119,27 @@ class Color:
 
     @classmethod
     def hex2rgb(cls, hex_code: str) -> tuple[float, float, float]:
+        """ Converts a hex color code to RGB
+
+        Args:
+            hex_code (str): Color hex code
+
+        Returns:
+            tuple[float, float, float]: Red(R), Green(G), Blue(B)
+        """
         hex_code = hex_code.lstrip("#")
         return tuple(int(hex_code[i : i + 2], 16) for i in (0, 2, 4))
 
     @classmethod
     def rgb2hex(cls, rgb_tuple: tuple[float, float, float]) -> str:
+        """Converts the RGB value to hex color code
+
+        Args:
+            rgb_tuple (tuple[float, float, float]): Red(R), Green(G), Blue(B)
+
+        Returns:
+            str: Hex color code
+        """
         def clamp(x):
             return max(0, min(x, 255))
 
@@ -100,12 +151,29 @@ class Color:
     def normalize_rgb(
         cls, rgb_tuple: tuple[float, float, float]
     ) -> tuple[float, float, float]:
+        """ Normalizes the RGB colors to 255
+
+        Args:
+            rgb_tuple (tuple[float, float, float]): Red(R), Green(G), Blue(B)
+
+        Returns:
+            tuple[float, float, float]: Normalized RGB values
+        """
         return tuple(i / 255.0 for i in rgb_tuple)
 
     @classmethod
     def rgb2hsv(
         cls, rgb_tuple: tuple[float, float, float], normalize: bool = True
     ) -> tuple[float, float, float]:
+        """ Converts the RGB code to HSV code
+
+        Args:
+            rgb_tuple (tuple[float, float, float]): Red(R), Green(G), Blue(B)
+            normalize (bool, optional): Normalize values. Defaults to True.
+
+        Returns:
+            tuple[float, float, float]: Hue(H), Saturation(S), Value(V)
+        """
         if normalize:
             rgb_tuple = Color.normalize_rgb(rgb_tuple)
         r, g, b = rgb_tuple
@@ -113,13 +181,31 @@ class Color:
 
     @classmethod
     def hsv2rgb(cls, hsv_tuple: tuple[float, float, float]) -> tuple[float, float, float]:
+        """Converts the HSV code to RGB code
+
+        Args:
+            hsv_tuple (tuple[float, float, float]): Hue(H), Saturation(S), Value(V)
+
+        Returns:
+            tuple[float, float, float]: Red(R), Green(G), Blue(B)
+        """
         h, s, v = hsv_tuple
         return colorsys.hsv_to_rgb(h, s, v)
 
     @classmethod
     def lighten(cls, hex_color: str, l_coeff: float = 0.33) -> str:
-        """Lightens the hsv_tuple by l_coeff percent, aka from S subtracts l_coeff percent of the S value"""
+        """Lightens the hsv_tuple by l_coeff percent, aka from S subtracts l_coeff percent of the S value
 
+        Args:
+            hex_color (str): Hex color code
+            l_coeff (float, optional): How much to lighten the color. Defaults to 0.33.
+
+        Raises:
+            ValueError: If l_value is not in 0-1 range
+
+        Returns:
+            str: Hex color code
+        """
         hsv_tuple = cls.rgb2hsv(cls.hex2rgb(hex_color))
 
         if not l_coeff <= 1 and l_coeff >= 0:
@@ -134,11 +220,21 @@ class Color:
     def make_color_range(
         cls,
         start_color: str,
-        rng: int,
+        steps: int,
         s_limit: list = [20, 100],
         v_limit: list = [20, 100],
-    ) -> list:
-        """Returns a list of hex colors ranging from start color to specific limit values"""
+    ) -> list[str]:
+        """Returns a list of hex colors ranging from start color to specific limit values
+
+        Args:
+            start_color (str): Hex color code of starting color
+            steps (int): Number of steps in the range
+            s_limit (list, optional): saturation range. Defaults to [20, 100].
+            v_limit (list, optional): value range. Defaults to [20, 100].
+
+        Returns:
+            list[str]: List of hex color codes of the created range
+        """
         rgb = Color.hex2rgb(start_color)
         hsv = Color.rgb2hsv(rgb)
         h, s, v = hsv
@@ -146,8 +242,8 @@ class Color:
         # limit the saturation and value
         # s= 20%-100% v=100%
 
-        s_steps = np.linspace(s, 1, rng)
-        v_steps = np.linspace(v, 1, rng)
+        s_steps = np.linspace(s, 1, steps)
+        v_steps = np.linspace(v, 1, steps)
         v_steps = v_steps[::-1]  # reverse values to go from light to darker color
 
         color_range = []
@@ -161,8 +257,15 @@ class Color:
 
     @classmethod
     def mix_colors(cls, hex_color1: str, hex_color2: str) -> str:
-        """Mixes the two input hex colors"""
+        """Mixes the two input hex colors
 
+        Args:
+            hex_color1 (str): first hex color code
+            hex_color2 (str): second hex color code
+
+        Returns:
+            str: hex color code of the mixed colors
+        """
         cls.check_hex(hex_color1)
         cls.check_hex(hex_color2)
 

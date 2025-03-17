@@ -4,6 +4,7 @@ from typing import Literal
 from numpy.typing import ArrayLike
 from scipy.spatial.distance import pdist, cdist
 from scipy.stats import (
+    bootstrap,
     sem,
     t,
     mannwhitneyu,
@@ -15,11 +16,14 @@ from scipy.stats import (
 
 
 def mean_confidence_interval(data:ArrayLike, confidence:float=0.95) -> tuple[float,float]:
-    """ Calculates the mean and CI of given data
-    
+    """Calculates the mean and CI of it of given data
+
     Args:
-        data: 1D array of samples
-        confidence: desired confidence interval
+        data (ArrayLike): 1D array of samples
+        confidence (float, optional): Desired confidence interval. Defaults to 0.95.
+
+    Returns:
+        tuple[float,float]: mean and CI
     """
     a = 1.0 * np.array(data)
     n = len(a)
@@ -28,12 +32,43 @@ def mean_confidence_interval(data:ArrayLike, confidence:float=0.95) -> tuple[flo
     return m, h
 
 
+def bootstrap_confidence_interval(data:ArrayLike, statistic:callable, confidence:float=0.95,nboot:int=1000) -> tuple[float,float,float]:
+    """Calculates the median and CI of the median of given data
+
+    Args:
+        data (ArrayLike): 1D array of samples
+        confidence (float, optional): desired confidence interval. Defaults to 95%.
+        nboot (int, optional): Amount of resamples. Defaults to 1000.
+
+    Returns:
+        tuple[float,float,float]: median, +CI and -CI 
+    """
+    a = 1.0 * np.array(data)
+    a = a[~np.isnan(a)]
+    _med = statistic(a)
+    res = bootstrap((a,),statistic,n_resamples=nboot,confidence_level=0.95,method="bca")
+    
+    m = np.mean(res.bootstrap_distribution)
+    
+    ci_plus = res.confidence_interval.high - m
+    ci_neg = m - res.confidence_interval.low
+
+    return _med, ci_plus, ci_neg
+
+
 def nonparametric_pvalues(x1:ArrayLike, x2:ArrayLike, method: Literal["mannu","wilcoxon"]="mannu") -> float:
-    """ Returns the significance value of two distributions 
+    """Returns the significance value of two distributions 
     
     Args:
-        x1:
-        x2:
+        x1 (ArrayLike): First set of samples
+        x2 (ArrayLike): Second set of samples
+        method (Literal["mannu","wilcoxon"], optional): Non-parametric test method. Defaults to "mannu".
+
+    Raises:
+        ValueError: Invalid statistical test method
+
+    Returns:
+        float: p-value
     """
     if method not in ["mannu", "wilcoxon"]:
         raise ValueError(
@@ -52,27 +87,24 @@ def ks2s_2d(
     data2:ArrayLike, 
     nboot:int|None=None
     ) -> tuple[float,float]:
-    """ Two-dimensional Kolmogorov-Smirnov test on two samples. 
+    """Two-dimensional Kolmogorov-Smirnov test on two samples. 
     Adapted from: https://github.com/syrte/ndtest
-    
-    Args:
-        data1 : shape (n1,2) Data of sample one
-        data2 : shape (n2,2) Data of sample two (n1 and n2 can be different)
-        nboot : Number of bootstrap resample to estimate the p-value. A large number is expected.
-        If None, an approximate analytic estimate will be used.
-        
-    Returns:
-        p : Two-tailed p-value.
-        D : KS statistic
-
     Notes
     -----
     This is the two-sided K-S test. Small p-values means that the two samples are significantly different. 
     Note that the p-value is only an approximation as the analytic distribution is unkonwn. The approximation
     is accurate enough when N > ~20 and p-value < ~0.20 or so. When p-value > 0.20, the value may not be accurate,
     but it certainly implies that the two samples are not significantly different. 
+
+    Args:
+        data1 (ArrayLike): shape (n1,2) Data of sample one
+        data2 (ArrayLike): shape (n2,2) Data of sample two (n1 and n2 can be different)
+        nboot (int | None, optional): Number of bootstrap resample to estimate the p-value. A large number is expected.
+        If None, an approximate analytic estimate will be used. Defaults to None.
+
+    Returns:
+        tuple[float,float]: Two-tailed p-value, KS statistic
     """
-    
     def quadct(x, y, xx, yy):
         n = len(xx)
         ix1, ix2 = xx <= x, yy <= y
@@ -136,22 +168,20 @@ def energy_stat_2d(
     data2:ArrayLike,
     nboot:int=1000,
     replace:bool=False,
-    method:Literal["log","gaussian","linear"]='log',
-    fitting:bool=False
+    method:Literal["log","gaussian","linear"]='log'
     ) -> tuple[float, float, float]:
-    """ Energy distance statistics test.
+    """Energy distance statistics test.
     Adapted from: https://github.com/syrte/ndtest
-    
+
     Args:
-        data1 : shape (n1,2) Data of sample one
-        data2 : shape (n2,2) Data of sample two (n1 and n2 can be different)
-        nboot : Number of bootstrap resample to estimate the p-value. A large number is expected.
-        replace: If true, samples with replacement
-        method: 
-    
+        data1 (ArrayLike): shape (n1,2) Data of sample one
+        data2 (ArrayLike): shape (n2,2) Data of sample two (n1 and n2 can be different)
+        nboot (int, optional): Number of bootstrap resample to estimate the p-value. A large number is expected. Defaults to 1000.
+        replace (bool, optional): Sample with replacement. Defaults to False.
+        method (Literal["log","gaussian","linear"], optional): . Defaults to 'log'.
+
     Returns:
-        p : Two-tailed p-value.
-        en : KS energy statistic
+        tuple[float, float, float]: p-value, energy,
     """
     
     def energy(x, y, method='log'):

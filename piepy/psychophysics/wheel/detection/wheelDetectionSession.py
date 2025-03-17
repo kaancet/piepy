@@ -83,7 +83,7 @@ class WheelDetectionRunData(RunData):
             .then(pl.lit("contra"))
             .when(pl.col("stim_pos") < 0)
             .then(pl.lit("ipsi"))
-            .when(pl.col("stim_pos") == 0)
+            .when((pl.col("stim_pos") == 0) | (pl.col("isCatch") == 1))
             .then(pl.lit("catch"))
             .otherwise(None)
             .alias("stim_side")
@@ -161,7 +161,15 @@ class WheelDetectionRunData(RunData):
             )
 
     def add_pattern_related_columns(self, pattern_path: str) -> None:
-        """Adds columns related to the silencing pattern if they exist"""
+        """ Adds columns related to the silencing pattern if they exist
+
+        Args:
+            pattern_path (str): Path to the patterns
+
+        Raises:
+            KeyError: If the pattern suffixes are not set correctly (-1,0,1,...)
+            ValueError: Invalid path to pattern
+        """
         if len(self.data["opto"].unique()) == 1:
             # Regular training sessions
             # add the pattern name depending on pattern id
@@ -224,6 +232,9 @@ class WheelDetectionRunData(RunData):
 
         Args:
             path: path to pattern directory
+            
+        Returns:
+            dict: dictionary of read images and patterns
         """
         imgs = {}
         for im in os.listdir(pattern_path):
@@ -310,7 +321,11 @@ class WheelDetectionSession(Session):
         return r
 
     def init_session_runs(self, skip_google: bool = True) -> None:
-        """Initializes runs in a session"""
+        """ Initializes runs in a session
+
+        Args:
+            skip_google (bool, optional): Whether to skip reading data from google sheet. Defaults to True.
+        """
         for r in range(self.run_count):
             _path = Paths(self.paths.all_paths, r)
             # the run itself
@@ -330,7 +345,14 @@ class WheelDetectionSession(Session):
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
-    """Gets run stats from run dataframe"""
+    """ Gets run stats from run dataframe
+
+    Args:
+        data (pl.DataFrame): Data of the session to calculate the summary stats of
+
+    Returns:
+        dict: Summary statistics as a dictionary
+    """
     stats_dict = {}
     early_data = data.filter((pl.col("outcome") == "early"))
     stim_data = data.filter((pl.col("outcome") != "early") & (pl.col("isCatch") == 0))
@@ -372,8 +394,13 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     )
 
     # median response time #
-    stats_dict["median_response_latency "] = round(
+    stats_dict["median_response_time"] = round(
         nonopto_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(), 3
+    )
+    
+    # median reaction time
+    stats_dict["median_reaction_time"] = round(
+        nonopto_data.filter(pl.col("outcome") == "hit")["reaction_time"].median(), 3
     )
 
     # d prime(?) #
@@ -382,100 +409,23 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     )
 
     ## performance on easy trials
-    easy_data = nonopto_data.filter(pl.col("contrast").is_in([100, 50]))
+    easy_data = nonopto_data.filter(pl.col("contrast").is_in([1.0, 0.5]))
     stats_dict["easy_trial_count"] = len(easy_data)
     easy_correct_count = len(easy_data.filter(pl.col("outcome") == "hit"))
     if stats_dict["easy_trial_count"]:
         stats_dict["easy_hit_rate"] = round(
             100 * easy_correct_count / stats_dict["easy_trial_count"], 3
         )
-        stats_dict["easy_median_response_latency"] = round(
+        stats_dict["easy_median_response_time"] = round(
             easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
+            3,
+        )
+        stats_dict["easy_median_reaction_time"] = round(
+            easy_data.filter(pl.col("outcome") == "hit")["reaction_time"].median(),
             3,
         )
     else:
         stats_dict["easy_hit_rate"] = -1
-        stats_dict["easy_median_response_latency"] = -1
+        stats_dict["easy_median_response_time"] = -1
 
     return stats_dict
-
-
-# import multiprocessing
-# from multiprocessing import Pool
-# from tqdm.contrib.concurrent import process_map
-# def get_all_trials(self) -> pl.DataFrame | None:
-#     """ """
-
-#     trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
-#     trial_nos = [int(t) for t in trial_nos]
-
-#     if cfg.multiprocess["enable"]:
-#         mngr = multiprocessing.Manager()
-#         self.queue = mngr.Queue(-1)
-#         self._list_data = mngr.list()
-
-#         listener = multiprocessing.Process(
-#             target=self.logger.listener_process, args=(self.queue,)
-#         )
-#         listener.start()
-
-#         process_map(
-#             self._get_trial,
-#             trial_nos,
-#             max_workers=cfg.multiprocess["cores"],
-#             chunksize=100,
-#         )
-
-#     else:
-#         self.logger.listener_configurer()
-#         self._list_data = []
-#         pbar = tqdm(
-#             trial_nos,
-#             desc="Extracting trial data:",
-#             leave=True,
-#             position=0,
-#             disable=not config.verbose,
-#         )
-#         for t in pbar:
-#             self._get_trial(t)
-
-#     # convert list of dicts to dict of lists
-#     data_to_frame = {k: [v] for k, v in self._list_data[0].items()}
-#     for i in range(1, len(self._list_data)):
-#         for k, v in self._list_data[i].items():
-#             data_to_frame[k].append(v)
-
-#     r_data = pl.DataFrame(data_to_frame)
-#     # order by trial no
-#     r_data = r_data.sort("trial_no")
-
-#     # add contrast titration boolean
-#     uniq_stims = nonan_unique(r_data["contrast"].to_numpy())
-#     isTitrated = 0
-#     if len(uniq_stims) > len(self.meta.contrastVector):
-#         isTitrated = 1
-#     r_data = r_data.with_columns(
-#         [pl.lit(isTitrated).cast(pl.Boolean).alias("isTitrated")]
-#     )
-
-#     if r_data.is_empty():
-#         self.logger.error("THERE IS NO SESSION DATA !!!", cml=True)
-#         return None
-#     else:
-#         return r_data
-
-# def _get_trial(self, trial_no: int) -> pl.DataFrame | None:
-#     """Main loop that parses the rawdata into a polars dataframe where each row corresponds to a trial"""
-#     # self.logger.attach_to_queue(self.log_queue)
-#     if cfg.multiprocess["enable"]:
-#         self.logger.worker_configurer(self.queue)
-
-#     _trial = WheelDetectionTrial(
-#         trial_no=trial_no, meta=self.meta, logger=self.logger
-#     )
-#     # get the data slice using state changes
-#     if _trial.set_data_slices(self.rawdata):
-#         _data = _trial.trial_data_from_logs()
-
-#         if _data["state_outcome"] is not None:
-#             self._list_data.append(_data)

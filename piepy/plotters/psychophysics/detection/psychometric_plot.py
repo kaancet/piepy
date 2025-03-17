@@ -2,7 +2,7 @@ import numpy as np
 import polars as pl
 import matplotlib.pyplot as plt
 
-from ...color import Color
+from ...colors.color import Color
 from ...plotting_utils import set_style,make_linear_axis,make_label,override_plots,pval_plotter
 from ....core.data_functions import make_subsets
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import WheelDetectionGroupedAggregator
@@ -11,17 +11,18 @@ from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator  import W
 def plot_psychometric(
     data: pl.DataFrame,
     ax: plt.Axes=None,
-    mpl_kwargs: dict=None,
+    mpl_kwargs: dict | None = None,
     **kwargs,
-) -> plt.Axes:
-    """Plots the hit rates with 95% confidence intervals
+) -> tuple[plt.Figure, plt.Axes]:
+    """ Plots the hit rates with 95% confidence intervals
 
-    Parameters:
-    data (pl.DataFrame) : run data
-    ax (plt.axes) : An axes object to place to plot,default is None, which creates the axes
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
 
     Returns:
-    plt.axes: Axes object
+        tuple[plt.Figure,plt.Axes]: Plotted figure and axes objects
     """
     override_plots()
     set_style(kwargs.get("style","presentation"))
@@ -32,7 +33,7 @@ def plot_psychometric(
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
         ax = fig.add_subplot(1, 1, 1)
     
-    clr = Color()
+    clr = Color(task="detection")
     analyzer = WheelDetectionGroupedAggregator()
     analyzer.set_data(data=data)
     analyzer.group_data(group_by=["stim_type", "stim_side", "contrast", "opto_pattern"])
@@ -51,21 +52,21 @@ def plot_psychometric(
         filt_key = filt_tup[1]
         if not filt_df.is_empty():
             # don't plot nonopto catch(baseline) here, we'll do it later
-            if filt_tup[1] == "catch" and not filt_df[0, "opto"]:
+            if filt_tup[2] == "catch" and filt_df[0, "opto_pattern"] == -1:
                 continue
             
             contrast_label = filt_df["signed_contrast"].to_numpy()
             lin_ax = filt_df["linear_axis"].to_numpy()
-            confs = 100 * filt_df["confs"].to_numpy()
+            confs = 100 * filt_df["hit_rate_confs"].to_numpy().transpose()
             count = filt_df["count"].to_numpy()
-            hr = 100 * filt_df["hit_rate"].to_numpy()
+            hr = 100 * filt_df["hit_rate"].to_numpy().flatten()
             stim_label = filt_df["stim_label"].unique().to_numpy()
             p_val = filt_df["p_hit_rate"].to_numpy()
             
             ax._errorbar(
-                    lin_ax,
-                    hr,
-                    confs,
+                    x=lin_ax,
+                    y=hr,
+                    yerr=confs,
                     marker="o",
                     label=f"{stim_label[0]}{make_label(contrast_label,count)}",
                     color=clr.stim_keys[filt_key]["color"],
@@ -84,7 +85,7 @@ def plot_psychometric(
                                       color=clr.stim_keys[filt_key]["color"])
                 
     # baseline
-    baseline = nonearly_data.filter((pl.col("stim_side") == "catch") & (pl.col("opto") == False))  # noqa: E712
+    baseline = nonearly_data.filter((pl.col("stim_side") == "catch") & (pl.col("opto_pattern") == -1))  # noqa: E712
     if len(baseline):
         cnt = baseline["count"].to_numpy()
         base_hr = np.sum(baseline["hit_count"].to_numpy()) / np.sum(cnt)
@@ -109,6 +110,5 @@ def plot_psychometric(
     ax.set_yticks([0, 25, 50, 75, 100])
     ax.set_xlabel("Stimulus Contrast (%)")
     ax.set_ylabel("Hit Rate (%)")
-    ax.grid()
     # ax.legend(loc='center left',bbox_to_anchor=(1,0.5),frameon=False)
-    return ax
+    return fig, ax

@@ -32,65 +32,90 @@ class WheelDiscriminationRunData(RunData):
         """Sets the data of the session and augments it
 
         Args:
-            data: Dataframe
+            data (pl.Dataframe): Dataframe to initialize the run data
         """
         if data is not None:
             super().set_data(data)
             self.add_qolumns()
-            self.add_rig_response_time()
     
     def add_qolumns(self) -> None:
         """ Adds some quality of life (qol) columns """
         
         # add a stim_side column for ease of access
         self.data = self.data.with_columns(
-            pl.when(pl.col("stim_pos") > 0)
+            pl.when(pl.col("target_pos").list.get(0) > 0)
             .then(pl.lit("contra"))
-            .when(pl.col("stim_pos") < 0)
+            .when(pl.col("target_pos").list.get(0) < 0)
             .then(pl.lit("ipsi"))
-            .when(pl.col("stim_pos") == 0)
-            .then(pl.lit("catch"))
             .otherwise(None)
-            .alias("stim_side")
+            .alias("target_side")
+        )
+        
+        # right choice
+        self.data = self.data.with_columns(
+            pl.col("state_outcome").cast(pl.Boolean)
+            .xor(pl.col("correct_side").cast(pl.Boolean))
+            .not_().cast(pl.Int64)
+            .alias("right_choice")
+        )
+        
+        # add response_time columns
+        self.data = self.data.with_columns(
+            pl.col("state_response_time").alias("response_time")
         )
         
         # round sf and tf
         self.data = self.data.with_columns(
-            [
-                (pl.col("sf").round(2).alias("sf")),
-                (pl.col("tf").round(1).alias("tf")),
-            ]
+            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
         )
-
-        # adds string stimtype
         self.data = self.data.with_columns(
-            (
-                pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz"
-            ).alias("stim_type")
-        )
-
-        # add signed contrast
-        self.data = self.data.with_columns(
-            pl.when(pl.col("stim_side") == "ipsi")
-            .then((pl.col("contrast") * -1))
-            .otherwise(pl.col("contrast"))
-            .alias("signed_contrast")
-        )
-
-        # add easy/hard contrast type groups
-        self.data = self.data.with_columns(
-            pl.when(pl.col("contrast") >= 25)
-            .then(pl.lit("easy"))
-            .when((pl.col("contrast") < 25) & (pl.col("contrast") > 0))
-            .then(pl.lit("hard"))
-            .when(pl.col("contrast") == 0)
-            .then(pl.lit("catch"))
-            .otherwise(None)
-            .alias("contrast_type")
+            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
         )
         
+    def add_stim_diff_and_type(self,discrim_of:str) -> None:
+        """_summary_
+
+        Args:
+            discrim_of (str): _description_
+        """
+        
+        if discrim_of == "width":
+            u = "deg"
+        elif discrim_of == "sf":
+            u = "cpd"
+        elif discrim_of == "tf":
+            u = "Hz"
+        elif discrim_of == "contrast":
+            u = "%"
+        else:
+            u = "NA"
+        
+        self.data = self.data.with_columns(
+            pl.lit(discrim_of).alias("discriminating")
+        )
+        
+        self.data = self.data.with_columns(
+            pl.when(pl.col("target_side")=="contra")
+                    .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
+                    .otherwise(pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}"))
+                    .alias(f"diff_{discrim_of}"))
+        
+        # adds string stimtype
+        self.data = self.data.with_columns(
+            (pl.col(f"target_{discrim_of}").cast(pl.Utf8) + f"{u}_" + pl.col(f"distract_{discrim_of}").cast(pl.Utf8) + f"{u}")
+            .alias("stim_type")
+        )
+
     def add_pattern_related_columns(self, pattern_path: str) -> None:
-        """Adds columns related to the silencing pattern if they exist"""
+        """_Adds columns related to the silencing pattern if they exist
+
+        Args:
+            pattern_path (str): path to the opto_pattern
+
+        Raises:
+            KeyError: _description_
+            ValueError: _description_
+        """
         if len(self.data["opto"].unique()) == 1:
             # Regular training sessions
             # add the pattern name depending on pattern id
@@ -158,9 +183,13 @@ class WheelDiscriminationRun(Run):
         _base = super().__repr__()
         return _base
 
-    def analyze_run(self, transform_dict: dict) -> None:
+    def analyze_run(self, transform_dict: dict, discrim_of:str) -> None:
         """ """
         super().analyze_run(transform_dict)
+        
+        self.data.add_stim_diff_and_type(discrim_of=discrim_of)
+        
+        self.data.add_pattern_related_columns(self.paths.opto_pattern)
 
         self.stats = get_run_stats(self.data.data)
 
@@ -214,7 +243,8 @@ class WheelDiscriminationSession(Session):
                 display(f"Loading from {_run.paths.save}")
                 _run.load_run()
             else:
-                _run.analyze_run(STATE_TRANSITION_KEYS)
+                discrim_of = _run.meta["opts"]["AttendVectorName"]
+                _run.analyze_run(STATE_TRANSITION_KEYS,discrim_of)
                 _run.data.add_metadata_columns(_run.meta)
                 _run.save_run()
 

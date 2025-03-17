@@ -3,7 +3,7 @@ import polars as pl
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from ...color import Color
+from ...colors.color import Color
 from ....psychophysics.wheel.wheelTrace import WheelTrace
 from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
@@ -19,16 +19,28 @@ def plot_wheel_profile(
     mpl_kwargs: dict = None,
     **kwargs,
 ) -> plt.Axes:
-    """
-    Plots the profile of the wheel (speed or position)
+    """Plots the profile of the wheel (speed or position)
     Seperates the data by one variable and plots it on a single axes
     This is to see how the average wheel trajectory profile looks like for a given condition
-    NOTE: It is better to call this function after filtering other conditions"""
+    NOTE: It is better to call this function after filtering other conditions
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        ax (plt.Axes, optional): An axes object to place to plot,default is None, which creates the axes
+        seperate_by (list[str], optional): Conditions to seperate the data by. Defaults to ["contrast"].
+        time_reset (str, optional): Time anchor point to reset the time frames of wheel trajectories. Defaults to "t_vstimstart_rig".
+        plot_speed (bool, optional): If true, plot speed, else plot position. Defaults to True.
+        include_misses (bool, optional): Whether to plot miss trials. Defaults to False.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Returns:
+        plt.Axes: Plotted axes object
+    """
     
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
-    clr = Color()
+    clr = Color(task="detection")
     override_plots()
     
     trace = WheelTrace()
@@ -147,14 +159,26 @@ def plot_wheel_profile(
 
 def plot_all_wheel_profiles(
     data: pl.DataFrame,
-    include_misses: bool = False,
-    plot_speed: bool = True,
-    time_reset: str = "t_vstimstart_rig",
     seperate_by: list[str] = ["contrast"],
+    time_reset: str = "t_vstimstart_rig",
+    plot_speed: bool = True,
+    include_misses: bool = False,
     mpl_kwargs: dict = None,
     **kwargs,
 ) -> plt.Figure:
-    """Runs through opto patterns and stimulus types to plot them on seperate axes"""
+    """Runs through opto patterns and stimulus types to plot them on seperate axes
+
+    Args:
+        data (pl.DataFrame): Data to be plotted, can be single or multiple sessions
+        seperate_by (list[str], optional): Conditions to seperate the data by. Defaults to ["contrast"].
+        time_reset (str, optional): Time anchor point to reset the time frames of wheel trajectories. Defaults to "t_vstimstart_rig".
+        plot_speed (bool, optional): If true, plot speed, else plot position. Defaults to True.
+        include_misses (bool, optional): Whether to plot miss trials. Defaults to False.
+        mpl_kwargs (dict | None, optional): kwargs for styling matplotlib plots. Defaults to None.
+
+    Returns:
+        plt.Figure: Plotted figure object
+    """
     set_style(kwargs.get("style", "presentation"))
     uniq_opto = data["opto_pattern"].drop_nulls().unique().sort().to_list()
     n_opto = len(uniq_opto)
@@ -168,7 +192,7 @@ def plot_all_wheel_profiles(
         nrows=n_stim,
         ncols=n_opto,
         constrained_layout=True,
-        figsize=kwargs.pop("figsize", (20, 15)),
+        figsize=mpl_kwargs.pop("figsize", (20, 15)),
     )
 
     # if single axes
@@ -201,3 +225,5 @@ def plot_all_wheel_profiles(
         )
 
         ax.set_title(f"{filt_tup[1]}_{filt_tup[0]}")
+
+    return fig

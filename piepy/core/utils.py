@@ -10,6 +10,9 @@ def unique_except(x: ArrayLike, exceptions: list) -> np.ndarray:
     Args:
         x: The array to be searched
         exceptions: The values that should be excluded froom unique search
+        
+    Returns:
+        np.ndarray: An array of unique values except given values
     """
     uniq = np.unique(x)
     ret = [i for i in uniq if i not in exceptions]
@@ -22,6 +25,9 @@ def nonan_unique(x: ArrayLike, sort: bool = False) -> np.ndarray:
     Args:
         x: The array to be searched
         sort: Flag to sort the resulting unique array
+        
+    Returns:
+        np.ndarray: An aray of unique values that are not nan
     """
     x = np.array(x)
     u = np.unique(x[~np.isnan(x)])
@@ -29,33 +35,6 @@ def nonan_unique(x: ArrayLike, sort: bool = False) -> np.ndarray:
         return np.sort(u)
     else:
         return u
-
-
-def get_fraction(
-    data_in: np.ndarray, fraction_of, window_size: int = 10, min_period: int = None
-) -> np.ndarray:
-    """Returns the fraction of values in data_in"""
-    if min_period is None:
-        min_period = window_size
-
-    fraction = []
-    for i in range(len(data_in)):
-        window_start = int(i - window_size / 2)
-        if window_start < 0:
-            window_start = 0
-        window_end = int(i + window_size / 2)
-        window = data_in[window_start:window_end]
-
-        if len(window) < min_period:
-            to_append = np.nan
-        else:
-            tmp = []
-            for i in window:
-                tmp.append(1 if i == fraction_of else 0)
-                to_append = float(np.mean(tmp))
-        fraction.append(to_append * 100)
-
-    return np.array(fraction)
 
 
 def timeit(msg):

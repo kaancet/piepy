@@ -6,7 +6,7 @@ import matplotlib.ticker as ticker
 
 from ...core.data_functions import make_subsets
 from ..plotting_utils import set_style, override_plots
-from ..color import Color
+from ..colors.color import Color
 
 
 def plot_performance(
@@ -17,7 +17,7 @@ def plot_performance(
     rolling_window: int = 0,
     mpl_kwargs: dict|None = None,
     **kwargs,
-) -> plt.Axes:
+) -> tuple[plt.Figure, plt.Axes]:
     """ Plots the accuracy of subset of trials through the run 
     
     Args:
@@ -27,13 +27,16 @@ def plot_performance(
         seperate_by: column names to seperate the data by (e.g. stimkey, contrast)
         rolling_window: width of the window to do rolling average
         mpl_kwargs: keyword arguments to be used in matplotlib function calls
+        
+    Returns:
+        tuple[plt.Figure, plt.Axes]: Figure and axes of plot
     """
 
     
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
-    clr_obj = Color()
+    clr_obj = Color(task=kwargs.get("task_color","detection"))
     set_style(kwargs.get("style", "presentation"))
     override_plots()
 
@@ -41,7 +44,7 @@ def plot_performance(
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
     else:
-        fig = None
+        fig = ax.get_figure()
 
     def _get_perf_(
         arr: np.ndarray,
@@ -102,7 +105,7 @@ def plot_reactiontime(
     rolling_window: int = 0,
     mpl_kwargs: dict = None,
     **kwargs,
-) -> plt.Axes:
+) -> tuple[plt.Figure, plt.Axes]:
     """ Plots the change of reaction time of different type of trials through the run 
     
     Args:
@@ -114,12 +117,15 @@ def plot_reactiontime(
         seperate_by: column names to seperate the data by (e.g. stimkey, contrast)
         rolling_window: width of the window to do rolling average
         mpl_kwargs: keyword arguments to be used in matplotlib function calls
+        
+    Returns:
+        tuple[plt.Figure, plt.Axes]: Figure and axes of plot
     """
 
     if mpl_kwargs is None:
         mpl_kwargs = {}
         
-    clr_obj = Color()
+    clr_obj = Color(task=kwargs.get("task_color","detection"))
     set_style(kwargs.get("style", "presentation"))
     override_plots()
 
@@ -127,7 +133,7 @@ def plot_reactiontime(
         fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
     else:
-        fig = None
+        fig = ax.get_figure()
 
     if reaction_of not in data.columns:
         raise ValueError(f"{reaction_of} not in data columns!")
@@ -175,12 +181,15 @@ def plot_reactiontime(
     ax.set_ylabel(f'{reaction_of.replace("_", " ").capitalize()} (ms)')
 
     ax.set_yscale("symlog")
-    minor_locs = [200, 400, 600, 800, 2000, 4000, 6000, 8000]
+    minor_locs = [200, 400, 600, 800]
+    ax.set_yticks([200,400,600,800,1000])
+    ax.set_ylim([190,1000])
     ax.yaxis.set_minor_locator(plt.FixedLocator(minor_locs))
     ax.yaxis.set_minor_formatter(plt.FormatStrFormatter("%d"))
     ax.yaxis.set_major_locator(ticker.FixedLocator([100, 1000, 10000]))
     ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
     ax.legend(loc="center left", frameon=False, fontsize=5)
+    
     return fig, ax
 
 
@@ -190,7 +199,7 @@ def plot_lick(
     plot_in_time: bool = False,
     mpl_kwargs: dict = None,
     **kwargs,
-) -> plt.Axes:
+) -> tuple[plt.Figure, plt.Axes]:
     """ Plots the cumulative amount of licks throughout the run
     
     Args:
@@ -199,6 +208,9 @@ def plot_lick(
         plot_in_time: flag to either plot the x-axis in time (mins) or trial count
         rolling_window: width of the window to do rolling average
         mpl_kwargs: keyword arguments to be used in matplotlib function calls
+        
+    Returns:
+        tuple[plt.Figure, plt.Axes]: Figure and axes of plot
     """
     if mpl_kwargs is None:
         mpl_kwargs = {"color":"#00BBFF"}
@@ -210,7 +222,7 @@ def plot_lick(
         fig, ax = plt.subplots(1, 1, figsize=mpl_kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
     else:
-        fig = None
+        fig = ax.get_figure()
 
     if plot_in_time:
         _x_label = "Time (mins)"
@@ -230,3 +242,5 @@ def plot_lick(
 
     ax.set_xlabel(_x_label)
     ax.set_ylabel("Lick count")
+    
+    return fig, ax

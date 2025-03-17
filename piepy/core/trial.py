@@ -125,6 +125,9 @@ class TrialHandler:
         Args:
             trial_no: The trial number fo the trial to be parsed
             rawdata: Rawdata dictionary that has all of the session data
+            
+        Returns:
+            bool: True if trial is successully set, False otherwise
         """
         self._trial["trial_no"] = trial_no
 
@@ -142,7 +145,7 @@ class TrialHandler:
                 )[0, "elapsed"]
             else:
                 self._trial["t_trialend"] = _state.filter(
-                    pl.col("transition") == "stimtrialstart"
+                    pl.col("transition") == "stimtrialend"
                 )[0, "elapsed"]
         else:
             return False
@@ -194,7 +197,7 @@ class TrialHandler:
         self,
         imaging_mode: Literal["imaging", "onepcam", "facecam", "eyecam"],
         epoch_endpoints: list,
-    ) -> list[int] | None:
+    ) -> None:
         """Gets the start and end frame ids for the provided imaging mode, given that it exists in the logged data
         NOTE: even if there's no actual recording for onepcam through labcams(i.e. the camera is running in the labcams GUI without saving),
         if there is onepcam frame TTL signals coming into the Arduino, it will save them as pulses.
@@ -218,7 +221,7 @@ class TrialHandler:
                     int(frames_data[-1, 1]),
                 ]
 
-        self._trial[f"{imaging_mode}_frame"] = [frame_ids]
+        self._trial[f"{imaging_mode}_frame_ids"] = [frame_ids]
 
     @staticmethod
     def is_trial_complete(transitions: list) -> bool:
@@ -226,8 +229,10 @@ class TrialHandler:
 
         Args:
             transitions: The list of transition the state machine goes through in a sessions (trialstart,stimstart,stimend,trialend)
+        
+        Returns:
+            bool: True if trial is completed, False otherwise
         """
-
         # Trial start
         if "trialstart" not in transitions:
             raise StateMachineError("NO TRIALSTART FOR STATEMACHINE!!")
@@ -247,6 +252,9 @@ class TrialHandler:
 
         Args:
             event_name: The name of the event column (lick, reward, opto,...)
+        
+        Returns:
+            np.ndarray: An (N,2) array containing event triggers (time, value)
         """
         if event_name not in self.data.keys():
             # raise LogTypeMissingError(f"No hardware event logged with the name: {event_name}")

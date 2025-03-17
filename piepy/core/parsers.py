@@ -5,7 +5,7 @@ from tqdm import tqdm
 from ast import literal_eval
 
 try:
-    from cStringIO import StringIO
+    from cStringIO import StringIO 
 except:
     try:
         from StringIO import StringIO
@@ -21,6 +21,9 @@ def parse_preference(preffile: str) -> dict:
 
     Args:
         preffile: The path to the preference file
+    
+    Returns:
+        dict:
     """
     with open(preffile, "r") as infile:
         pref = json.load(infile)

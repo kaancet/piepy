@@ -156,12 +156,21 @@ class PathFinder:
 
     @staticmethod
     def _get_(dir_path: list, to_get: str) -> list:
-        """ """
+        """Gets the necessary logs in the directory as a list
+        Finding function names is hard...
+
+        Args:
+            dir_path (list): list of paths to loop through
+            to_get (str): which type of log to get
+
+        Returns:
+            list: list of found log files
+        """
         _logs = []
         if dir_path is not None:
             for i in dir_path:
-                for l in os.listdir(i):
-                    if l.endswith(to_get):
-                        _logs.append(pjoin(i, l))
+                for ll in os.listdir(i):
+                    if ll.endswith(to_get):
+                        _logs.append(pjoin(i, ll))
                         break
         return _logs
