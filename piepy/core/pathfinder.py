@@ -1,11 +1,15 @@
 import os
+import glob
+import natsort
 from os.path import join as pjoin
 from os.path import exists as exists
 from .config import config as cfg
-from .exceptions import *
+from .exceptions import PathSettingError
 
 
 class Paths:
+    """Paths for single run"""
+
     def __init__(self, paths_dict: dict, path_idx: int = None) -> None:
         for name, path in paths_dict.items():
             if isinstance(path, list):
@@ -22,7 +26,7 @@ class Paths:
                         try:
                             ret = path[path_idx]
                             setattr(self, name, ret)
-                        except:
+                        except IndexError:
                             raise IndexError(
                                 f"Run no {path_idx} is larger than number of runs present in {name} location: {len(path)}"
                             )
@@ -49,8 +53,10 @@ class PathFinder:
             _found = False
             for p in path:
                 if os.path.isdir(p):
-                    session_related_dir = pjoin(p, self.sessiondir).replace("\\", os.sep)
-                    if exists(session_related_dir):
+                    _dirs = pjoin(p, self.sessiondir).replace("\\", os.sep)
+                    _found_dirs = glob.glob(f"{_dirs}*")
+                    if len(_found_dirs):
+                        session_related_dir = _found_dirs[0]
                         _found = True
                         found_runs = self.look_for_runs(session_related_dir)
                         # saving everything as a list
@@ -108,8 +114,11 @@ class PathFinder:
 
     @staticmethod
     def look_for_runs(dir_path: str) -> None:
-        """Looks for existing run directories inside session directories,
-        returns them as a list if present"""
+        """Looks for existing run directories inside session directories, returns them as a list if present
+
+        Args:
+            dir_path: path to directory that will be searched if more run directories exist in it
+        """
         for root, dirs, files in os.walk(dir_path):
             if len(dirs) == 0:
                 # this will happen if
@@ -118,6 +127,7 @@ class PathFinder:
                 return None
             else:
                 # there are dedicated run folders return them
+                dirs = natsort.natsorted(dirs)
                 return dirs
 
     def set_log_paths(self) -> None:
@@ -146,12 +156,21 @@ class PathFinder:
 
     @staticmethod
     def _get_(dir_path: list, to_get: str) -> list:
-        """ """
+        """Gets the necessary logs in the directory as a list
+        Finding function names is hard...
+
+        Args:
+            dir_path (list): list of paths to loop through
+            to_get (str): which type of log to get
+
+        Returns:
+            list: list of found log files
+        """
         _logs = []
         if dir_path is not None:
             for i in dir_path:
-                for l in os.listdir(i):
-                    if l.endswith(to_get):
-                        _logs.append(pjoin(i, l))
+                for ll in os.listdir(i):
+                    if ll.endswith(to_get):
+                        _logs.append(pjoin(i, ll))
                         break
         return _logs

@@ -1,5 +1,5 @@
 from piepy.plotters.bokeh_plot.bokeh_base import *
-from piepy.plotters.plotter_utils import Color
+from piepy.plotters.plotting_utils import Color
 
 
 from bokeh.models import FactorRange
@@ -16,7 +16,7 @@ class TrialTypeBarGraph(Graph):
     def morph_data(data_in: pl.DataFrame) -> dict:
         q = (
             data_in.lazy()
-            .groupby(["stim_label", "signed_contrast"])
+            .group_by(["stim_label", "signed_contrast"])
             .agg(
                 [
                     (pl.col("outcome") == 1).sum().alias("correct"),

@@ -3,7 +3,7 @@ import logging
 from logging.handlers import QueueHandler
 import traceback
 from os.path import join as pjoin
-from ..utils import display
+from .io import display
 
 
 class Logger:

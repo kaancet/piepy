@@ -1,51 +1,116 @@
-import scipy.io as sio
+import os
+import sys
+from datetime import datetime as dt
+from os.path import exists as pexists
 from os.path import join as pjoin
-from os.path import exists as exists
 
-from ..utils import *
-from .exceptions import *
-from .logger import Logger
-from .pathfinder import *
+import numpy as np
+import patito as pt
+import polars as pl
+import scipy.io as sio
+from tqdm import tqdm
+
+from .gsheet_functions import GSheet
+from .config import config
+from .exceptions import StateMachineError, WrongSessionTypeError
+from .io import display
+from .parsers import (
+    parse_labcams_log,
+    parse_preference,
+    parse_protocol,
+    parse_stimpy_log,
+    parse_stimpygithub_log,
+)
+from .log_repair_functions import (
+    add_total_iStim,
+    extract_trial_count,
+    stitch_logs,
+    extrapolate_time,
+)
+from .pathfinder import Paths
+from .trial import TrialHandler
+
+STATE_TRANSITION_KEYS = {}
 
 
 class RunMeta:
-    def __init__(self, prot_file: str) -> None:
-        self.prot_file = prot_file
-        self.init_from_prot()
+    def __init__(self) -> None:
+        pass
 
-    def init_from_prot(self) -> None:
-        """Initializes the run meta object from the protfile"""
-        self.run_name = self.prot_file.split(os.sep)[-1].split(".")[0]
-        ignore = [
-            "picsFolder",
-            "picsNameFormat",
-            "shuffle",
-            "mask",
-            "nTrials",
-            "progressWindow",
-            "debiasingWindow",
-            "decimationRatio",
-        ]
-        self.opto = False
-        self.opts, self.params, _ = parseProtocolFile(self.prot_file)
-        # put all of the options into meta attributes
-        for k, v in self.opts.items():
-            if k not in ignore:
-                try:
-                    v = float(v.strip(" "))
-                except:
-                    pass
-                if k == "controller":
-                    if "Opto" in v:
-                        self.opto = True
-                setattr(self, k, v)
+    @classmethod
+    def get_meta(cls, path: Paths, skip_google: bool = True) -> dict:
+        """A wrapper function that calls
 
-        if self.opto:
-            self.opto_mode = int(self.opts.get("optoMode", 0))  # 0 continuous, 1 pulsed
+        Args:
+            path: Paths object that has the
+            skip_google: Flag to skip parsing google sheets
+            
+        Returns:
+            dict: metadata as a dict
+        """
+        _temp = path.prot.split(os.sep)
+        _cntr = -1
+        while True:
+            sessiondir = _temp[_cntr]
+            if not sessiondir.startswith("run"):
+                break
+            _cntr -= 1
 
+        _general = {}
+        _general["sessiondir"] = sessiondir
+
+        _temp = sessiondir.split("_")
+        # get date
+        _general["baredate"] = _temp[0]
+        _general["date"] = dt.strptime(_general["baredate"], "%y%m%d").date()
+        _general["nicedate"] = dt.strftime(_general["date"], "%d %b %y")
+
+        # get animalid
+        _general["animalid"] = _temp[1]
+
+        # get userid
+        _general["user_id"] = _temp[-1]
+
+        # from google sheet
+        _waw = {}
+        if not skip_google:
+            _waw = cls.get_run_weight_and_water(
+                animalid=_general["animalid"], baredate=_general["baredate"]
+            )
+
+        # imagingmode
+        imaging_mode = _temp[-2]
+        if imaging_mode == "cam":
+            # because "_no_cam also gets parsed here..."
+            imaging_mode = None
+        elif imaging_mode not in ["1P", "2P"]:
+            raise ValueError(
+                f"Parsed {imaging_mode} as imaging mode, this is not possible, check the session_name!!"
+            )
+        _general["imaging_mode"] = imaging_mode
+
+        _prot = cls.get_prot(path.prot)
+        _pref = cls.get_pref(path.prefs)
+        return {**_general, **_waw, **_prot, **_pref}
+
+    @staticmethod
+    def get_prot(prot_path: str) -> dict:
+        """Gets the options and parameters from prot file
+
+        Args:
+            prot_path: The path to protocol file
+            
+        Returns:
+            dict: protocol file as a dict
+        """
+        prot_dict = {}
+        prot_dict["run_name"] = prot_path.split(os.sep)[-1].split(".")[0]
+        opts, params, _ = parse_protocol(prot_path)
+
+        # get the level if exists
         lvl = ""
-        if self.prot_file.find("level") != -1:
-            tmp = self.prot_file[self.prot_file.find("level") + len("level") :]
+        if prot_path.find("level") != -1:
+            tmp = prot_path[prot_path.find("level") + len("level") :]
             for char in tmp:
                 if char not in [".", "_"]:
                     lvl += char
@@ -53,14 +118,57 @@ class RunMeta:
                     break
         else:
             lvl = "exp"
-        self.level = lvl
+        prot_dict["level"] = lvl
 
-        os_stat = os.stat(self.prot_file)
+        # get the run start time
+        os_stat = os.stat(prot_path)
         if sys.platform == "darwin":
             create_epoch = os_stat.st_birthtime
         elif sys.platform == "win32":
             create_epoch = os_stat.st_ctime
-        self.run_time = dt.fromtimestamp(create_epoch).strftime("%H%M")
+        prot_dict["run_start_time"] = dt.fromtimestamp(create_epoch).strftime("%H%M")
+        prot_dict["opts"] = opts
+        prot_dict["params"] = params
+        return prot_dict
+
+    @staticmethod
+    def get_pref(pref_path: str) -> dict:
+        """Returns the parsed preference file
+
+        Args:
+            pref_path: The path to preference file
+        
+        Returns
+            dict: preferenc file as a dict
+        """
+        return parse_preference(pref_path)
+
+    @staticmethod
+    def get_run_weight_and_water(animalid: str, baredate: str) -> dict:
+        """Gets the session weight from google sheet
+
+        Args:
+            animalid: Id of the animal (KC133)
+            baredate: The date of the experiment as abare string (231108)
+            
+        Returns:
+            dict: google sheet data as a dict
+        """
+        logsheet = GSheet("Mouse Database_new")
+        gsheet_df = logsheet.read_sheet(2)
+        gsheet_df = gsheet_df[
+            (gsheet_df["Mouse ID"] == animalid)
+            & (gsheet_df["Date [YYMMDD]"] == int(baredate))
+        ]
+        _gsheet_dict = {}
+        if not gsheet_df.empty:
+            gsheet_df.reset_index(inplace=True)
+            _gsheet_dict["weight"] = gsheet_df["weight [g]"].iloc[0]
+            try:
+                _gsheet_dict["water_consumed"] = int(gsheet_df["rig water [µl]"].iloc[0])
+            except Exception:
+                _gsheet_dict["water_consumed"] = None
+        return _gsheet_dict
 
 
 class RunData:
@@ -68,24 +176,64 @@ class RunData:
         self.set_data(data)
 
     def set_data(self, data: pl.DataFrame) -> None:
+        """Sets the data of the
+
+        Args:
+            data: The dataframe that has the trials
+        """
         self.data = data
 
+    def add_metadata_columns(self, metadata: dict) -> None:
+        """Adds some metadata to run data for ease of manipulation
+
+        Args:
+            metadata: Adds metadata columns to the dataframe
+        """
+        # animal id and baredate as str
+        self.data = self.data.with_columns(
+            [
+                pl.lit(metadata["animalid"]).alias("animalid"),
+                pl.lit(metadata["baredate"]).alias("baredate"),
+            ]
+        )
+
+        # datetime date
+        self.data = self.data.with_columns(
+            pl.col("baredate")
+            .str.strptime(pl.Date, format="%y%m%d")
+            .cast(pl.Date)
+            .alias("date")
+        )
+
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
-        """Saves the run data as .parquet (and .mat file if desired)"""
+        """Saves the run data as .parquet (and .mat file if desired)
+
+        Args:
+            save_path: The path to save the dataframe as a parquet
+            save_mat: Flag to save the dataframe as a .mat file
+        """
         data_save_path = pjoin(save_path, "runData.parquet")
         self.data.write_parquet(data_save_path)
         if save_mat:
             self.save_as_mat(save_path)
             display(f"Saved .mat file at {save_path}", color="green")
 
-    def load_data(self, load_path: str) -> pd.DataFrame:
-        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame"""
+    def load_data(self, load_path: str) -> pl.DataFrame:
+        """Loads the data from J:/analysis/<exp_folder> as a pandas data frame
+
+        Args:
+            load_path: The path to load the data from
+        """
         # data = pd.read_csv(self.paths.data)
         data = pl.read_parquet(load_path)
         self.set_data(data)
 
     def save_as_mat(self, save_path: str) -> None:
-        """Helper method to convert the data into a .mat file"""
+        """Helper method to convert the data into a .mat file
+
+        Args:
+            save_path: The path to save the .mat file to
+        """
         datafile = pjoin(save_path, "sessionData.mat")
 
         save_dict = {name: col.values for name, col in self.data.stim_data.items()}
@@ -94,32 +242,95 @@ class RunData:
 
 
 class Run:
-    def __init__(self, run_no: int, _path: PathFinder) -> None:
+    def __init__(self, paths: Paths) -> None:
         self.data = None
-        self.run_no = run_no
-        self.init_run_paths(_path)
+        self.meta = None
+        self.stats = None
+        self.paths = paths
         # initialize the logger(only log at one analysis location, currently arbitrary)
         # self.logger = Logger(log_path=self.paths.save[0])
-        self.logger = Logger(log_path=self.paths.save[0])
+        self.trial_handler = TrialHandler()
 
-    def init_run_paths(self, path_finder: PathFinder) -> None:
-        """Sets the paths related to the run"""
-        self.paths = Paths(path_finder.all_paths, self.run_no)
+    def __repr__(self):
+        _controller = ""
+        if self.meta is not None:
+            _controller = self.meta["opts"]["controller"]
+        _dat = ""
+        if self.data.data is not None and self.stats is not None:
+            _dat = f" - {len(self.data.data)} trials"
+        return f"{_controller}{_dat}"
 
+    def set_meta(self, skip_google: bool = True) -> None:
+        """Sets the run meta
+
+        Args:
+            skip_google: Flag to skip parsing google sheets
+        """
+        self.meta = RunMeta().get_meta(self.paths, skip_google=skip_google)
+
+    def create_save_paths(self) -> None:
+        """Creates save paths"""
         # create save paths
         for s_path in self.paths.save:
-            if not exists(s_path):
+            if not pexists(s_path):
                 os.makedirs(s_path)
 
-    def init_run_meta(self):
-        """Initializes the metadata for the run"""
-        self.meta = RunMeta(self.paths.prot)
+    def analyze_run(self, transform_dict: dict) -> None:
+        """Main loop to extract data from rawdata, should be overwritten in child classes
+
+        Args:
+            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
+        self.read_run_data()
+        self.translate_state_changes(transform_dict)
+
+        self.rawdata = extract_trial_count(self.rawdata)
+        # add total iStim just in case
+        self.rawdata = add_total_iStim(self.rawdata)
+
+        run_data = self.get_trials()
+
+        # set the data object
+        self.data.set_data(run_data)
+
+    def get_trials(self) -> pt.DataFrame:
+        """Gathers all the data, validates them and returns a dataframe"""
+        trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
+        pbar = tqdm(trial_nos, desc="Extracting trial data:", disable=not config.verbose)
+        for t in pbar:
+            _trial = self.trial_handler.get_trial(int(t), self.rawdata)
+            if _trial is not None:
+                if t == 1:
+                    data_to_append = _trial
+                else:
+                    for k, v in _trial.items():
+                        data_to_append[k].extend(v)
+
+            pbar.update()
+
+        return (
+            pt.DataFrame(data_to_append)
+            .set_model(self.trial_handler.trial_model)
+            .derive()
+            .drop()
+            .cast()
+            .fill_null(strategy="defaults")
+            .validate()
+        )
 
     @staticmethod
     def read_combine_logs(
         stimlog_path: str | list, riglog_path: str | list
-    ) -> tuple[pl.DataFrame, list]:
-        """Reads the logs and combines them if multiple logs of same type exist in the run directory"""
+    ) -> tuple[dict, dict]:
+        """Reads the logs and combines them if multiple logs of same type exist in the run directory
+
+        Args:
+            stimlog_path: path to .stimlog file
+            riglog_path: path to .riglog file
+            
+        Returns:
+            tuple[dict, dict]: Rawdata dictionary and comments dictionary
+        """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
             assert len(stimlog_path) == len(
                 riglog_path
@@ -131,31 +342,28 @@ class Run:
             rig_comments = []
             for i, s_log in enumerate(stimlog_path):
                 try:
-                    temp_slog, temp_scomm = parseStimpyLog(s_log)
-                except:
+                    temp_slog, temp_scomm = parse_stimpy_log(s_log)
+                except Exception:
                     # probably not the right stimpy version, try github
-                    temp_slog, temp_scomm = parseStimpyGithubLog(s_log)
-                temp_rlog, temp_rcomm = parseStimpyLog(riglog_path[i])
+                    temp_slog, temp_scomm = parse_stimpygithub_log(s_log)
+                temp_rlog, temp_rcomm = parse_stimpy_log(riglog_path[i])
                 stim_data_all.append(temp_slog)
                 rig_data_all.append(temp_rlog)
                 stim_comments.extend(temp_scomm)
                 rig_comments.extend(temp_rcomm)
 
-            stim_data = stitchLogs(stim_data_all, isStimlog=True)  # stimlog
-            rig_data = stitchLogs(rig_data_all, isStimlog=False)  # riglog
+            stim_data = stitch_logs(stim_data_all, isStimlog=True)  # stimlog
+            rig_data = stitch_logs(rig_data_all, isStimlog=False)  # riglog
         else:
-            try:
-                stim_data, stim_comments = parseStimpyLog(stimlog_path)
-            except:
-                stim_data, stim_comments = parseStimpyGithubLog(stimlog_path)
-            rig_data, rig_comments = parseStimpyLog(riglog_path)
+            stim_data, stim_comments = parse_stimpy_log(stimlog_path)
+            rig_data, rig_comments = parse_stimpy_log(riglog_path)
 
         rawdata = {**stim_data, **rig_data}
         comments = {"stimlog": stim_comments, "riglog": rig_comments}
         return rawdata, comments
 
     def read_run_data(self) -> None:
-        """Reads the data from concatanated riglog and stimlog files, and if exists from camlog files"""
+        """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
         rawdata, self.comments = self.read_combine_logs(
             self.paths.stimlog, self.paths.riglog
@@ -167,67 +375,82 @@ class Run:
             if self.rawdata["screen"][0, "value"] == 0:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
-        # onep or two depending on imaging mode
-        if self.meta.imaging_mode == "1P":
-            try:
-                if os.path.exists(self.paths.onepcamlog):
-                    self.rawdata["onepcam_log"], self.comments["onepcam"], _ = (
-                        parseCamLog(self.paths.onepcamlog)
-                    )
-            except:
-                display(
-                    "\n No 1P cam data for 1P experiment! IS THIS EXPECTED?! \n",
-                    color="yellow",
-                )
-        elif self.meta.imaging_mode == "2P":
-            pass
+        if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
+                self.paths.onepcamlog
+            )
 
         # try eyecam and facecam either way
-        if self.paths.eyecam is not None and os.path.exists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parseCamLog(
+        if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
                 self.paths.eyecamlog
             )
 
-        if self.paths.facecam is not None and os.path.exists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parseCamLog(
+        if self.paths.facecam is not None and pexists(self.paths.facecamlog):
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
                 self.paths.facecamlog
             )
 
         display("Read rawdata")
 
-    def check_and_translate_state_data(self) -> bool:
+    def translate_state_changes(self, transform_dict: dict = None) -> None:
         """Checks if state data exists and translated the state transitions according to defined translation dictionary
-        This function needs the translate transition to be defined beforehand"""
-        if self.rawdata["statemachine"].is_empty():
-            self.logger.critical(
-                "NO STATE MACHINE TO ANALYZE. LOGGING PROBLEMATIC. SOLVE THIS ISSUE FAST!!",
-                cml=True,
+        This function needs the translate transition to be defined beforehand
+
+        Args:
+            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
+        if transform_dict is None:
+            display(
+                ">> WARNING! << No state transofrmation dictionary provided, using a generic one. It is very likely this will cause issues",
+                color="yellow",
             )
-            return False
+            transform_dict = {
+                "0->1": "trialstart",
+                "1->2": "stimstart",
+                "2->3": "stimend",
+                "3->0": "trialend",
+            }
+
+        def translate_transition(old_state: str, new_state: str) -> str:
+            _key = f"{int(old_state)}->{int(new_state)}"
+            return transform_dict[_key]
 
         # do the translation
         try:
             self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
                 pl.struct(["oldState", "newState"])
-                .apply(lambda x: self.translate_transition(x["oldState"], x["newState"]))
+                .map_elements(
+                    lambda x: translate_transition(x["oldState"], x["newState"]),
+                    return_dtype=str,
+                )
                 .alias("transition")
             )
-        except:
+        except WrongSessionTypeError:
             raise WrongSessionTypeError(
-                f"Unable to translate state changes to valid transitions. Make sure you are using the correct session type to analyze your data!"
+                "Unable to translate state changes to valid transitions. Make sure you are using the correct session type to analyze your data!"
             )
+
+        if self.rawdata["statemachine"]["transition"].is_null().any():
+            raise StateMachineError(
+                """There are untranslated state changes! Are you sure you're using the correct state transition keys?
+                                    I got"""
+            )
+
         # rename cycle to 'trialNo for semantic reasons
         self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
             {"cycle": "trialNo"}
         )
 
-        return True
-
     def is_run_saved(self) -> bool:
-        """Initializes the necessary save paths and checks if data already exists"""
+        """Checks if data already exists
+        
+        Returns:
+            bool: True if saved ata is found, else False
+        """
         loadable = False
         for d_path in self.paths.data:
-            if exists(d_path):
+            if pexists(d_path):
                 loadable = True
                 display(f"Found saved data: {d_path}", color="cyan")
                 break
@@ -236,66 +459,23 @@ class Run:
         return loadable
 
     def save_run(self, save_mat: bool = False) -> None:
-        """Saves the run data, meta and stats"""
+        """Saves the run data
+
+        Args:
+            save_mat: Flag to save the dataframe as a .mat file
+        """
         if self.data is not None:
             for s_path in self.paths.save:
+                if not pexists(s_path):
+                    os.makedirs(s_path)
+                    # os.makedirs(s_path)
                 self.data.save_data(s_path, save_mat)
                 display(f"Saved session data to {s_path}", color="green")
 
     def load_run(self) -> None:
         """Loads the saved"""
         for d_path in self.paths.data:
-            if exists(d_path):
+            if pexists(d_path):
                 self.data.load_data(d_path)
                 display(f"Loaded session data from {d_path}", color="green")
                 break
-
-    def extract_trial_count(self, num_state_changes: int):
-        """Extracts the trial no from state changes, this works for stimpy for now"""
-        display("Trial increment faulty, extracting from state changes...")
-
-        trial_cnt = int(len(self.rawdata["statemachine"]) / num_state_changes)
-        trial_no = np.repeat(np.arange(1, trial_cnt + 1), num_state_changes)
-
-        if len(trial_no) != len(self.rawdata["statemachine"]):
-            len_diff = len(self.rawdata["statemachine"]) - len(trial_no)
-            trial_no = np.append(trial_no, trial_no[-1] * len_diff)
-
-        new_trial_no = pl.Series("trialNo", trial_no)
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
-            new_trial_no
-        )
-
-    def compare_cam_logging(self) -> None:
-        """Compares the camlogs with corresponding riglog recordings"""
-        # !! IMPORTANT !!
-        # rawdata keys that end only with 'cam' are from the rig
-        # the ones that end with 'cam_log' are from labcams
-        rig_cams = [k for k in self.rawdata.keys() if k.endswith("cam")]
-        labcam_cams = [k for k in self.rawdata.keys() if k.endswith("cam_log")]
-
-        assert len(rig_cams) == len(
-            labcam_cams
-        ), f"Number of camlogs in rig({len(rig_cams)}) and labcams({len(labcam_cams)}) are not equal!! "
-
-        for i, lab_cam_key in enumerate(labcam_cams):
-            rig_cam_frames = len(self.rawdata[rig_cams[i]])
-            labcams_frames = len(self.rawdata[lab_cam_key])
-
-            if labcams_frames < rig_cam_frames:
-                display(
-                    f"{rig_cam_frames - labcams_frames} logged frame(s) not recorded by {lab_cam_key}!!",
-                    color="yellow",
-                )
-            elif labcams_frames > rig_cam_frames:
-                # remove labcams camlog frames if they are more than riglog recordings
-                display(
-                    f"{labcams_frames - rig_cam_frames} logged frame(s) not logged in {rig_cams[i]}!",
-                    color="yellow",
-                )
-
-                self.rawdata[lab_cam_key] = self.rawdata[lab_cam_key].slice(
-                    0, rig_cam_frames
-                )  # removing extra recorded frames
-                if len(self.rawdata[lab_cam_key]) == rig_cam_frames:
-                    display(f"Camlogs are equal now!", color="cyan")

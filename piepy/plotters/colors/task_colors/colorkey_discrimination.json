@@ -1,0 +1,115 @@
+{
+    "spatiotemporal":{
+        "0.04cpd_8.0Hz_-1": {
+            "color":"#FF7F0F",
+            "linestyle":"-"
+        },
+        "0.04cpd_8.0Hz_0": {
+            "color":"#F8C28C",
+            "linestyle":"--"
+        },
+        "0.04cpd_8.0Hz_1": {
+            "color":"#A31C00",
+            "linestyle":":"
+        },
+        "0.04cpd_0.5Hz_-1" :{
+            "color":"#73C20F",
+            "linestyle":"-"
+        },
+        "0.04cpd_0.5Hz_0" :{
+            "color":"#C8F09B",
+            "linestyle":"--"
+        },
+        "0.16cpd_0.5Hz_-1": {
+            "color":"#0099C2",
+            "linestyle":"-"
+        },
+        "0.16cpd_0.5Hz_0": {
+            "color":"#87DDF5",
+            "linestyle":"--"
+        },
+        "0.16cpd_0.5Hz_1": {
+            "color":"#003085",
+            "linestyle":":"
+        },
+        "0.16cpd_8.0Hz_-1": {
+            "color":"#A90AB8",
+            "linestyle":"-"
+        },
+        "0.16cpd_8.0Hz_0": {
+            "color":"#E27FEB",
+            "linestyle":":"
+        },
+        "0.1cpd_4.0Hz_-1":{
+            "color":"#7F7F7F",
+            "linestyle":"-"
+        },
+        "0.1cpd_4.0Hz_0":{
+            "color":"#03FFFF",
+            "linestyle":"--"
+        },
+        "0.1cpd_4.0Hz_1":{
+            "color":"#191970",
+            "linestyle":":"
+        },
+        "0.1cpd_4.0Hz_grating_-1":{
+            "color":"#7F7F7F",
+            "linestyle":"-"
+        },
+        "0.1cpd_4.0Hz_grating_0":{
+            "color":"#03FFFF",
+            "linestyle":"--"
+        },
+        "0.1cpd_4.0Hz_grating_1":{
+            "color":"#191970",
+            "linestyle":":"
+        },
+        "all":{
+            "color":"#000000",
+            "linestyle":"-"
+        }
+    },
+    "width":{
+        "32.0deg_15.0deg_-1": {
+            "color":"#FF7F0F",
+            "linestyle":"-"
+        },
+        "32.0deg_15.0deg_-1": {
+            "color":"#F8C28C",
+            "linestyle":"--"
+        },
+        "0.04cpd_8.0Hz_1": {
+            "color":"#A31C00",
+            "linestyle":":"
+        },
+        "0.04cpd_0.5Hz_-1" :{
+            "color":"#73C20F",
+            "linestyle":"-"
+        }
+    },
+    "contrast":{
+        "1.0":{"color":"#262626"},
+        "0.5":{"color":"#4d4d4d"},
+        "0.25": {"color":"#737373"},
+        "0.125":{"color":"#999999"},
+        "0.0625":{"color":"#bfbfbf"},
+        "0.03125":{"color":"#e6e6e6"},
+        "0.0":{"color":"#551177",
+               "linestyle":"--"},
+        "-1":{"color":"#514577"},
+        "100.0":{"color":"#262626"},
+        "50.0":{"color":"#4d4d4d"},
+        "25.0":{"color":"#737373"},
+        "12.5":{"color":"#999999"},
+        "6.25":{"color":"#bfbfbf"},
+        "3.125":{"color":"#e6e6e6"}
+    },
+    "outcome":{
+        "1":{"color":"#4f8239"},
+        "0":{"color":"#a14127"},
+        "-1":{"color":"#827f7e"}
+    },
+    "animals":{
+
+    }
+}

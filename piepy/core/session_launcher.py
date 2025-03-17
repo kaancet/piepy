@@ -45,11 +45,16 @@ def main():
     # __file__ is core.session_launcher.py
     mod_path = normpath(
         pjoin(
-            abspath(dirname(dirname(__file__))), opts.paradigm, session_class_name + ".py"
+            abspath(dirname(dirname(__file__))),
+            "psychophysics",
+            opts.paradigm,
+            session_class_name + ".py",
         )
     )
     if exists(mod_path):
-        mod = importlib.import_module(f"piepy.{opts.paradigm}.{session_class_name}")
+        mod = importlib.import_module(
+            f"piepy.psychophysics.{opts.paradigm}.{session_class_name}"
+        )
         session_class_name = (
             session_class_name[0].upper() + session_class_name[1:]
         )  # uppercasing the first letter for class name

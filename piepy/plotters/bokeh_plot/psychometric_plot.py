@@ -1,6 +1,6 @@
 from piepy.detection.wheelDetectionAnalysis import DetectionAnalysis
 from piepy.plotters.bokeh_plot.bokeh_base import *
-from piepy.plotters.plotter_utils import Color
+from piepy.plotters.plotting_utils import Color
 
 from bokeh.models import Whisker, TeeHead
 import polars as pl

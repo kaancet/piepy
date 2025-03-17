@@ -237,11 +237,10 @@ def parseVStimLog(fname):
                 fliploc, data["screen"]["duinotime"], fill_value="extrapolate"
             )(np.arange(len(data["vstim"])))
         else:
-
-            print(
+            display(
                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
                     len(data["screen"]), indkey, len(fliploc)
-                )
+                ), color="yellow"
             )
     return data, comments
 
@@ -611,11 +610,10 @@ def extrapolate_time(data):
             temp_df = pl.Series("duinotime", temp)
             data["vstim"] = data["vstim"].hstack([temp_df])
         else:
-
-            print(
+            display(
                 "The number of screen pulses {0} does not match the visual stimulation {1}:{2} log.".format(
                     len(data["screen"]), indkey, len(fliploc)
-                )
+                ), color="yellow"
             )
     return data
 

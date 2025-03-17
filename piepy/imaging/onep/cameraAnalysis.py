@@ -1,9 +1,12 @@
-from polars import DataFrame
+import os
+import numpy as np
+import polars as pl
+from os.path import join as pjoin
+from datetime import datetime as dt
 
-from .stacks import *
-from .myio import *
-from .retinoutils import *
-from ...utils import *
+from .stacks import load_stack
+from ...core.io import display
+from ...core.parsers import parse_labcams_log
 
 
 class CamDataAnalysis:
@@ -24,7 +27,7 @@ class CamDataAnalysis:
 
         if len(cam_log) == 1:
             p_camlog = pjoin(self.runpath, cam_log[0])
-            self.camlog, self.camlog_comment, _ = parseCamLog(p_camlog)
+            self.camlog, self.camlog_comment, _ = parse_labcams_log(p_camlog)
         elif len(cam_log) > 1:
             raise IOError(f"Multiple camlogs present in run directory {self.runpath}")
         elif len(cam_log) == 0:
@@ -32,7 +35,7 @@ class CamDataAnalysis:
 
     def get_frame_time(self) -> None:
         """Gets the avg frame time from experiment duration and frame count"""
-        avg_ftime = np.mean(np.diff(self.camlog["timestamp"]))
+        avg_ftime = np.nanmean(np.diff(self.camlog["timestamp"]))
         if avg_ftime == 0:
             tmp = [i for i in self.camlog_comment if "# [" in i]
             exp_start = dt.strptime(tmp[0].split("]")[0][-8:], "%H:%M:%S")

@@ -13,8 +13,9 @@ from datetime import datetime as dt
 from os.path import dirname, abspath, normpath
 
 from ..core.config import config as cfg
-from ..utils import display, timeit
-from ..gsheet_functions import GSheet
+from .utils import timeit
+from .io import display
+from .gsheet_functions import GSheet
 
 
 class MouseMeta:
@@ -143,6 +144,7 @@ class MouseData:
                 .str.split(",")
                 .apply(lambda x: [float(i) for i in x])
                 .alias("tf"),
+                pl.col("dt_date").str.to_date(),
             ]
         )
 
@@ -189,10 +191,14 @@ class Mouse:
             date_interval = [date_interval]
             # add current day as end date
             date_interval.append(dt.today().strftime("%y%m%d"))
-        else:
+        elif isinstance(date_interval, list):
             assert (
                 len(date_interval) <= 2
             ), f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
+            if len(date_interval) == 1:
+                date_interval.append(dt.today().strftime("%y%m%d"))
+        else:
+            raise ValueError("Got an unexpected type for dates!")
 
         startdate = dt.strptime(date_interval[0], "%y%m%d")
         enddate = dt.strptime(date_interval[1], "%y%m%d")
@@ -227,6 +233,7 @@ class Mouse:
         )
         tmp = experiment_sessions + training_sessions
         all_sessions = natsort.natsorted(tmp, reverse=False)
+        all_sessions = [s for s in all_sessions if not s.endswith(f"_skip{os.sep}")]
 
         types = []
         dates = []
@@ -305,75 +312,81 @@ class Mouse:
 
         # we're analyzing the individual sessions here in this below loop
         pbar = tqdm(missing_sessions)
+        self.faulty_sessions = []
         for i, row in enumerate(missing_sessions.iter_rows()):
             # last_saved will not enter here as missing sessions will be []
             pbar.set_description(f"Analyzing {row[1]} [{i+1}/{len(missing_sessions)}]")
 
             if load_type == "no_load":
-                detect_session = self.session_parser(
+                _single_session = self.session_parser(
                     row[1], load_flag=False, skip_google=True
                 )
             else:
                 # reanalyze load type should enter here
-                detect_session = self.session_parser(
+                _single_session = self.session_parser(
                     row[1], load_flag=True, skip_google=True
                 )
 
-            session_data = detect_session.data.data
-            gsheet_dict = self.get_gsheet_row(
-                detect_session.meta.baredate,
-                cols=[
-                    "paradigm",
-                    "supp water [µl]",
-                    "user",
-                    "time [hh:mm]",
-                    "rig water [µl]",
-                ],
-            )
-
-            if len(session_data):
-                # add behavior related fields as a dictiionary
-                meta = detect_session.get_meta()
-                summary_temp = {}
-                summary_temp["date"] = meta.baredate
-                summary_temp["blank_time"] = meta.openStimDuration
-                summary_temp["response_window"] = meta.closedStimDuration
-                try:
-                    summary_temp["level"] = int(meta.level)
-                except:
-                    summary_temp["level"] = -1
-                summary_temp["session_no"] = session_counter + 1
-
-                # put data from session stats
-                for k in detect_session.stats.__slots__:
-                    summary_temp[k] = getattr(detect_session.stats, k, None)
-
-                # put values from session meta data
-                summary_temp["weight"] = meta.weight
-                summary_temp["task"] = meta.controller
-                summary_temp["sf"] = meta.sf_values
-                summary_temp["tf"] = meta.tf_values
-                summary_temp["rig"] = meta.rig
-                summary_temp = {**summary_temp, **gsheet_dict}
-
-                session_data = session_data.with_columns(
-                    [
-                        (pl.lit(session_counter + 1)).alias("session_no"),
-                        (pl.lit(row[3])).alias("session_type"),
-                    ]
+            if True:
+                session_data = _single_session.data.data
+                gsheet_dict = self.get_gsheet_row(
+                    _single_session.meta.baredate,
+                    cols=[
+                        "paradigm",
+                        "supp water [µl]",
+                        "user",
+                        "time [hh:mm]",
+                        "rig water [µl]",
+                    ],
                 )
 
-                cumul_to_append.append(session_data)
-                if i == 0:
-                    summary_to_append = {k: [v] for k, v in summary_temp.items()}
-                else:
-                    for k, v in summary_temp.items():
-                        summary_to_append[k].append(v)
+                if len(session_data):
+                    # add behavior related fields as a dictiionary
+                    meta = _single_session.get_meta()
+                    summary_temp = {}
+                    summary_temp["date"] = meta.baredate
+                    summary_temp["dt_date"] = meta.date
+                    summary_temp["blank_time"] = meta.openStimDuration
+                    summary_temp["response_window"] = meta.closedStimDuration
+                    try:
+                        summary_temp["level"] = int(meta.level)
+                    except:
+                        summary_temp["level"] = -1
+                    summary_temp["session_no"] = session_counter + 1
 
-                session_counter += 1
-            else:
-                display(f" >>> WARNING << NO DATA FOR SESSION {row[1]}", color="yellow")
-                continue
+                    # put data from session stats
+                    stats_dict = _single_session.stats.get_dict()
+                    for k, v in stats_dict.items():
+                        summary_temp[k] = v
+
+                    # put values from session meta data
+                    summary_temp["weight"] = meta.weight
+                    summary_temp["task"] = meta.controller
+                    summary_temp["sf"] = meta.sf_values
+                    summary_temp["tf"] = meta.tf_values
+                    summary_temp["rig"] = meta.rig
+                    summary_temp = {**summary_temp, **gsheet_dict}
+
+                    session_data = session_data.with_columns(
+                        [
+                            (pl.lit(session_counter + 1)).alias("session_no"),
+                            (pl.lit(row[3])).alias("session_type"),
+                        ]
+                    )
+
+                    cumul_to_append.append(session_data)
+                    if i == 0:
+                        summary_to_append = {k: [v] for k, v in summary_temp.items()}
+                    else:
+                        for k, v in summary_temp.items():
+                            summary_to_append[k].append(v)
+
+                    session_counter += 1
+                else:
+                    display(
+                        f" >>> WARNING << NO DATA FOR SESSION {row[1]}", color="yellow"
+                    )
+                    continue
             pbar.update()
 
         if len(summary_to_append):
@@ -529,12 +542,15 @@ class Mouse:
         mod_path = normpath(
             pjoin(
                 abspath(dirname(dirname(__file__))),
+                "psychophysics",  # this is for behavioral analysis classes
                 session_type,
                 session_class_name + ".py",
             )
         )
         if os.path.exists(mod_path):
-            mod = importlib.import_module(f"piepy.{session_type}.{session_class_name}")
+            mod = importlib.import_module(
+                f"piepy.psychophysics.{session_type}.{session_class_name}"
+            )
             session_class_name = (
                 session_class_name[0].upper() + session_class_name[1:]
             )  # uppercasing the first letter for class name
@@ -562,11 +578,15 @@ def main():
         help="Behavior paradigm(e.g. detection)",
     )
     parser.add_argument("-l", "--load", metavar="load_type", type=str, help=load_help_str)
+
+    def date_parser(arg) -> list:
+        return arg.split(",")
+
     parser.add_argument(
         "-d",
         "--date",
         metavar="dateinterval",
-        type=str,
+        type=date_parser,
         default=None,
         help="Analysis start date (e.g. 231124)",
     )
@@ -581,7 +601,7 @@ def main():
     )
 
     """
-    mouseparse -p detection -l no_load -d 231124 KC133
+    parsemouse -p detection -l no_load -d 231124 KC133
     """
 
     opts = parser.parse_args()

@@ -1,5 +1,5 @@
 from sqlite3.dbapi2 import OperationalError
-from ..utils import getConfig
+from .config import config as cfg
 from .dbinterface import DataBaseInterface
 
 
@@ -33,8 +33,7 @@ class Experimenter:
         self.position = position
         self.nAnimals = nAnimals
 
-        config = getConfig()
-        self.db = DataBaseInterface(config["databasePath"])
+        self.db = DataBaseInterface(cfg.paths["databasePath"])
 
     def __repr__(self) -> str:
         return f" {self.position} {self.first_name} {self.last_name} ({self.name}) with {self.nAnimals} animals"
