@@ -366,7 +366,56 @@ class WheelDetectionExperimentHub:
         filt_df = self.data.filter(pl.col("stat_session_false_alarm") <= fa_rate_thresh)
 
         return filt_df
-        
+    
+    def get_best_session(self,
+                         data:pl.DataFrame,
+                         strict_performance:bool=True,
+                         min_ez_hit_rate:float=75,
+                         min_stim_trial_count:int=300
+                         ) -> int | None:
+        """ Finds the best session in the given dataframe
+
+        Args:
+            data (pl.DataFrame): Data that includes multiple sessions. 
+            Makes sense to pre filter to have multiple sessions that are the same experimental condition of the same animal
+            strict_performance (bool, optional): Whether to be strict to satisfy both conditions (True) or only one (False).
+            min_ez_hit_rate (float, optional): Minimum easy trials hit rate (contrast >=50%). Defaults to 75.
+            min_stim_trial_count (int, optional): Minimum stimulus trial count. Defaults to 300.
+
+        Returns:
+            int | None : sesison id of selecvted session if found, else None
+        """
+        selected_session = None
+        for filt_tup in make_subsets(data,["session_id"]):
+            _df = filt_tup[-1]
+            a_id = _df["animalid"].unique()[0]
+            opto_target = _df["area"].unique()[0]
+            hr_df = self.ez_hit_rate_more_than(min_ez_hit_rate,_df)
+            if len(hr_df)>=1:
+                trial_df = self.trial_count_more_than(min_stim_trial_count,hr_df)
+                if len(trial_df):
+                    # successfully filtered and got some sessions, sort and pick the best
+                    selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
+                else:
+                    # couldn't successfuly filter for trial count, sort and pick the best from hit rate filtered
+                    selected_session = hr_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
+            else:
+                # if hit rate not more than threshold
+                if not strict_performance:
+                    # couldn't successfuly filter for hit rate, try trial count
+                    trial_df = self.trial_count_more_than(min_stim_trial_count,_df)
+                    if len(trial_df):
+                        # successfully filtered only with trial count, sort and pick the best
+                        selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
+                    else:
+                        print(f"{a_id}_{opto_target} doesn't have a session for hit rate >={min_ez_hit_rate} and stim_trial_count>={min_stim_trial_count}")
+                else:
+                    print(f"{a_id}_{opto_target} doesn't have a session with hit rate >={min_ez_hit_rate} and stim_trial_count>={min_stim_trial_count}, removing...")
+            
+            if selected_session is not None:
+                break        
+        return selected_session
+    
     def filter_by_areas(
         self,
         areas: list[str]|str,
@@ -389,7 +438,10 @@ class WheelDetectionExperimentHub:
             
         if isinstance(areas,str):
             areas = [areas]
-            
+        
+        min_ez_hit_rate = kwargs.pop("min_ez_hit_rate",75)
+        min_stim_trial_count = kwargs.pop("min_stim_trial_count",300)
+        
         if len(kwargs):
             data = self.filter_sessions(data,**kwargs)
         filt_df = data.filter(pl.col("area").is_in(areas))
@@ -397,39 +449,23 @@ class WheelDetectionExperimentHub:
         # here is a step to get only the "best session" if there are multiple sessions
         # the best session is defined as hr>75 and trial_count>600
         # if multiple sessions, take the last one
-        _temp = filt_df.group_by(["animalid","area"]).agg(pl.col("*").unique(maintain_order=True)).sort("animalid")
+        _temp = filt_df.group_by(["area","animalid"]).agg(pl.col("*").unique(maintain_order=True))
+        with pl.StringCache():
+            pl.Series(areas).cast(pl.Categorical)
+            _temp = _temp.with_columns(pl.col("area").cast(pl.Categorical))
+            _temp = _temp.sort(["area"])
+            
         single_session_ids = _temp.filter(pl.col("session_id").list.len()==1)["session_id"].explode().to_list()
         multi_sessions_ids = _temp.filter(pl.col("session_id").list.len()>1)["session_id"].explode().to_list()
-        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
         
-        # TODO: change this to AND, if not strict do OR
-        for filt_tup in make_subsets(multi_session_df,["animalid","area"]):
+        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
+        for filt_tup in make_subsets(multi_session_df,["area","animalid"]):
             _df = filt_tup[-1]
-            hr_df = self.ez_hit_rate_more_than(75,_df)
-            if len(hr_df)>=1:
-                trial_df = self.trial_count_more_than(300,hr_df)
-                if len(trial_df):
-                    # successfully filtered and got some sessions, sort and pick the best
-                    selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-                else:
-                    # couldn't successfuly filter for trial count, sort and pick the best from hit rate filtered
-                    selected_session = hr_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-            else:
-                if not strict_performance:
-                    # couldn't successfuly filter for hit rate, try trial count
-                    trial_df = self.trial_count_more_than(300,_df)
-                    if len(trial_df):
-                        # successfully filtered only with trial count, sort and pick the best
-                        selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-                    else:
-                        print("No session for hit rate >=75 and stim_trial_count>=300")
-                else:
-                    selected_session = None
-                    print(f"{filt_tup[0]} doesn't have a session with hit rate >=75 and stim_trial_count>=300, removing...")
-            
-            if selected_session is not None:    
-                single_session_ids.append(selected_session) 
-            
+            best_id = self.get_best_session(data=_df,
+                                            strict_performance=strict_performance,
+                                            min_ez_hit_rate=min_ez_hit_rate,
+                                            min_stim_trial_count=min_stim_trial_count)
+            single_session_ids.append(best_id)
         filt_df = filt_df.filter(pl.col("session_id").is_in(single_session_ids))
         return filt_df
     
@@ -456,6 +492,9 @@ class WheelDetectionExperimentHub:
         if isinstance(animalids,str):
             animalids = [animalids]
             
+        min_ez_hit_rate = kwargs.pop("min_ez_hit_rate",75)
+        min_stim_trial_count = kwargs.pop("min_stim_trial_count",300)
+            
         if len(kwargs):
             data = self.filter_sessions(data,**kwargs)
         filt_df = data.filter(pl.col("animalid").is_in(animalids))
@@ -463,36 +502,20 @@ class WheelDetectionExperimentHub:
         # here is a step to get only the "best session" if there are multiple sessions
         # the best session is defined as hr>75 and trial_count>600
         # if multiple sessions, take the first one
-        _temp = filt_df.group_by(["animalid","area"]).agg(pl.col("*").unique(maintain_order=True)).sort("animalid")
+        _temp = filt_df.group_by(["animalid","area"]).agg(pl.col("*").unique(maintain_order=True)).sort("animalid",descending=False)
+        
         single_session_ids = _temp.filter(pl.col("session_id").list.len()==1)["session_id"].explode().to_list()
         multi_sessions_ids = _temp.filter(pl.col("session_id").list.len()>1)["session_id"].explode().to_list()
-        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
         
-        for filt_tup in make_subsets(multi_session_df,["animalid"]):
+        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
+        for filt_tup in make_subsets(multi_session_df,["animalid","area"]):
             _df = filt_tup[-1]
-            hr_df = self.ez_hit_rate_more_than(75,_df)
-            if len(hr_df)>=1:
-                trial_df = self.trial_count_more_than(300,hr_df)
-                if len(trial_df):
-                    # successfully filtered and got some sessions, sort and pick the best
-                    selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-                else:
-                    # couldn't successfuly filter for trial count, sort and pick the best from hit rate filtered
-                    selected_session = hr_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-            else:
-                if not strict_performance:
-                    # couldn't successfuly filter for hit rate, try trial count
-                    trial_df = self.trial_count_more_than(300,_df)
-                    if len(trial_df):
-                        # successfully filtered only with trial count, sort and pick the best
-                        selected_session = trial_df.sort(["stat_stim_trial_count","stat_easy_hit_rate"])[-1,"session_id"]
-                    else:
-                        print("No session for hit rate >=75 and stim_trial_count>=300")
-                else:
-                    print(f"{filt_tup[0]} doesn't have a session with hit rate >=75 and stim_trial_count>=300, removing...")
-                
-            single_session_ids.append(selected_session) 
-            
+            best_id = self.get_best_session(data=_df,
+                                            strict_performance=strict_performance,
+                                            min_ez_hit_rate=min_ez_hit_rate,
+                                            min_stim_trial_count=min_stim_trial_count)
+            single_session_ids.append(best_id)
+        
         filt_df = filt_df.filter(pl.col("session_id").is_in(single_session_ids))
         return filt_df
 

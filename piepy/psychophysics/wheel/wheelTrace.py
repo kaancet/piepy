@@ -16,7 +16,7 @@ class WheelTrace:
 
     @staticmethod
     def find_nearest(arr: ArrayLike, value: float) -> int:
-        """ Returns the index of the nearest
+        """Returns the index of the nearest
 
         Args:
             arr (ArrayLike): Array of values to search in
@@ -28,10 +28,12 @@ class WheelTrace:
         if not isinstance(arr, np.ndarray):
             arr = np.array(arr)
         return np.nanargmin(np.abs(arr - value))
-    
+
     @staticmethod
-    def fix_trace_timing(t:np.ndarray,pos:np.ndarray) -> tuple[np.ndarray,np.ndarray]:
-        """ Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing) 
+    def fix_trace_timing(
+        t: np.ndarray, pos: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing)
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -50,11 +52,11 @@ class WheelTrace:
                 _idx = np.where(np.diff(t) <= 0)[0]
                 t = np.delete(t, _idx)
                 pos = np.delete(pos, _idx)
-        return t,pos
+        return t, pos
 
     @classmethod
     def init_interpolator(cls, t: ArrayLike, pos: ArrayLike) -> None:
-        """ Initialize the interpolator
+        """Initialize the interpolator
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -76,7 +78,7 @@ class WheelTrace:
 
     @classmethod
     def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
-        """ Resets the time ticks to be zero at reset_time_point
+        """Resets the time ticks to be zero at reset_time_point
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -89,7 +91,7 @@ class WheelTrace:
 
     @classmethod
     def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
-        """ Resets the positions to make position 0 at t=0
+        """Resets the positions to make position 0 at t=0
         This method is used on the ticks so the values can (and should) be integers
 
         Args:
@@ -108,7 +110,7 @@ class WheelTrace:
     def reset_and_interpolate(
         cls, t: np.ndarray, pos: np.ndarray, reset_time: float, interp_freq: float = 5
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """ Fundemental loop of resetting time, position and interpolating
+        """Fundemental loop of resetting time, position and interpolating
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -122,14 +124,14 @@ class WheelTrace:
         if not reset_time > t[0]:
             # means that the first wheel movement was recorded after the given reset time point
             # fill_in the time and pos until reaching the reset_time
-            add_t = np.arange(reset_time,t[0],50)
-            add_pos = np.array([pos[0]]*len(add_t))
-            
-            t = np.append(add_t,t)
-            pos = np.append(add_pos,pos)
+            add_t = np.arange(reset_time, t[0], 50)
+            add_pos = np.array([pos[0]] * len(add_t))
+
+            t = np.append(add_t, t)
+            pos = np.append(add_pos, pos)
 
         reset_t = cls.reset_time_frame(t, reset_time)
-            
+
         # init interpolator with ticks first
         cls.init_interpolator(reset_t, pos)
         # reset positions
@@ -145,7 +147,7 @@ class WheelTrace:
     def interpolate_trace(
         cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
     ) -> np.ndarray:
-        """ Interpolate wheel positions
+        """Interpolate wheel positions
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -195,7 +197,7 @@ class WheelTrace:
         pos_thresh_onset=1.5,
         min_dur=0.05,
     ) -> dict:
-        """ Detect wheel movements. Uses interpolated positions
+        """Detect wheel movements. Uses interpolated positions
 
         Args:
             t (np.ndarray): Time values of the wheel trace
@@ -229,7 +231,9 @@ class WheelTrace:
 
         # Calculate a Hankel matrix of size t_thresh_samps in batches.  This is effectively a
         # sliding window within which we look for changes in position greater than pos_thresh
-        BATCH_SIZE = 10000  # do this in batches in order to keep memory usage reasonable
+        BATCH_SIZE = (
+            10000  # do this in batches in order to keep memory usage reasonable
+        )
         c = 0  # index of 'window' position
         while True:
             i2proc = np.arange(BATCH_SIZE) + c
@@ -298,9 +302,13 @@ class WheelTrace:
         moveGaps = onsets[1:] - offsets[:-1]
         gap_too_small = moveGaps < min_gap
         if onsets.size > 0:
-            onsets = onsets[np.insert(~gap_too_small, 0, True)]  # always keep first onset
+            onsets = onsets[
+                np.insert(~gap_too_small, 0, True)
+            ]  # always keep first onset
             onset_samps = onset_samps[np.insert(~gap_too_small, 0, True)]
-            offsets = offsets[np.append(~gap_too_small, True)]  # always keep last offset
+            offsets = offsets[
+                np.append(~gap_too_small, True)
+            ]  # always keep last offset
             offset_samps = offset_samps[np.append(~gap_too_small, True)]
 
         movement_dict["onsets"] = np.hstack(
@@ -324,9 +332,9 @@ class WheelTrace:
                 for m, n in zip(onset_samps, offset_samps)
             ]
         )
-        peaks = np.array([pos[_i] - pos[_o] for _i,_o in zip(peak_samps,onset_samps)])
+        peaks = np.array([pos[_i] - pos[_o] for _i, _o in zip(peak_samps, onset_samps)])
         # peak_amps = np.fromiter(peaks, dtype=float, count=onsets.size)
-        
+
         movement_dict["peaks"] = np.hstack(
             (peak_samps.reshape(-1, 1), peaks.reshape(-1, 1))
         )
@@ -337,7 +345,7 @@ class WheelTrace:
             N, STDEV
         )  # A 10-point Gaussian window of a given s.d.
         vel = scipy.signal.convolve(np.diff(np.insert(pos, 0, 0)), gauss, mode="same")
-        vel = cls.get_filtered_velocity(pos,interp_freq=freq)
+        vel = cls.get_filtered_velocity(pos, interp_freq=freq)
 
         # For each movement period, find the timestamp where the absolute velocity was greatest
         speed_peak_samps = np.array(
@@ -360,7 +368,7 @@ class WheelTrace:
         order: int = 8,
     ) -> np.ndarray:
         """Compute wheel velocity from uniformly sampled wheel data.
-        
+
         Args:
             pos (np.ndarray): Position values of the wheel trace
             interp_freq (float, optional): Interpolation frequency. Defaults to 5.

@@ -8,7 +8,10 @@ def add_total_iStim(rawdata: dict) -> dict:
     """Adds another column to the DataFrame where iStim increments for each presentation
 
     Args:
-        rawdata: The dictionary that has all the session data
+        rawdata (dict): The dictionary that has all the session data
+
+    Returns:
+        dict: rawdata with total_iStim added to vstim colums
     """
     display("Adding total iStim column")
 
@@ -67,7 +70,10 @@ def compare_cam_logging(rawdata: dict) -> dict:
     """Compares the camlogs with corresponding riglog recordings
 
     Args:
-        rawdata: The dictionary that has all the session data
+        rawdata (dict): The dictionary that has all the session data
+
+    Returns:
+        dict: rawdata with camlog lengths fixed
     """
     # !! IMPORTANT !!
     # rawdata keys that end only with 'cam' are from the rig
@@ -75,9 +81,9 @@ def compare_cam_logging(rawdata: dict) -> dict:
     rig_cams = [k for k in rawdata.keys() if k.endswith("cam")]
     labcam_cams = [k for k in rawdata.keys() if k.endswith("cam_log")]
 
-    assert len(rig_cams) == len(
-        labcam_cams
-    ), f"Number of camlogs in rig({len(rig_cams)}) and labcams({len(labcam_cams)}) are not equal!! "
+    assert len(rig_cams) == len(labcam_cams), (
+        f"Number of camlogs in rig({len(rig_cams)}) and labcams({len(labcam_cams)}) are not equal!! "
+    )
 
     for i, lab_cam_key in enumerate(labcam_cams):
         rig_cam_frames = len(rawdata[rig_cams[i]])
@@ -108,7 +114,10 @@ def extract_trial_count(rawdata: dict) -> dict:
     """Extracts the trial no from state changes, this works for stimpy for now
 
     Args:
-        rawdata: The dictionary that has all the session data
+        rawdata (dict): The dictionary that has all the session data
+
+    Returns:
+        dict: rawdata with state machine trial no increments fixed
     """
     if len(rawdata["statemachine"]["trialNo"].unique()) == 1:
         # if no trial change logged iin state data
@@ -141,8 +150,8 @@ def stitch_logs(data_list: list, is_stimlog: bool) -> dict:
     """Stitches the seperate log files
 
     Args:
-        data_list: List of dataframes to be stitched
-        is_stimlog: Flag to indicate the data is stimlog or not
+        data_list (list): List of dataframes to be stitched
+        is_stimlo (bool): Flag to indicate the data is stimlog or not
     """
 
     final_data = data_list[0]
@@ -189,14 +198,16 @@ def stitch_logs(data_list: list, is_stimlog: bool) -> dict:
     return final_data
 
 
-def extrapolate_time(rawdata: dict):
+def extrapolate_time(rawdata: dict) -> dict:
     """Extrapolates duinotime from screen indicator
 
     Args:
-        rawdata: The dictionary that has all the session data
+        rawdata (dict): The dictionary that has all the session data
+
+    Returns:
+        dict: rawdata
     """
     if "vstim" in rawdata.keys() and "screen" in rawdata.keys():
-
         indkey = "not found"
         fliploc = []
         if "indicatorFlag" in rawdata["vstim"].columns:
@@ -207,9 +218,9 @@ def extrapolate_time(rawdata: dict):
         elif "photo" in rawdata["vstim"].columns:
             indkey = "photo"
             vstim_data = rawdata["vstim"].to_pandas()
-            fliploc = np.where(np.diff(np.hstack([0, vstim_data["photo"] == 0, 0])) != 0)[
-                0
-            ]
+            fliploc = np.where(
+                np.diff(np.hstack([0, vstim_data["photo"] == 0, 0])) != 0
+            )[0]
 
         if len(rawdata["screen"]) == len(fliploc):
             temp = interp1d(
@@ -224,4 +235,32 @@ def extrapolate_time(rawdata: dict):
                 ),
                 color="yellow",
             )
+    return rawdata
+
+
+def fix_first_line_state_logging(rawdata: dict) -> dict:
+    """
+
+    Args:
+        rawdata (dict): The dictionary that has all the session data
+
+    Returns:
+        dict: Rawdata with statemachine erronous offset fixed
+    """
+    if (
+        rawdata["statemachine"]["elapsed"][0]
+        > rawdata["vstim"]["presentTime"][0] * 1000
+    ):
+        # subtract the first log time from all statemachine elapsed
+        # rawdata["statemachine"] = rawdata["statemachine"].with_columns(
+        #     pl.col("elapsed") - rawdata["statemachine"]["elapsed"][0]
+        # )
+        # add the firstlog time to all vstim presentTime
+        rawdata["vstim"] = rawdata["vstim"].with_columns(
+            pl.col("presentTime") + rawdata["statemachine"]["elapsed"][0] / 1000
+        )
+
+        # reset the stateElapsed of the first statemachine log entry
+        rawdata["statemachine"][0, "stateElapsed"] = 0
+
     return rawdata

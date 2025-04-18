@@ -44,7 +44,7 @@ class RunMeta:
         Args:
             path: Paths object that has the
             skip_google: Flag to skip parsing google sheets
-            
+
         Returns:
             dict: metadata as a dict
         """
@@ -99,7 +99,7 @@ class RunMeta:
 
         Args:
             prot_path: The path to protocol file
-            
+
         Returns:
             dict: protocol file as a dict
         """
@@ -137,7 +137,7 @@ class RunMeta:
 
         Args:
             pref_path: The path to preference file
-        
+
         Returns
             dict: preferenc file as a dict
         """
@@ -150,7 +150,7 @@ class RunMeta:
         Args:
             animalid: Id of the animal (KC133)
             baredate: The date of the experiment as abare string (231108)
-            
+
         Returns:
             dict: google sheet data as a dict
         """
@@ -165,7 +165,9 @@ class RunMeta:
             gsheet_df.reset_index(inplace=True)
             _gsheet_dict["weight"] = gsheet_df["weight [g]"].iloc[0]
             try:
-                _gsheet_dict["water_consumed"] = int(gsheet_df["rig water [µl]"].iloc[0])
+                _gsheet_dict["water_consumed"] = int(
+                    gsheet_df["rig water [µl]"].iloc[0]
+                )
             except Exception:
                 _gsheet_dict["water_consumed"] = None
         return _gsheet_dict
@@ -264,7 +266,7 @@ class Run:
         """Sets the run meta
 
         Args:
-            skip_google: Flag to skip parsing google sheets
+            skip_google (bool, optional): Flag to skip parsing google sheets. Defaults to True
         """
         self.meta = RunMeta().get_meta(self.paths, skip_google=skip_google)
 
@@ -275,11 +277,11 @@ class Run:
             if not pexists(s_path):
                 os.makedirs(s_path)
 
-    def analyze_run(self, transform_dict: dict) -> None:
-        """Main loop to extract data from rawdata, should be overwritten in child classes
+    def get_rawdata(self, transform_dict: dict) -> None:
+        """Reads the data from various logs and does some repairs/fixes for standardization
 
         Args:
-            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
         """
         self.read_run_data()
         self.translate_state_changes(transform_dict)
@@ -288,15 +290,27 @@ class Run:
         # add total iStim just in case
         self.rawdata = add_total_iStim(self.rawdata)
 
+    def analyze_run(self) -> None:
+        """Main loop to extract data from rawdata, should be overwritten in child classes
+
+        Args:
+            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
         run_data = self.get_trials()
 
         # set the data object
         self.data.set_data(run_data)
 
     def get_trials(self) -> pt.DataFrame:
-        """Gathers all the data, validates them and returns a dataframe"""
+        """Gathers all the data, validates them and returns a dataframe
+
+        Returns:
+            pt.DataFrame: Table of trials
+        """
         trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
-        pbar = tqdm(trial_nos, desc="Extracting trial data:", disable=not config.verbose)
+        pbar = tqdm(
+            trial_nos, desc="Extracting trial data:", disable=not config.verbose
+        )
         for t in pbar:
             _trial = self.trial_handler.get_trial(int(t), self.rawdata)
             if _trial is not None:
@@ -320,21 +334,21 @@ class Run:
 
     @staticmethod
     def read_combine_logs(
-        stimlog_path: str | list, riglog_path: str | list
+        stimlog_path: str | list[str], riglog_path: str | list[str]
     ) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
-            stimlog_path: path to .stimlog file
-            riglog_path: path to .riglog file
-            
+            stimlog_path (str | list[str]): path to .stimlog file
+            riglog_path (str | list[str]): path to .riglog file
+
         Returns:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(
-                riglog_path
-            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            assert len(stimlog_path) == len(riglog_path), (
+                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            )
 
             stim_data_all = []
             rig_data_all = []
@@ -376,8 +390,8 @@ class Run:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
-                self.paths.onepcamlog
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = (
+                parse_labcams_log(self.paths.onepcamlog)
             )
 
         # try eyecam and facecam either way
@@ -387,8 +401,8 @@ class Run:
             )
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
-                self.paths.facecamlog
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = (
+                parse_labcams_log(self.paths.facecamlog)
             )
 
         display("Read rawdata")
@@ -398,7 +412,7 @@ class Run:
         This function needs the translate transition to be defined beforehand
 
         Args:
-            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
         """
         if transform_dict is None:
             display(
@@ -444,7 +458,7 @@ class Run:
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists
-        
+
         Returns:
             bool: True if saved ata is found, else False
         """
@@ -462,7 +476,7 @@ class Run:
         """Saves the run data
 
         Args:
-            save_mat: Flag to save the dataframe as a .mat file
+            save_mat (bool, optional): Flag to save the dataframe as a .mat file. Defaults to False
         """
         if self.data is not None:
             for s_path in self.paths.save:

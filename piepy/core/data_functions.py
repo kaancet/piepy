@@ -8,7 +8,7 @@ def make_subsets(
     col_name: str | list[str],
     no_nan: bool = True,
     do_sort: bool = True,
-    start_enumerate: int|None = None
+    start_enumerate: int | None = None,
 ) -> Generator:
     """Generates subsets of the data given the col names
     NOTE: The length of returned Generator depends on the length of columns you provide
@@ -40,5 +40,9 @@ def make_subsets(
         for u in list(itertools.product(*temp)):
             yield (*u, data.filter([pl.col(col_name[i]) == j for i, j in enumerate(u)]))
     else:
-        for i,u in enumerate(list(itertools.product(*temp)),start=start_enumerate):
-            yield (i,*u, data.filter([pl.col(col_name[i]) == j for i, j in enumerate(u)]))
+        for i, u in enumerate(list(itertools.product(*temp)), start=start_enumerate):
+            yield (
+                i,
+                *u,
+                data.filter([pl.col(col_name[i]) == j for i, j in enumerate(u)]),
+            )

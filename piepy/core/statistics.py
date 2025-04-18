@@ -11,11 +11,13 @@ from scipy.stats import (
     wilcoxon,
     chi2,
     pearsonr,
-    kstwobign
+    kstwobign,
 )
 
 
-def mean_confidence_interval(data:ArrayLike, confidence:float=0.95) -> tuple[float,float]:
+def mean_confidence_interval(
+    data: ArrayLike, confidence: float = 0.95
+) -> tuple[float, float]:
     """Calculates the mean and CI of it of given data
 
     Args:
@@ -28,11 +30,13 @@ def mean_confidence_interval(data:ArrayLike, confidence:float=0.95) -> tuple[flo
     a = 1.0 * np.array(data)
     n = len(a)
     m, se = np.mean(a), sem(a)
-    h = se * t.ppf((1 + confidence) / 2., n-1)
+    h = se * t.ppf((1 + confidence) / 2.0, n - 1)
     return m, h
 
 
-def bootstrap_confidence_interval(data:ArrayLike, statistic:callable, confidence:float=0.95,nboot:int=1000) -> tuple[float,float,float]:
+def bootstrap_confidence_interval(
+    data: ArrayLike, statistic: callable, confidence: float = 0.95, nboot: int = 1000
+) -> tuple[float, float, float]:
     """Calculates the median and CI of the median of given data
 
     Args:
@@ -41,24 +45,30 @@ def bootstrap_confidence_interval(data:ArrayLike, statistic:callable, confidence
         nboot (int, optional): Amount of resamples. Defaults to 1000.
 
     Returns:
-        tuple[float,float,float]: median, +CI and -CI 
+        tuple[float,float,float]: median, +CI and -CI
     """
-    a = 1.0 * np.array(data)
-    a = a[~np.isnan(a)]
-    _med = statistic(a)
-    res = bootstrap((a,),statistic,n_resamples=nboot,confidence_level=0.95,method="bca")
-    
-    m = np.mean(res.bootstrap_distribution)
-    
-    ci_plus = res.confidence_interval.high - m
-    ci_neg = m - res.confidence_interval.low
+    if not np.all(np.isnan(data)):
+        a = 1.0 * np.array(data)
+        a = a[~np.isnan(a)]
+        _med = statistic(a)
+        res = bootstrap(
+            (a,), statistic, n_resamples=nboot, confidence_level=0.95, method="bca"
+        )
 
-    return _med, ci_plus, ci_neg
+        m = np.mean(res.bootstrap_distribution)
+
+        ci_plus = res.confidence_interval.high - m
+        ci_neg = m - res.confidence_interval.low
+        return _med, ci_plus, ci_neg
+    else:
+        return np.nan, np.nan, np.nan
 
 
-def nonparametric_pvalues(x1:ArrayLike, x2:ArrayLike, method: Literal["mannu","wilcoxon"]="mannu") -> float:
-    """Returns the significance value of two distributions 
-    
+def nonparametric_pvalues(
+    x1: ArrayLike, x2: ArrayLike, method: Literal["mannu", "wilcoxon"] = "mannu"
+) -> float:
+    """Returns the significance value of two distributions
+
     Args:
         x1 (ArrayLike): First set of samples
         x2 (ArrayLike): Second set of samples
@@ -83,18 +93,16 @@ def nonparametric_pvalues(x1:ArrayLike, x2:ArrayLike, method: Literal["mannu","w
 
 
 def ks2s_2d(
-    data1:ArrayLike, 
-    data2:ArrayLike, 
-    nboot:int|None=None
-    ) -> tuple[float,float]:
-    """Two-dimensional Kolmogorov-Smirnov test on two samples. 
+    data1: ArrayLike, data2: ArrayLike, nboot: int | None = None
+) -> tuple[float, float]:
+    """Two-dimensional Kolmogorov-Smirnov test on two samples.
     Adapted from: https://github.com/syrte/ndtest
     Notes
     -----
-    This is the two-sided K-S test. Small p-values means that the two samples are significantly different. 
+    This is the two-sided K-S test. Small p-values means that the two samples are significantly different.
     Note that the p-value is only an approximation as the analytic distribution is unkonwn. The approximation
     is accurate enough when N > ~20 and p-value < ~0.20 or so. When p-value > 0.20, the value may not be accurate,
-    but it certainly implies that the two samples are not significantly different. 
+    but it certainly implies that the two samples are not significantly different.
 
     Args:
         data1 (ArrayLike): shape (n1,2) Data of sample one
@@ -105,6 +113,7 @@ def ks2s_2d(
     Returns:
         tuple[float,float]: Two-tailed p-value, KS statistic
     """
+
     def quadct(x, y, xx, yy):
         n = len(xx)
         ix1, ix2 = xx <= x, yy <= y
@@ -113,7 +122,7 @@ def ks2s_2d(
         c = np.sum(~ix1 & ix2) / n
         d = 1 - a - b - c
         return a, b, c, d
-    
+
     def maxdist(x1, y1, x2, y2):
         n1 = len(x1)
         D1 = np.empty((n1, 4))
@@ -128,18 +137,18 @@ def ks2s_2d(
 
         dmin, dmax = -D1.min(), D1.max() + 1 / n1
         return max(dmin, dmax)
-    
-    def avgmaxdist(x1,y1,x2,y2):
-        D1 = maxdist(x1,y1,x2,y2)
-        D2 = maxdist(x2,y2,x1,y1)
+
+    def avgmaxdist(x1, y1, x2, y2):
+        D1 = maxdist(x1, y1, x2, y2)
+        D2 = maxdist(x2, y2, x1, y1)
         return (D1 + D2) / 2
 
     n1, n2 = len(data1), len(data2)
-    
-    x1, x2 = data1[:,0], data2[:,0]
-    y1, y2 = data1[:,1], data2[:,1]
-    D = avgmaxdist(x1,y1,x2,y2)
-    
+
+    x1, x2 = data1[:, 0], data2[:, 0]
+    y1, y2 = data1[:, 1], data2[:, 1]
+    D = avgmaxdist(x1, y1, x2, y2)
+
     if nboot is None:
         sqen = np.sqrt(n1 * n2 / (n1 + n2))
         r1 = pearsonr(x1, y1)[0]
@@ -151,25 +160,25 @@ def ks2s_2d(
         n = n1 + n2
         x = np.concatenate([x1, x2])
         y = np.concatenate([y1, y2])
-        d = np.empty(nboot, 'f')
+        d = np.empty(nboot, "f")
         for i in range(nboot):
             idx = np.random.choice(n, n, replace=True)
             ix1, ix2 = idx[:n1], idx[n1:]
-            #ix1 = random.choice(n, n1, replace=True)
-            #ix2 = random.choice(n, n2, replace=True)
+            # ix1 = random.choice(n, n1, replace=True)
+            # ix2 = random.choice(n, n2, replace=True)
             d[i] = avgmaxdist(x[ix1], y[ix1], x[ix2], y[ix2])
-        p = np.sum(d > D).astype('f') / nboot
+        p = np.sum(d > D).astype("f") / nboot
 
     return p, D
 
 
 def energy_stat_2d(
-    data1:ArrayLike,
-    data2:ArrayLike,
-    nboot:int=1000,
-    replace:bool=False,
-    method:Literal["log","gaussian","linear"]='log'
-    ) -> tuple[float, float, float]:
+    data1: ArrayLike,
+    data2: ArrayLike,
+    nboot: int = 1000,
+    replace: bool = False,
+    method: Literal["log", "gaussian", "linear"] = "log",
+) -> tuple[float, float, float]:
     """Energy distance statistics test.
     Adapted from: https://github.com/syrte/ndtest
 
@@ -183,22 +192,22 @@ def energy_stat_2d(
     Returns:
         tuple[float, float, float]: p-value, energy,
     """
-    
-    def energy(x, y, method='log'):
+
+    def energy(x, y, method="log"):
         dx, dy, dxy = pdist(x), pdist(y), cdist(x, y)
         n, m = len(x), len(y)
-        if method == 'log':
+        if method == "log":
             dx, dy, dxy = np.log(dx), np.log(dy), np.log(dxy)
-        elif method == 'gaussian':
+        elif method == "gaussian":
             raise NotImplementedError
-        elif method == 'linear':
+        elif method == "linear":
             pass
         else:
             raise ValueError
         z = dxy.sum() / (n * m) - dx.sum() / n**2 - dy.sum() / m**2
         # z = ((n*m)/(n+m)) * z # ref. SR
         return z
-    
+
     n, N = len(data1), len(data1) + len(data2)
     stack = np.vstack((data1, data2))
     stack = (stack - stack.mean(0)) / stack.std(0)
@@ -208,7 +217,7 @@ def energy_stat_2d(
         rand = np.random.permutation
 
     en = energy(stack[:n], stack[n:], method)
-    en_boot = np.zeros(nboot, 'f')
+    en_boot = np.zeros(nboot, "f")
     for i in range(nboot):
         idx = rand(N)
         en_boot[i] = energy(stack[idx[:n]], stack[idx[n:]], method)
@@ -268,7 +277,9 @@ def mantel_haenzsel(data, stats="Q"):
         # check if any table element is 0 or fractional
         elif (data[key] < 0).any(axis=None) or not (data[key] % 1 == 0).all(axis=None):
             raise ValueError(
-                "Invalid table at {0}, contains negative or fractional values".format(key)
+                "Invalid table at {0}, contains negative or fractional values".format(
+                    key
+                )
             )
 
     if np.sum(np.add(cr, -cr[0])) != 0:
@@ -433,7 +444,7 @@ def mantel_haenzsel(data, stats="Q"):
                 warn_msg1 = "Tables used with all their rows and columns"
 
             if num_tables == 1:
-                warn_msg2 = "Q_GMH is only an adjusted Pearson" "s statistic when K = 1"
+                warn_msg2 = "Q_GMH is only an adjusted Pearsons statistic when K = 1"
 
             sum1 = np.zeros((1, (I - 1) * (J - 1)))
             sum2 = np.zeros(((I - 1) * (J - 1), (I - 1) * (J - 1)))
@@ -465,7 +476,8 @@ def mantel_haenzsel(data, stats="Q"):
                     V[key] = np.kron(
                         N[it] * np.diag(C[key][0])
                         - np.matmul(np.transpose(C[key]), C[key]),
-                        N[it] * np.diag(R[key]) - np.matmul(R[key], np.transpose(R[key])),
+                        N[it] * np.diag(R[key])
+                        - np.matmul(R[key], np.transpose(R[key])),
                     ) / (N[it] * N[it] * (N[it] - 1))
                 else:
                     V[key] = np.zeros(((I - 1) * (J - 1), (I - 1) * (J - 1)))
@@ -614,4 +626,3 @@ def mantel_haenzsel(data, stats="Q"):
         }
 
     return output, data_used
-

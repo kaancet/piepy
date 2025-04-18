@@ -7,7 +7,10 @@ from .config import config as cfg
 from .io import display
 
 # define the scope
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive",
+]
 
 cred_path = cfg.paths["gsheet"][0]
 

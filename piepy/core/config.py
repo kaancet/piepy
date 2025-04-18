@@ -21,7 +21,9 @@ class Config:
     def set_verbosity(self, val: bool) -> None:
         """Set verbosity"""
         if not isinstance(val, bool):
-            raise ValueError(f"Please provie a boolean to set verbosity, got {type(val)}")
+            raise ValueError(
+                f"Please provie a boolean to set verbosity, got {type(val)}"
+            )
 
         self._set("verbose", val)
 

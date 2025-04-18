@@ -10,7 +10,7 @@ def unique_except(x: ArrayLike, exceptions: list) -> np.ndarray:
     Args:
         x: The array to be searched
         exceptions: The values that should be excluded froom unique search
-        
+
     Returns:
         np.ndarray: An array of unique values except given values
     """
@@ -25,7 +25,7 @@ def nonan_unique(x: ArrayLike, sort: bool = False) -> np.ndarray:
     Args:
         x: The array to be searched
         sort: Flag to sort the resulting unique array
-        
+
     Returns:
         np.ndarray: An aray of unique values that are not nan
     """
@@ -43,7 +43,7 @@ def timeit(msg):
             ts = time.time()
             result = func(*args, **kwargs)
             te = time.time()
-            display(f"{msg} : {te-ts:.3}s")
+            display(f"{msg} : {te - ts:.3}s")
             return result
 
         return wrapper

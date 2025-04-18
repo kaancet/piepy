@@ -21,7 +21,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         self._trial = {k: None for k in WheelDiscriminationTrial.columns}
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDiscriminationTrial)
-        
+
     def get_trial(
         self, trial_no: int, rawdata: dict, return_as="dict"
     ) -> pt.DataFrame | dict | list | None:
@@ -68,7 +68,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             self._trial["state_outcome"] = 0
             self._trial["state_response_time"] = incorrect[0, "stateElapsed"]
 
-        stim_end = self.data["state"].filter(pl.col("transition").str.contains("stimend"))
+        stim_end = self.data["state"].filter(
+            pl.col("transition").str.contains("stimend")
+        )
         if len(stim_end):
             self._trial["t_vstimend"] = stim_end[0, "corrected_elapsed"]
 
@@ -82,14 +84,22 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties"""
         super().set_vstim_properties()
         # only look at columns that have "_l", ASSUMING there will be an "_r" counterpart of it
-        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
+        columns_to_modify = [
+            k.strip("_l") for k in self._trial.keys() if k.endswith("_l")
+        ]
         self._trial["prob"] = self._trial["prob"][0][0]
         self._trial["fraction_r"] = self._trial["fraction_r"][0][0]
-        self._trial["opto_pattern"] = int(self._trial["opto_pattern"][0][0])
-        
-        _correct = self._trial.pop("correct")[0][0] # right if 1, left if 0
+        if "opto_pattern" in self._trial.keys():
+            if self._trial["opto_pattern"] is not None:
+                self._trial["opto_pattern"] = int(self._trial["opto_pattern"][0][0])
+            else:
+                self._trial["opto_pattern"] = -1
+        else:
+            self._trial["opto_pattern"] = -1
+
+        _correct = self._trial.pop("correct")[0][0]  # right if 1, left if 0
         self._trial["correct_side"] = int(_correct)
-        _side = "_r" if _correct else "_l"  
+        _side = "_r" if _correct else "_l"
         _other_side = "_l" if _correct else "_r"  # right if 1, left if 0
         for col in columns_to_modify:
             _targ = self._trial.pop(col + _side)  # this is the target side
@@ -99,7 +109,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             else:
                 _targ = _targ[0][0]
                 _dist = _dist[0][0]
-            
+
             self._trial[f"target_{col}"] = _targ
             self._trial[f"distract_{col}"] = _dist
 
@@ -110,17 +120,17 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         if wheel_array is not None:
             t = wheel_array[:, 0]
             pos = wheel_array[:, 1]
-            
+
             # check for timing recording errors, sometimes t is not monotonically increasing
-            t,pos = trace.fix_trace_timing(t,pos)
-            
+            t, pos = trace.fix_trace_timing(t, pos)
+
             self._trial["wheel_t"] = [t.tolist()]
             self._trial["wheel_pos"] = [pos.tolist()]
-            
+
             _, _, t_interp, tick_interp = trace.reset_and_interpolate(
                 t, pos, reset_time_point, 5
             )
-            
+
             pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
 
             mov_dict = trace.get_movements(
@@ -147,7 +157,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
                 if _resp >= _off and _resp <= _off + 100:
                     self._trial["reaction_time"] = float(_on)
                     break
-            
+
     def set_outcome(self) -> None:
         """Sets the trial outcome by using the integer state outcome value"""
         if self._trial["state_outcome"] is not None:

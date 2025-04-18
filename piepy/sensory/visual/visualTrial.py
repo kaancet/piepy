@@ -24,9 +24,9 @@ class VisualTrialHandler(TrialHandler):
         self, trial_no: int, rawdata: dict, return_as: str = "dict"
     ) -> pt.DataFrame | dict | list:
         """Main function that is called from outside, sets the trial, validates data type and returns it
-        
+
         Args:
-            trial_no (int): Trial number 
+            trial_no (int): Trial number
             rawdata (dict): rawdata dictionary that will be used to extract the desired trial (trial_no)
             return_as (str, optional): Return type string. Defaults to "dict".
 
@@ -96,9 +96,9 @@ class VisualTrialHandler(TrialHandler):
     def recheck_screen_events(self, screen_data: pl.DataFrame) -> None:
         """Takes the screen dataframe to check the screen events once again
         NOTE: This function should be called after sync_timeframes, so it can check with the corrected timeframe
-        
+
         Args:
-            screen_data (pl.DataFrame): Screen photodiode dataframe 
+            screen_data (pl.DataFrame): Screen photodiode dataframe
         """
         _found_it = False
         _screen_new = screen_data.filter(
@@ -117,7 +117,7 @@ class VisualTrialHandler(TrialHandler):
 
         if not _found_it:
             display(
-                f"""[TRIAL-{self._trial['trial_no']}] Only 1 screen event for stimulus ON.
+                f"""[TRIAL-{self._trial["trial_no"]}] Only 1 screen event for stimulus ON.
                                    Tried checking after syncing rig and state machine times, issue persists...""",
                 color="yellow",
             )
@@ -142,7 +142,8 @@ class VisualTrialHandler(TrialHandler):
             photo_stim = not _vstim["photo"].drop_nulls()[0]
             try:
                 _vstim_onset = (
-                    _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"] * 1000
+                    _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"]
+                    * 1000
                 )  # ms
             except Exception:
                 _vstim_onset = (
@@ -166,9 +167,9 @@ class VisualTrialHandler(TrialHandler):
         self.data["vstim"] = _vstim
 
         # update the trial endpoints
-        self._trial["t_trialstart"] = _state.filter(pl.col("transition") == "trialstart")[
-            0, "corrected_elapsed"
-        ]
+        self._trial["t_trialstart"] = _state.filter(
+            pl.col("transition") == "trialstart"
+        )[0, "corrected_elapsed"]
         self._trial["t_trialend"] = _state.filter(
             pl.col("transition").str.contains("trialend")
         )[0, "corrected_elapsed"]

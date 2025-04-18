@@ -125,7 +125,7 @@ class TrialHandler:
         Args:
             trial_no: The trial number fo the trial to be parsed
             rawdata: Rawdata dictionary that has all of the session data
-            
+
         Returns:
             bool: True if trial is successully set, False otherwise
         """
@@ -229,7 +229,7 @@ class TrialHandler:
 
         Args:
             transitions: The list of transition the state machine goes through in a sessions (trialstart,stimstart,stimend,trialend)
-        
+
         Returns:
             bool: True if trial is completed, False otherwise
         """
@@ -252,7 +252,7 @@ class TrialHandler:
 
         Args:
             event_name: The name of the event column (lick, reward, opto,...)
-        
+
         Returns:
             np.ndarray: An (N,2) array containing event triggers (time, value)
         """

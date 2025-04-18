@@ -5,7 +5,7 @@ from tqdm import tqdm
 from ast import literal_eval
 
 try:
-    from cStringIO import StringIO 
+    from cStringIO import StringIO
 except:
     try:
         from StringIO import StringIO
@@ -21,7 +21,7 @@ def parse_preference(preffile: str) -> dict:
 
     Args:
         preffile: The path to the preference file
-    
+
     Returns:
         dict:
     """
@@ -87,7 +87,9 @@ def parse_protocol(protfile: str):
             ";".join(t) for t in tmp
         ]  # the delimiter is ";" becuase "," causes issue with evolveParams comma
         try:
-            params = pd.read_csv(StringIO("\n".join(tmp)), index_col=False, delimiter=";")
+            params = pd.read_csv(
+                StringIO("\n".join(tmp)), index_col=False, delimiter=";"
+            )
         except pd.io.common.EmptyDataError:
             params = None
     return options, params, comments
@@ -182,7 +184,10 @@ def parse_stimpy_log(fname: str):
                 .str.strip_chars(" ")
                 .cast(pl.Int64, strict=False),
                 pl.col("timereceived").str.strip_chars(" ").cast(pl.Int64),
-                pl.col("duinotime").str.strip_chars(" ").cast(pl.Float32).cast(pl.Int64),
+                pl.col("duinotime")
+                .str.strip_chars(" ")
+                .cast(pl.Float32)
+                .cast(pl.Int64),
                 pl.col("value")
                 .str.strip_chars("]")
                 .str.strip_chars(" ")
@@ -197,7 +202,11 @@ def parse_stimpy_log(fname: str):
             # assume all are float
             _schema = {k: pl.Float64 for k in vlogheader}
             logdata = pl.read_csv(
-                fname, has_header=False, comment_prefix="#", schema=_schema, separator=","
+                fname,
+                has_header=False,
+                comment_prefix="#",
+                schema=_schema,
+                separator=",",
             )
         except Exception:
             _schema = {k: pl.Float64 for k in vlogheader}
@@ -335,9 +344,9 @@ def parse_stimpygithub_log(fname: str) -> dict:
     for k in source_key_cols.keys():
         col_count = len(source_key_cols[k])
         type_count = len(source_key_type[k])
-        assert (
-            col_count == type_count
-        ), f"The number of column names({col_count}) =/= column types({type_count})"
+        assert col_count == type_count, (
+            f"The number of column names({col_count}) =/= column types({type_count})"
+        )
 
     logdata = pl.read_csv(fname, comment_prefix="#", separator=",", has_header=False)
 

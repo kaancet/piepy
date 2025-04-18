@@ -8,6 +8,7 @@ from ....core.run import RunData, Run
 from ....core.pathfinder import Paths
 from ....core.session import Session
 from ....core.io import display, load_json_dict, save_dict_json
+from ....core.log_repair_functions import fix_first_line_state_logging
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
 
@@ -27,7 +28,7 @@ STATE_TRANSITION_KEYS = {
 class WheelDiscriminationRunData(RunData):
     def __init__(self, data=None):
         super().__init__(data)
-        
+
     def set_data(self, data: pl.DataFrame) -> None:
         """Sets the data of the session and augments it
 
@@ -37,10 +38,10 @@ class WheelDiscriminationRunData(RunData):
         if data is not None:
             super().set_data(data)
             self.add_qolumns()
-    
+
     def add_qolumns(self) -> None:
-        """ Adds some quality of life (qol) columns """
-        
+        """Adds some quality of life (qol) columns"""
+
         # add a stim_side column for ease of access
         self.data = self.data.with_columns(
             pl.when(pl.col("target_pos").list.get(0) > 0)
@@ -50,35 +51,45 @@ class WheelDiscriminationRunData(RunData):
             .otherwise(None)
             .alias("target_side")
         )
-        
+
         # right choice
         self.data = self.data.with_columns(
-            pl.col("state_outcome").cast(pl.Boolean)
+            pl.col("state_outcome")
+            .cast(pl.Boolean)
             .xor(pl.col("correct_side").cast(pl.Boolean))
-            .not_().cast(pl.Int64)
+            .not_()
+            .cast(pl.Int64)
             .alias("right_choice")
         )
-        
+
         # add response_time columns
         self.data = self.data.with_columns(
             pl.col("state_response_time").alias("response_time")
         )
-        
+
         # round sf and tf
         self.data = self.data.with_columns(
-            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
+            [
+                pl.col(_sf).round(2).alias(_sf)
+                for _sf in self.data.columns
+                if _sf.endswith("_sf")
+            ]
         )
         self.data = self.data.with_columns(
-            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
+            [
+                pl.col(_tf).round(2).alias(_tf)
+                for _tf in self.data.columns
+                if _tf.endswith("_tf")
+            ]
         )
-        
-    def add_stim_diff_and_type(self,discrim_of:str) -> None:
+
+    def add_stim_diff_and_type(self, discrim_of: str) -> None:
         """_summary_
 
         Args:
             discrim_of (str): _description_
         """
-        
+
         if discrim_of == "width":
             u = "deg"
         elif discrim_of == "sf":
@@ -89,21 +100,26 @@ class WheelDiscriminationRunData(RunData):
             u = "%"
         else:
             u = "NA"
-        
+
+        self.data = self.data.with_columns(pl.lit(discrim_of).alias("discriminating"))
+
         self.data = self.data.with_columns(
-            pl.lit(discrim_of).alias("discriminating")
+            pl.when(pl.col("target_side") == "contra")
+            .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
+            .otherwise(
+                pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}")
+            )
+            .alias(f"diff_{discrim_of}")
         )
-        
-        self.data = self.data.with_columns(
-            pl.when(pl.col("target_side")=="contra")
-                    .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
-                    .otherwise(pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}"))
-                    .alias(f"diff_{discrim_of}"))
-        
+
         # adds string stimtype
         self.data = self.data.with_columns(
-            (pl.col(f"target_{discrim_of}").cast(pl.Utf8) + f"{u}_" + pl.col(f"distract_{discrim_of}").cast(pl.Utf8) + f"{u}")
-            .alias("stim_type")
+            (
+                pl.col(f"target_{discrim_of}").cast(pl.Utf8)
+                + f"{u}_"
+                + pl.col(f"distract_{discrim_of}").cast(pl.Utf8)
+                + f"{u}"
+            ).alias("stim_type")
         )
 
     def add_pattern_related_columns(self, pattern_path: str) -> None:
@@ -125,7 +141,9 @@ class WheelDiscriminationRunData(RunData):
                 (pl.col("stim_type") + "_-1").alias("stimkey")
             )
             # add stim_label for legends and stuff
-            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
+            self.data = self.data.with_columns(
+                (pl.col("stim_type")).alias("stim_label")
+            )
         else:
             if pattern_path is not None and os.path.exists(pattern_path):
                 pattern_names = {}
@@ -162,7 +180,9 @@ class WheelDiscriminationRunData(RunData):
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
                 (
-                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
+                    pl.col("stim_type")
+                    + "_"
+                    + pl.col("opto_pattern").cast(int).cast(str)
                 ).alias("stimkey")
             )
             # add stim_label for legends and stuff
@@ -183,12 +203,27 @@ class WheelDiscriminationRun(Run):
         _base = super().__repr__()
         return _base
 
-    def analyze_run(self, transform_dict: dict, discrim_of:str) -> None:
-        """ """
-        super().analyze_run(transform_dict)
-        
+    def get_rawdata(self, transform_dict: dict) -> None:
+        """Reads the data from various logs and does some repairs/fixes for standardization
+
+        Args:
+            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        """
+        super().get_rawdata(transform_dict)
+
+        self.rawdata = fix_first_line_state_logging(self.rawdata)
+
+    def analyze_run(self, discrim_of: str) -> None:
+        """Main loop to extract data from rawdata, should be overwritten in child classes
+
+        Args:
+            discrim_of (str):
+        """
+
+        super().analyze_run()
+
         self.data.add_stim_diff_and_type(discrim_of=discrim_of)
-        
+
         self.data.add_pattern_related_columns(self.paths.opto_pattern)
 
         self.stats = get_run_stats(self.data.data)
@@ -226,7 +261,7 @@ class WheelDiscriminationSession(Session):
         self.init_session_runs(skip_google)
 
         end = time.time()
-        display(f"Done! t={(end-start):.2f} s")
+        display(f"Done! t={(end - start):.2f} s")
 
     def __repr__(self):
         r = f"Discrimination Session {self.sessiondir}"
@@ -239,12 +274,13 @@ class WheelDiscriminationSession(Session):
             # the run itself
             _run = WheelDiscriminationRun(_path)
             _run.set_meta(skip_google)
+            _run.get_rawdata(STATE_TRANSITION_KEYS)
             if _run.is_run_saved() and self.load_flag:
                 display(f"Loading from {_run.paths.save}")
                 _run.load_run()
             else:
                 discrim_of = _run.meta["opts"]["AttendVectorName"]
-                _run.analyze_run(STATE_TRANSITION_KEYS,discrim_of)
+                _run.analyze_run(discrim_of)
                 _run.data.add_metadata_columns(_run.meta)
                 _run.save_run()
 

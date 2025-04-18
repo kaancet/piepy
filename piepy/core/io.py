@@ -46,7 +46,9 @@ def jsonify(data: dict):
 
     for key, value in data.items():
         if isinstance(value, list):
-            value = [jsonify(item) if isinstance(item, dict) else item for item in value]
+            value = [
+                jsonify(item) if isinstance(item, dict) else item for item in value
+            ]
         if isinstance(value, dict):
             value = jsonify(value)
         if type(value).__module__ == "numpy":

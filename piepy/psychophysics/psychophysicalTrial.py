@@ -20,9 +20,9 @@ class PsychophysicalTrialHandler(TrialHandler):
         self, trial_no: int, rawdata: dict, return_as: str = "dict"
     ) -> pt.DataFrame | dict | list:
         """Main function that is called from outside, sets the trial, validates data type and returns it
-        
+
         Args:
-            trial_no (int): Trial number 
+            trial_no (int): Trial number
             rawdata (dict): rawdata dictionary that will be used to extract the desired trial (trial_no)
             return_as (str, optional): Return type string. Defaults to "dict".
 
@@ -51,6 +51,6 @@ class PsychophysicalTrialHandler(TrialHandler):
 
     def set_reward(self) -> None:
         """Sets the reward timings as a list"""
-        reward_array = self._get_rig_event("reward")    
+        reward_array = self._get_rig_event("reward")
         if reward_array is not None:
-            self._trial["reward"] = [reward_array[0,:].tolist()]
+            self._trial["reward"] = [reward_array[0, :].tolist()]

@@ -5,7 +5,6 @@ from os.path import dirname, abspath, normpath, exists
 
 
 def main():
-
     parser = argparse.ArgumentParser(description="Session Data Parsing Tool")
 
     parser.add_argument(

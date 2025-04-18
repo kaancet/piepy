@@ -199,77 +199,84 @@ mplstyledict["print"] = {
 }
 
 
-def make_named_axes(data:pl.DataFrame,col_names:list[str],**kwargs) -> tuple[plt.Figure,dict]:
-    """ Generates a figure and a dictinary to acess the axes with combined unique values of column names as keys
-    The col names will be used for row and column generation, respectively 
-    
+def make_named_axes(
+    data: pl.DataFrame, col_names: list[str], **kwargs
+) -> tuple[plt.Figure, dict]:
+    """Generates a figure and a dictinary to acess the axes with combined unique values of column names as keys
+    The col names will be used for row and column generation, respectively
+
     Args:
         data: DataFrame to get the unique values from
         col_names: Names of the columns
-        
+
     Returns:
         tuple[plt.Figure,dict]: figure that contains the axes, dictionary of named axes
     """
-    assert len(col_names) <=2, "Can't have more than 2 column names(row and column of axes)"
-    
+    assert len(col_names) <= 2, (
+        "Can't have more than 2 column names(row and column of axes)"
+    )
+
     uniq_rows = data[col_names[0]].drop_nulls().unique().sort().to_list()
-    
-    if len(col_names)==2:
+
+    if len(col_names) == 2:
         uniq_cols = data[col_names[1]].drop_nulls().unique().sort().to_list()
     else:
-        uniq_cols = ['']
-        
-    f,axes = plt.subplots(nrows=len(uniq_rows),
-                          ncols=len(uniq_cols),
-                          **kwargs)
-    axes = axes.reshape(len(uniq_rows),len(uniq_cols))
+        uniq_cols = [""]
+
+    f, axes = plt.subplots(nrows=len(uniq_rows), ncols=len(uniq_cols), **kwargs)
+    axes = axes.reshape(len(uniq_rows), len(uniq_cols))
 
     axes_dict = {}
-    for i,row in enumerate(uniq_rows):
-        for j,col in enumerate(uniq_cols):
+    for i, row in enumerate(uniq_rows):
+        for j, col in enumerate(uniq_cols):
             key = f"{row}_{col}"
-            axes_dict[key] = axes[i,j]
+            axes_dict[key] = axes[i, j]
 
-    return f,axes_dict
+    return f, axes_dict
 
 
-def get_valid_mpl_kwargs(plot_type:str, mpl_kwargs:dict) -> dict:
-    """ Returns the subset of values that are valid for the given plot type 
-    
+def get_valid_mpl_kwargs(plot_type: str, mpl_kwargs: dict) -> dict:
+    """Returns the subset of values that are valid for the given plot type
+
     Args:
         plot_type: Type of the plotting function (e.g. "plot", "scatter")
         mpl_kwargs: dictionary with all the matplotlib keeyword arguments
-        
+
     Returns:
         dict: Valid kwargs for given plot type
     """
+
     # sometimes matplotlib returns a tuple/list of objects; just get the first
     def get_root(obj):
         if isinstance(obj, Iterable):
             return obj[0]
         return obj
-        
-    dummy_f,dummy_ax = plt.subplots(1,1)
-    func = getattr(matplotlib.axes.Axes, plot_type)  # Get the function dynamically (e.g., plt.plot, plt.scatter, etc.)
-    
+
+    dummy_f, dummy_ax = plt.subplots(1, 1)
+    func = getattr(
+        matplotlib.axes.Axes, plot_type
+    )  # Get the function dynamically (e.g., plt.plot, plt.scatter, etc.)
+
     dummy_ax.remove()
     dummy_f.clear()
     plt.close(dummy_f)
-    
+
     sig = inspect.signature(func)
-    
-    valid_kwds = ArtistInspector(get_root(func(dummy_ax,[0], [0]))).get_setters() + list(sig.parameters.keys())
+
+    valid_kwds = ArtistInspector(
+        get_root(func(dummy_ax, [0], [0]))
+    ).get_setters() + list(sig.parameters.keys())
     # Filter mpl_kwargs to only include valid parameters
     return {k: v for k, v in mpl_kwargs.items() if k in valid_kwds}
 
 
 def make_label(name: np.ndarray, count: np.ndarray) -> str:
-    """ Makes a label given an array of names and counts
-    
+    """Makes a label given an array of names and counts
+
     Args:
         name: ...
         count: ...
-        
+
     Returns:
         str: string to be used as a label
     """
@@ -281,8 +288,10 @@ def make_label(name: np.ndarray, count: np.ndarray) -> str:
     return ret
 
 
-def make_linear_axis(data: pl.DataFrame, column_name: str, mid_value: float = 0) -> dict:
-    """ Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis
+def make_linear_axis(
+    data: pl.DataFrame, column_name: str, mid_value: float = 0
+) -> dict:
+    """Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis
 
     Args:
         data (pl.DataFrame): Session or multi session data
@@ -328,9 +337,9 @@ def make_dot_cloud(
         np.ndarray: new dispersed x_points corresponding to y_points
     """
 
-    if not isinstance(y_points,np.ndarray):
+    if not isinstance(y_points, np.ndarray):
         y_points = np.array(y_points)
-    
+
     if len(y_points) > 1:
         bin_edges = np.arange(
             np.nanmin(y_points), np.nanmax(y_points) + bin_width, bin_width
@@ -340,7 +349,7 @@ def make_dot_cloud(
         counts, bin_edges = np.histogram(y_points, bins=bin_edges)
         if not len(counts):
             counts = np.array([0])
-        
+
         # get the indices that correspond to points inside the bin edges
         idx_in_bin = []
         for ymin, ymax in zip(bin_edges[:-1], bin_edges[1:]):
@@ -348,7 +357,7 @@ def make_dot_cloud(
             idx_in_bin.append(i)
 
         x_coords = np.zeros(len(y_points))
-        b = np.nanmax(counts)//2
+        b = np.nanmax(counts) // 2
         dx = b and width / b or 0
 
         for i in idx_in_bin:
@@ -369,8 +378,8 @@ def make_dot_cloud(
     return x_coords + center
 
 
-def set_style(styledict:Literal["presentation","print"]) -> None:
-    """ Sets the styling of the plot
+def set_style(styledict: Literal["presentation", "print"]) -> None:
+    """Sets the styling of the plot
 
     Args:
         styledict (Literal["presentation","print","presentation_dark"]): key to custom matplotlib styledicts(above)
@@ -384,7 +393,7 @@ def set_style(styledict:Literal["presentation","print"]) -> None:
             plt.style.use("default")
 
 
-def dates_to_deltadays(date_arr: list[dt.date], start_date:dt.date) -> list:
+def dates_to_deltadays(date_arr: list[dt.date], start_date: dt.date) -> list:
     """Converts the date to days from first start
 
     Args:
@@ -399,14 +408,15 @@ def dates_to_deltadays(date_arr: list[dt.date], start_date:dt.date) -> list:
 
 
 def pval_plotter(
-    ax:plt.Axes,
-    p_val:float,
-    pos:list[float,float],
-    loc:float,
-    tail_height:float=0.05,
-    **kwargs) -> plt.Axes:
-    """ Annotates the p-val between two locations
-    
+    ax: plt.Axes,
+    p_val: float,
+    pos: list[float, float],
+    loc: float,
+    tail_height: float = 0.05,
+    **kwargs,
+) -> plt.Axes:
+    """Annotates the p-val between two locations
+
     Args:
         ax (plt.Axes): axes object to draw the annotation on
         p_val (float): the text to be written
@@ -417,9 +427,9 @@ def pval_plotter(
     Returns:
         plt.Axes: Axes object the stars were plotted to
     """
-    x1,x2 = pos
-    h = loc*tail_height
-    
+    x1, x2 = pos
+    h = loc * tail_height
+
     stars = "ns"
     if p_val < 0.0001:
         stars = "****"
@@ -430,12 +440,24 @@ def pval_plotter(
     elif 0.01 <= p_val < 0.05:
         stars = "*"
     if stars != "ns":
-        ax.plot([x1, x1, x2, x2], [loc, loc+h, loc+h, loc], lw=1, c=kwargs.get("color","k"))
-        ax.text((x1+x2)*.5, loc+h, stars, ha='center', va='center', color=kwargs.get("color","k"))
+        ax.plot(
+            [x1, x1, x2, x2],
+            [loc, loc + h, loc + h, loc],
+            lw=1,
+            c=kwargs.get("color", "k"),
+        )
+        ax.text(
+            (x1 + x2) * 0.5,
+            loc + h,
+            stars,
+            ha="center",
+            va="center",
+            color=kwargs.get("color", "k"),
+        )
     return ax
 
 
-def override_plots(methods_to_override:list[str]|None=None) -> None:
+def override_plots(methods_to_override: list[str] | None = None) -> None:
     """Overrides matplotlib.axes plots with "_" prepended to the name,
     Currently the overriding function checks and filters the valid kwargs for the overriden plot
 
@@ -443,22 +465,31 @@ def override_plots(methods_to_override:list[str]|None=None) -> None:
         methods_to_override (list[str] | None, optional): List of matplotlib plots to override. Defaults to None.
     """
     if methods_to_override is None:
-        methods_to_override = ["plot","errorbar","scatter","bar","step","fill_between"]
-    
+        methods_to_override = [
+            "plot",
+            "errorbar",
+            "scatter",
+            "bar",
+            "step",
+            "fill_between",
+        ]
+
     original_methods = {}
     for meth in methods_to_override:
         original_methods[meth] = getattr(matplotlib.axes.Axes, meth)
 
-        def create_custom_method(name,method):
+        def create_custom_method(name, method):
             @functools.wraps(original_methods[meth])
-            def custom_method(self,*args,**kwargs):
-                valid_kwargs = get_valid_mpl_kwargs(plot_type=name,
-                                                    mpl_kwargs=kwargs.get("mpl_kwargs",{}))
-                good_kwargs = copy.deepcopy({**kwargs,**valid_kwargs})
-                good_kwargs.pop("mpl_kwargs",{})
-                
-                return method(self,*args,**good_kwargs)
+            def custom_method(self, *args, **kwargs):
+                valid_kwargs = get_valid_mpl_kwargs(
+                    plot_type=name, mpl_kwargs=kwargs.get("mpl_kwargs", {})
+                )
+                good_kwargs = copy.deepcopy({**kwargs, **valid_kwargs})
+                good_kwargs.pop("mpl_kwargs", {})
+
+                return method(self, *args, **good_kwargs)
+
             return custom_method
-        
-        cust_meth = create_custom_method(meth,original_methods[meth])
+
+        cust_meth = create_custom_method(meth, original_methods[meth])
         setattr(matplotlib.axes.Axes, f"_{meth}", cust_meth)

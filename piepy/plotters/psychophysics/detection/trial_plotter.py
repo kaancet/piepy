@@ -12,7 +12,7 @@ def plot_trial(
     if ax is None:
         fig = plt.figure(figsize=kwargs.pop("figsize", (15, 8)))
         ax = fig.add_subplot(1, 1, 1)
-    
+
     if len(trial_row) != 1:
         raise ValueError(f"trial_row needs to be of size 1, got {len(trial_row)}")
 
@@ -20,12 +20,12 @@ def plot_trial(
     _trial = {k: v[0] for k, v in _trial.items()}
     interp_freq = kwargs.get("interp_freq", 5)
     trace = WheelTrace()
-    
+
     # look for a column that has t_*start_rig
     _start_name = [
         s for s in _trial.keys() if s.startswith("t_") and s.endswith("start_rig")
     ][0]
-    
+
     # timeframe reset value
     if _trial[_start_name] is not None:
         reset_time = _trial[_start_name]
@@ -34,28 +34,27 @@ def plot_trial(
             reset_time = _trial["t_trialinit"] + _trial["duration_blank"]
         else:
             reset_time = _trial["t_vstimstart"]
-    
+
     # wheel
     wheel_t = np.array(_trial["wheel_t"])
     wheel_tick = np.array(_trial["wheel_pos"])
-    
+
     if not len(wheel_t):
         print("NO WHEEL MOVEMENT IN TRIAL")
         return None
-    
-    reset_t,reset_tick, t_interp, tick_interp = trace.reset_and_interpolate(wheel_t, 
-                                                                            wheel_tick, 
-                                                                            reset_time, 
-                                                                            interp_freq)
+
+    reset_t, reset_tick, t_interp, tick_interp = trace.reset_and_interpolate(
+        wheel_t, wheel_tick, reset_time, interp_freq
+    )
 
     # get radians
     wheel_pos_rad = trace.cm_to_rad(trace.ticks_to_cm(reset_tick))
     # convert the interpolation
     interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
-    
+
     # get speed
-    speed = np.abs(trace.get_filtered_velocity(interp_pos,interp_freq)) * 1000
-    
+    speed = np.abs(trace.get_filtered_velocity(interp_pos, interp_freq)) * 1000
+
     # plot interp
     ax.plot(t_interp, interp_pos)
 
@@ -96,10 +95,10 @@ def plot_trial(
         ax.scatter(_t[1], interp_pos[int(_t[0])], color="b")
         _e = mov_dict["offsets"][i]
         ax.scatter(_e[1], interp_pos[int(_e[0])], color="r")
-        
+
     ax_speed = ax.twinx()
-    ax_speed.plot(t_interp,speed,c='r')
-        
+    ax_speed.plot(t_interp, speed, c="r")
+
     _resp = _trial["rig_response_time"]
     ax.axvline(_resp)
     for i in range(len(mov_dict["onsets"])):

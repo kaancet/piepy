@@ -34,6 +34,12 @@ class Paths:
             else:
                 setattr(self, name, path)
 
+    def __repr__(self) -> str:
+        ret = """"""
+        for k, v in self.__dict__.items():
+            ret += f"{k}  :  {v}\n"
+        return ret
+
 
 class PathFinder:
     def __init__(self, sessiondir: str) -> None:
@@ -100,7 +106,10 @@ class PathFinder:
                 ]
             self.all_paths["save"] = save_paths
 
-        if self.all_paths["presentation"] is None and self.all_paths["training"] is None:
+        if (
+            self.all_paths["presentation"] is None
+            and self.all_paths["training"] is None
+        ):
             raise FileNotFoundError(
                 f"{self.sessiondir} does not exist in neither presentation or training!!"
             )

@@ -36,16 +36,16 @@ def plot_wheel_profile(
     Returns:
         plt.Axes: Plotted axes object
     """
-    
+
     if mpl_kwargs is None:
         mpl_kwargs = {}
-        
+
     clr = Color(task="detection")
     override_plots()
-    
+
     trace = WheelTrace()
     trace_interp_freq = kwargs.get("interp_freq", 5)
-    
+
     time_lims = kwargs.pop("time_lims", None)
     if time_lims is None:
         time_lims = [-200, 1500]
@@ -83,7 +83,8 @@ def plot_wheel_profile(
             interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
 
             speed = (
-                np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq)) * 1000
+                np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq))
+                * 1000
             )  # rad/s
             idx_in_time_range = np.where(
                 (t_interp >= time_lims[0]) & (t_interp <= time_lims[1])
@@ -116,7 +117,7 @@ def plot_wheel_profile(
                     _longest_trace_len = len(y_in_rads)
                     _longest_time = time_window
 
-        # make amatrix to avreage over the rows, pad with None until reaching longest trace
+        # make a matrix to avreage over the rows, pad with None until reaching longest trace
         all_traces_mat = np.array(
             [xi + [None] * (_longest_trace_len - len(xi)) for xi in trials_wheel_list],
             dtype=float,
@@ -136,7 +137,9 @@ def plot_wheel_profile(
             alpha=0.2,
             linewidth=0,
         )
-        ax._plot(_longest_time, avg, **clr.contrast_keys[str(sep)],mpl_kwargs=mpl_kwargs)
+        ax._plot(
+            _longest_time, avg, **clr.contrast_keys[str(sep)], mpl_kwargs=mpl_kwargs
+        )
 
     thresh_mean = np.mean(all_thresh)
     ax.axhline(thresh_mean, color="#147800", linewidth=0.5, alpha=0.8)
@@ -148,7 +151,8 @@ def plot_wheel_profile(
     ax.axvline(1000, color="k", linewidth=1, alpha=0.6)
 
     ax.set_xlim(time_lims[0] - 10, time_lims[1] + 10)
-    ax.set_ylim(traj_lims[0], traj_lims[1])
+    # ax.set_ylim(traj_lims[0], traj_lims[1])
+    ax.set_ylim([0, 8])
     if plot_speed:
         ax.set_ylabel("Wheel\nspeed (rad/s)")
     else:
@@ -227,3 +231,98 @@ def plot_all_wheel_profiles(
         ax.set_title(f"{filt_tup[1]}_{filt_tup[0]}")
 
     return fig
+
+
+def plot_wheel_heatmap(
+    data: pl.DataFrame,
+    ax: plt.Axes = None,
+    seperate_by: list[str] = ["contrast"],
+    time_reset: str = "t_vstimstart_rig",
+    plot_speed: bool = True,
+    mpl_kwargs: dict = None,
+    **kwargs,
+) -> plt.Axes:
+    if mpl_kwargs is None:
+        mpl_kwargs = {}
+
+    clr = Color(task="detection")
+    override_plots()
+
+    trace = WheelTrace()
+    trace_interp_freq = kwargs.get("interp_freq", 5)
+
+    time_lims = kwargs.pop("time_lims", None)
+    if time_lims is None:
+        time_lims = [-200, 1100]
+
+    traj_lims = kwargs.pop("traj_lims", None)
+    if traj_lims is None:
+        traj_lims = [None, None]
+
+    if ax is None:
+        fig = plt.figure(figsize=mpl_kwargs.pop("figsize", (8, 8)))
+        ax = fig.add_subplot(1, 1, 1)
+
+    plot_data = data.filter(pl.col("outcome") != "early")
+
+    for filt_tup in make_subsets(plot_data, seperate_by):
+        filt_df = filt_tup[-1]
+        sep = filt_tup[0]
+
+        _longest_trace_len = 0
+        trials_wheel_list = []
+        _rig_response_rad_list = []
+        for i, trial in enumerate(filt_df.iter_rows(named=True)):
+            wheel_t = np.array(trial["wheel_t"])
+            wheel_tick = np.array(trial["wheel_pos"])
+            reset_time_point = trial[time_reset]
+
+            _, _, t_interp, tick_interp = trace.reset_and_interpolate(
+                wheel_t, wheel_tick, reset_time_point, trace_interp_freq
+            )
+            # convert the interpolation to rad
+            interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
+
+            speed = (
+                np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq))
+                * 1000
+            )  # rad/s
+            idx_in_time_range = np.where(
+                (t_interp >= time_lims[0]) & (t_interp <= time_lims[1])
+            )
+
+            if len(idx_in_time_range):
+                time_window = t_interp[idx_in_time_range]
+                if plot_speed:
+                    speed_window = speed[idx_in_time_range]
+                    y_in_rads = speed_window
+                    if trial["rig_response_tick"] is not None:
+                        speed_thresh = trial["rig_response_tick"] / (
+                            trial["median_loop_time"] * 5
+                        )  # 5 is wheelbuffer
+                        speed_thresh = (
+                            trace.cm_to_rad(trace.ticks_to_cm(speed_thresh)) * 1000
+                        )  # rad/s
+                        _rig_response_rad_list.append(speed_thresh)
+                else:
+                    y_in_rads = interp_pos[idx_in_time_range]
+                    if trial["rig_response_tick"] is not None:
+                        pos_thresh = trace.cm_to_rad(
+                            trace.ticks_to_cm(trial["rig_response_tick"])
+                        )
+                        _rig_response_rad_list.append(pos_thresh)
+
+                trials_wheel_list.append(y_in_rads.tolist())
+                # adjusting the longest
+                if len(y_in_rads) >= _longest_trace_len:
+                    _longest_trace_len = len(y_in_rads)
+                    _longest_time = time_window
+
+            # make a matrix to avreage over the rows, pad with None until reaching longest trace
+            all_traces_mat = np.array(
+                [
+                    xi + [None] * (_longest_trace_len - len(xi))
+                    for xi in trials_wheel_list
+                ],
+                dtype=float,
+            )

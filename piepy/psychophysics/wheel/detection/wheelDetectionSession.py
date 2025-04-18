@@ -161,7 +161,7 @@ class WheelDetectionRunData(RunData):
             )
 
     def add_pattern_related_columns(self, pattern_path: str) -> None:
-        """ Adds columns related to the silencing pattern if they exist
+        """Adds columns related to the silencing pattern if they exist
 
         Args:
             pattern_path (str): Path to the patterns
@@ -179,7 +179,9 @@ class WheelDetectionRunData(RunData):
                 (pl.col("stim_type") + "_-1").alias("stimkey")
             )
             # add stim_label for legends and stuff
-            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
+            self.data = self.data.with_columns(
+                (pl.col("stim_type")).alias("stim_label")
+            )
         else:
             if pattern_path is not None and os.path.exists(pattern_path):
                 pattern_names = {}
@@ -216,7 +218,9 @@ class WheelDetectionRunData(RunData):
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
                 (
-                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
+                    pl.col("stim_type")
+                    + "_"
+                    + pl.col("opto_pattern").cast(int).cast(str)
                 ).alias("stimkey")
             )
             # add stim_label for legends and stuff
@@ -232,7 +236,7 @@ class WheelDetectionRunData(RunData):
 
         Args:
             path: path to pattern directory
-            
+
         Returns:
             dict: dictionary of read images and patterns
         """
@@ -269,13 +273,17 @@ class WheelDetectionRun(Run):
             )
         return _base + _stats
 
-    def analyze_run(self, transform_dict: dict) -> None:
-        """Main loop to extract data from rawdata
+    def get_rawdata(self, transform_dict: dict) -> None:
+        """Reads the data from various logs and does some repairs/fixes for standardization
 
         Args:
-            transform_dict: The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
         """
-        super().analyze_run(transform_dict)
+        super().get_rawdata(transform_dict)
+
+    def analyze_run(self) -> None:
+        """Main loop to extract data from rawdata"""
+        super().analyze_run()
 
         self.data.add_pattern_related_columns(self.paths.opto_pattern)
 
@@ -314,14 +322,14 @@ class WheelDetectionSession(Session):
         self.init_session_runs(skip_google)
 
         end = time.time()
-        display(f"Done! t={(end-start):.2f} s")
+        display(f"Done! t={(end - start):.2f} s")
 
     def __repr__(self):
         r = f"Detection Session {self.sessiondir}"
         return r
 
     def init_session_runs(self, skip_google: bool = True) -> None:
-        """ Initializes runs in a session
+        """Initializes runs in a session
 
         Args:
             skip_google (bool, optional): Whether to skip reading data from google sheet. Defaults to True.
@@ -331,11 +339,12 @@ class WheelDetectionSession(Session):
             # the run itself
             _run = WheelDetectionRun(_path)
             _run.set_meta(skip_google)
+            _run.get_rawdata(STATE_TRANSITION_KEYS)
             if _run.is_run_saved() and self.load_flag:
                 display(f"Loading from {_run.paths.save}")
                 _run.load_run()
             else:
-                _run.analyze_run(STATE_TRANSITION_KEYS)
+                _run.analyze_run()
                 _run.data.add_metadata_columns(_run.meta)
                 _run.save_run()
 
@@ -345,7 +354,7 @@ class WheelDetectionSession(Session):
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
-    """ Gets run stats from run dataframe
+    """Gets run stats from run dataframe
 
     Args:
         data (pl.DataFrame): Data of the session to calculate the summary stats of
@@ -395,9 +404,10 @@ def get_run_stats(data: pl.DataFrame) -> dict:
 
     # median response time #
     stats_dict["median_response_time"] = round(
-        nonopto_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(), 3
+        nonopto_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
+        3,
     )
-    
+
     # median reaction time
     stats_dict["median_reaction_time"] = round(
         nonopto_data.filter(pl.col("outcome") == "hit")["reaction_time"].median(), 3
@@ -417,7 +427,9 @@ def get_run_stats(data: pl.DataFrame) -> dict:
             100 * easy_correct_count / stats_dict["easy_trial_count"], 3
         )
         stats_dict["easy_median_response_time"] = round(
-            easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
+            easy_data.filter(pl.col("outcome") == "hit")[
+                "state_response_time"
+            ].median(),
             3,
         )
         stats_dict["easy_median_reaction_time"] = round(

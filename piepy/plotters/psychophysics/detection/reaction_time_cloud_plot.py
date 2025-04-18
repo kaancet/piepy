@@ -137,7 +137,7 @@ def plot_reaction_time_cloud(
                         ax.errorbar(
                             lin_ax,
                             medi,
-                            yerr = medi_conf,
+                            yerr = medi_conf if len(medi_conf) else 0,
                             color = clr.stim_keys[stim_filt_key]["color"],
                             alpha=0.3,
                             zorder=2,
