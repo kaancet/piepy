@@ -58,6 +58,10 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             pl.col("transition") == "stimstart"
         )[0, "corrected_elapsed"]
 
+        openloop_start = self.data["state"].filter(
+            pl.col("transition") == "responsestart"
+        )
+
         correct = self.data["state"].filter(pl.col("transition") == "correct")
         if len(correct):
             self._trial["state_outcome"] = 1
@@ -67,6 +71,8 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         if len(incorrect):
             self._trial["state_outcome"] = 0
             self._trial["state_response_time"] = incorrect[0, "stateElapsed"]
+
+        self._trial["state_response_time"] += openloop_start[0, "stateElapsed"]
 
         stim_end = self.data["state"].filter(
             pl.col("transition").str.contains("stimend")
