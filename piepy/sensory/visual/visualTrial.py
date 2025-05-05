@@ -3,6 +3,7 @@ import patito as pt
 from ...core.io import display
 from ...core.utils import nonan_unique
 from ...core.trial import Trial, TrialHandler
+from ...core.exceptions import ScreenPulseError
 
 
 class VisualTrial(Trial):
@@ -47,6 +48,9 @@ class VisualTrialHandler(TrialHandler):
             # to remedy this, we check the screen data after syncing the timeframes of rig(arduoino) and statemachine(python)
             if not self.was_screen_off:
                 self.recheck_screen_events(rawdata["screen"])
+
+            if not self.was_screen_off:
+                self.get_trial_end_from_screen(rawdata["screen"])
 
             self.set_vstim_properties()  # should be run after sync_timeframes
             # get the frame endpoints for 2P and/or cam data
@@ -100,7 +104,6 @@ class VisualTrialHandler(TrialHandler):
         Args:
             screen_data (pl.DataFrame): Screen photodiode dataframe
         """
-        _found_it = False
         _screen_new = screen_data.filter(
             (pl.col("duinotime") >= self._trial["t_trialstart"])
             & (pl.col("duinotime") <= self._trial["t_trialend"])
@@ -113,14 +116,36 @@ class VisualTrialHandler(TrialHandler):
             if _screen_new.n_unique("value") == 1:
                 # found new screen event, add it
                 self._trial["t_vstimend_rig"] = _screen_new[1, "duinotime"]
-                _found_it = True
+                if self._trial["t_trialend"] <= self._trial["t_vstimend_rig"]:
+                    self._trial["t_trialend"] = _screen_new[1, "duinotime"]
+                self.was_screen_off = True
 
-        if not _found_it:
+        if self.was_screen_off:
             display(
                 f"""[TRIAL-{self._trial["trial_no"]}] Only 1 screen event for stimulus ON.
                                    Tried checking after syncing rig and state machine times, issue persists...""",
                 color="yellow",
             )
+
+    def get_trial_end_from_screen(self, screen_data: pl.DataFrame) -> None:
+        """_summary_
+
+        Args:
+            screen_data (pl.DataFrame): Screen photodiode dataframe
+        """
+
+        trial_screen = screen_data.filter(pl.col("value") == self._trial["trial_no"])
+
+        if trial_screen.is_empty():
+            raise ScreenPulseError(
+                f"No screen pulse data for trial {self._trial['trial_no']}"
+            )
+
+        if len(trial_screen) == 2:
+            self.was_screen_off = True
+            self._trial["t_vstimend_rig"] = trial_screen[1, "value"]
+            if self._trial["t_trialend"] <= self._trial["t_vstimend_rig"]:
+                self._trial["t_trialend"] = trial_screen[1, "value"]
 
     def sync_timeframes(self) -> None:
         """Syncs the timeframes according to visual stimulus appearance from screen events"""

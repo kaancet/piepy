@@ -75,10 +75,10 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 self._trial["t_trialinit"] + self._trial["duration_blank"]
             )  # would be stimulus start
 
-        self.set_outcome()
         self.set_licks()
         self.set_reward()
         self.set_opto()
+        self.set_outcome()
         return self._update_and_return(return_as)
 
     def check_early(self) -> bool:
@@ -168,7 +168,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     # this is actually early, higher threshold here compared to stimpy because of logging lag
                     self._trial["state_outcome"] = -1
                     self._trial["state_response_time"] = temp_resp
-                elif 150 < temp_resp < 1000:
+                elif 200 < temp_resp < 1000:
                     # This should not happen
                     # DISCARD TRIAL
                     _states_set = False
@@ -292,6 +292,11 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
     def set_outcome(self) -> None:
         """Sets the trial outcome by using the integer state outcome value"""
         self._trial["outcome"] = OUTCOMES[self._trial["state_outcome"]]
+
+        # designate too early reaction times as early
+        if self._trial["outcome"] == "hit":
+            if self._trial["reaction_time"] <= 100:
+                self._trial["outcome"] = "early"
 
     def set_wheel_traces(self, reset_time_point: float) -> None:
         """Sets the wheel traces and wheel reaction time from the traces
