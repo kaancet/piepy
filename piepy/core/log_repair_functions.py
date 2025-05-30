@@ -29,36 +29,58 @@ def add_total_iStim(rawdata: dict) -> dict:
     # check if either itrial or istim is monotonically increasing, if so take the one that i
     _iStim_monot = np.diff(_iStim.drop_nulls().unique(maintain_order=True).to_list())
     _iTrial_monot = np.diff(_iTrial.drop_nulls().unique(maintain_order=True).to_list())
-    if len(_iStim_monot) and np.all(_iStim_monot > 0):
+    
+    # Todo - Need a combinatorial check to make it a total iStim
+    # Tuning stimuli not working because it's one long shuffled trial
+    # Retinotopy not working because it's 2 trials with a certain number of stim each
+    
+    
+    if len(_iStim_monot) and np.all(_iStim_monot > 0) and not len(_iTrial_monot) and not np.all(_iTrial_monot > 0):
         # istim monotonic, take that (scenario 1)
         rawdata["vstim"] = rawdata["vstim"].with_columns(
-            pl.when(pl.col("iTrial").first() == 0)
+            pl.when(pl.col("iStim").first() == 0)
             .then(pl.col("iStim") + 1)
             .otherwise(pl.col("iStim"))
             .alias("total_iStim")
         )
+        
     elif len(_iTrial_monot) and np.all(_iTrial_monot > 0):
-        # itrial is monotonic, take that (scenario 3)
-        rawdata["vstim"] = rawdata["vstim"].with_columns(
-            pl.when(pl.col("iTrial").first() == 0)
-            .then((pl.col("iTrial") + 1))
-            .otherwise(pl.col("iTrial"))
-            .alias("total_iStim")
-        )
-    else:
+        # If within each iTrial, iStim is monotonic, take that (scenario 2)
+        _iTogether = pl.concat([_iStim.to_frame(), _iTrial.to_frame()], how="horizontal").drop_nulls()
+        
+        _stim_in_trial = _iTogether.filter(pl.col("iTrial") == pl.col("iTrial").first()).select("iStim").unique(maintain_order=True).to_series()
+        if len(_stim_in_trial) == 1:
+            # itrial is monotonic and there is only one stim in the trial, take itrial (scenario 3)
+            _zero_trial_data = rawdata["vstim"].filter(pl.col("iTrial") == 0)
+            len(_zero_trial_data.select(pl.col('photo')).drop_nulls().unique().to_series())
+            # Check if the first iTrial is 0 and contains a photodiode flip - if not start at 0 so it's skipped by the trial indexing.
+            # It appears that it's junk caused by the point at which the rig starts recording
+            if len(_zero_trial_data.select(pl.col('photo')).drop_nulls().unique().to_series()) == 1:
+                rawdata["vstim"] = rawdata["vstim"].with_columns(pl.col("iTrial").alias("total_iStim"))
+            else:
+                rawdata["vstim"] = rawdata["vstim"].with_columns(
+                    pl.when(pl.col("iTrial").first() == 0)
+                    .then((pl.col("iTrial") + 1))
+                    .otherwise(pl.col("iTrial"))
+                    .alias("total_iStim")
+                )
+    
+    # If it hasn't already been added in the logic above, add total_iStim column
+    if "total_iStim" not in rawdata["vstim"].columns:
         # for every unique iTrial, run on istims
         incr = []
         _observed_iTrials = []
-        ctr = 1
+        ctr = 0
         for t, s in zip(_iTrial.to_list(), _iStim.to_list()):
             if s is None or t is None:
                 incr.append(None)
             else:
                 if t not in _observed_iTrials:
+                    _observed_iTrials.append(t)
                     _observed_iStims = []
-                    if s not in _observed_iStims:
-                        _observed_iStims.append(s)
-                        ctr += 1
+                if s not in _observed_iStims:
+                    _observed_iStims.append(s)
+                    ctr += 1
                 incr.append(ctr)
         total_stim = pl.Series("total_iStim", incr)
         rawdata["vstim"] = rawdata["vstim"].with_columns(total_stim)
