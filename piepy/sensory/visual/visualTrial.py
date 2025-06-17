@@ -177,10 +177,14 @@ class VisualTrialHandler(TrialHandler):
                     _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"]
                     * 1000
                 )  # ms
-
-            # if difference is negative, that means the rig_onset time happened after the python timing
-            vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
+            if isinstance(_vstim_onset, pl.Series):
+                if _vstim_onset.is_empty():
+                    # no vstim start found for this trial?? is this expected???
+                    vstim_diff = None
+            else:
+                vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
             state_diff = float(round(_state_onset - _rig_onset, 3))
+            # if difference is negative, that means the rig_onset time happened after the python timing
 
         # update the data
         _state = _state.with_columns(
