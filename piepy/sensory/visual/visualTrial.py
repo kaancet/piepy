@@ -52,6 +52,7 @@ class VisualTrialHandler(TrialHandler):
             if not self.was_screen_off:
                 self.get_trial_end_from_screen(rawdata["screen"])
 
+            self.set_state_events()  # for passive visual session this is mostly a formality
             self.set_vstim_properties()  # should be run after sync_timeframes
             # get the frame endpoints for 2P and/or cam data
             for f_col in ["imaging", "onepcam", "facecam", "eyecam"]:
@@ -72,26 +73,26 @@ class VisualTrialHandler(TrialHandler):
         if screen_array is None:
             self._trial["t_vstimstart_rig"] = None
             self._trial["t_vstimend_rig"] = None
+        else:
+            if len(screen_array) == 2:
+                # This is the correct stim ON/OFF scenario
+                self._trial["t_vstimstart_rig"] = screen_array[0, 0]
+                self._trial["t_vstimend_rig"] = screen_array[1, 0]
+            elif len(screen_array) == 1:
+                self._trial["t_vstimstart_rig"] = screen_array[0, 0]
+                self.was_screen_off = False
+            elif len(screen_array) > 2:
+                # sometimes the screen pulses are weird
+                # try to get the signals that make sense from the state machine
+                s1 = self.data["state"].filter(pl.col("transition") == "stimstart")[
+                    0, "elapsed"
+                ]
+                s2 = self.data["state"].filter(
+                    pl.col("transition").is_in(["hit", "miss"])
+                )[0, "elapsed"]
 
-        if screen_array is not None and len(screen_array) == 2:
-            # This is the correct stim ON/OFF scenario
-            self._trial["t_vstimstart_rig"] = screen_array[0, 0]
-            self._trial["t_vstimend_rig"] = screen_array[1, 0]
-        elif screen_array is not None and len(screen_array) == 1:
-            self._trial["t_vstimstart_rig"] = screen_array[0, 0]
-            self.was_screen_off = False
-        elif screen_array is not None and len(screen_array) > 2:
-            # sometimes the screen pulses are weird
-            # try to get the signals that make sense from the state machine
-            s1 = self.data["state"].filter(pl.col("transition") == "stimstart")[
-                0, "elapsed"
-            ]
-            s2 = self.data["state"].filter(pl.col("transition").is_in(["hit", "miss"]))[
-                0, "elapsed"
-            ]
-
-            self._trial["t_vstimstart_rig"] = s1
-            self._trial["t_vstimend_rig"] = s2
+                self._trial["t_vstimstart_rig"] = s1
+                self._trial["t_vstimend_rig"] = s2
         # else:
         #     raise ScreenPulseError(
         #         f"[TRIAL-{self._trial['trial_no']}] Funky screen pulses with length {len(screen_array)}"
@@ -120,7 +121,7 @@ class VisualTrialHandler(TrialHandler):
                     self._trial["t_trialend"] = _screen_new[1, "duinotime"]
                 self.was_screen_off = True
 
-        if self.was_screen_off:
+        if not self.was_screen_off:
             display(
                 f"""[TRIAL-{self._trial["trial_no"]}] Only 1 screen event for stimulus ON.
                                    Tried checking after syncing rig and state machine times, issue persists...""",
@@ -128,7 +129,8 @@ class VisualTrialHandler(TrialHandler):
             )
 
     def get_trial_end_from_screen(self, screen_data: pl.DataFrame) -> None:
-        """_summary_
+        """Final boss of screen event detection, directly gets the screen events from screen data and gets the values that correspond to trial_no
+        NOTE: This will only work when the number of stimulus presentation is coupled to number of trials, i.e. every trial has a stim ON and stim OFF event
 
         Args:
             screen_data (pl.DataFrame): Screen photodiode dataframe
@@ -143,9 +145,9 @@ class VisualTrialHandler(TrialHandler):
 
         if len(trial_screen) == 2:
             self.was_screen_off = True
-            self._trial["t_vstimend_rig"] = trial_screen[1, "value"]
+            self._trial["t_vstimend_rig"] = trial_screen[1, "duinotime"]
             if self._trial["t_trialend"] <= self._trial["t_vstimend_rig"]:
-                self._trial["t_trialend"] = trial_screen[1, "value"]
+                self._trial["t_trialend"] = trial_screen[1, "duinotime"]
 
     def sync_timeframes(self) -> None:
         """Syncs the timeframes according to visual stimulus appearance from screen events"""
@@ -175,10 +177,14 @@ class VisualTrialHandler(TrialHandler):
                     _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"]
                     * 1000
                 )  # ms
-
-            # if difference is negative, that means the rig_onset time happened after the python timing
-            vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
+            if isinstance(_vstim_onset, pl.Series):
+                if _vstim_onset.is_empty():
+                    # no vstim start found for this trial?? is this expected???
+                    vstim_diff = None
+            else:
+                vstim_diff = float(round(_vstim_onset - _rig_onset, 3))
             state_diff = float(round(_state_onset - _rig_onset, 3))
+            # if difference is negative, that means the rig_onset time happened after the python timing
 
         # update the data
         _state = _state.with_columns(
@@ -192,12 +198,14 @@ class VisualTrialHandler(TrialHandler):
         self.data["vstim"] = _vstim
 
         # update the trial endpoints
-        self._trial["t_trialstart"] = _state.filter(
-            pl.col("transition") == "trialstart"
-        )[0, "corrected_elapsed"]
-        self._trial["t_trialend"] = _state.filter(
-            pl.col("transition").str.contains("trialend")
-        )[0, "corrected_elapsed"]
+        self._trial["t_trialstart"] = int(
+            _state.filter(pl.col("transition") == "trialstart")[0, "corrected_elapsed"]
+        )
+        self._trial["t_trialend"] = int(
+            _state.filter(pl.col("transition").str.contains("trialend"))[
+                0, "corrected_elapsed"
+            ]
+        )
 
         # add the time difference values to _trial
         self._trial["vstim_time_diff"] = vstim_diff
@@ -239,3 +247,18 @@ class VisualTrialHandler(TrialHandler):
                         self._trial[col] = [_entries]
                 else:
                     self._trial[col] = None
+
+    def set_state_events(self) -> bool:
+        """Goes over the transitions to set state based timings and also sets the state_outcome
+
+        Returns:
+            bool: True if state set correctly, False if not
+        """
+
+        self._trial["t_vstimstart"] = self.data["state"].filter(
+            pl.col("transition") == "stimstart"
+        )[0, "corrected_elapsed"]
+
+        self._trial["t_vstimend"] = self.data["state"].filter(
+            pl.col("transition").is_in(["stimend", "stimtrialend"])
+        )[0, "corrected_elapsed"]
