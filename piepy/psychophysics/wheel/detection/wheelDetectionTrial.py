@@ -57,10 +57,8 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         if not self.was_screen_off:
             self.recheck_screen_events(rawdata["screen"])
 
-        _states_set = (
-            self.set_state_events()
-        )  # should be run after sync_timeframes, needs the corrected time columns
-        if not _states_set:
+        # should be run after sync_timeframes, needs the corrected time columns
+        if not self.set_state_events():
             return None
         self.set_vstim_properties()  # should be run after sync_timeframes
 
