@@ -21,8 +21,6 @@ class Session:
         self.load_flag = load_flag
         self.save_mat = save_mat
         self.runs = []
-        self.metas = []
-        self.stats = []
 
         # find relevant data paths
         self.paths = PathFinder(self.sessiondir)
@@ -38,8 +36,9 @@ class Session:
         """
         for r in range(self.run_count):
             _path = Paths(self.paths.all_paths, r)
-            self.runs.append(Run(_path))
-            self.metas.append(RunMeta.get_meta(_path, skip_google))
+            _run = Run(_path)
+            _run.set_meta(skip_google)
+            self.runs.append(_run)
 
     @timeit("Saving...")
     def save_session(self) -> None:

@@ -2,8 +2,10 @@ import itertools
 import numpy as np
 import polars as pl
 from typing import Literal
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.colors import Normalize
 
 from scipy.stats import (
     wilcoxon,  # noqa: F401
@@ -11,9 +13,16 @@ from scipy.stats import (
     shapiro,
 )
 
+from ....core.utils import pl_weighted_mean
 from ....core.data_functions import make_subsets
 from ....core.statistics import mean_confidence_interval
-from ...plotting_utils import set_style, make_named_axes, override_plots, pval_plotter
+from ...plotting_utils import (
+    set_style,
+    make_named_axes,
+    override_plots,
+    pval_plotter,
+    map_to_markersize,
+)
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
@@ -47,6 +56,9 @@ def _plot_single_panel(
     panel_data: pl.DataFrame,
     plot_of: str,
     plot_with: Literal["sem", "conf", "iqr"] = "sem",
+    min_trial_count: int | None = None,
+    trial_count_identifier: Literal["dot_size", "dot_color"] = "dot_size",
+    do_weighted_average: Literal["hit", "total", "na"] = "na",
     mpl_kwargs: dict = {},
     **kwargs,
 ) -> plt.Axes:
@@ -62,7 +74,6 @@ def _plot_single_panel(
     Returns:
         plt.Axes: Plotted axis
     """
-    min_trial_count = kwargs.get("min_trial_count", 15)
     # plotting single sessions
     for filt_tup in make_subsets(panel_data, ["session_no"]):
         filt_df = filt_tup[-1]
@@ -77,34 +88,76 @@ def _plot_single_panel(
                 else:
                     y_axis = filt_df["hit_rate"].to_numpy()
                 y_axis = 100 * y_axis
+
+                trial_count_arr = filt_df["count"].to_numpy()
+
+                # patchwork, needs better solution to handle 2 stim catch trials
+                if (
+                    len(filt_df["stim_side"].unique()) == 1
+                    and filt_df[0, "stim_side"] == "catch"
+                ):
+                    trial_count_arr = np.sum(trial_count_arr)
+
             elif "time" in plot_of:
-                y_axis = np.array(
-                    [
-                        val if t_count >= min_trial_count else np.nan
-                        for val, t_count in zip(
-                            filt_df[plot_of].to_numpy(), filt_df["hit_count"].to_list()
-                        )
-                    ]
-                )
+                if min_trial_count is not None:
+                    y_axis = np.array(
+                        [
+                            val if t_count >= min_trial_count else np.nan
+                            for val, t_count in zip(
+                                filt_df[plot_of].to_numpy(),
+                                filt_df["hit_count"].to_list(),
+                            )
+                        ]
+                    )
+                    trial_count_arr = np.ones_like(y_axis) * 10
+                else:
+                    y_axis = filt_df[plot_of].to_numpy()
+                    trial_count_arr = filt_df["hit_count"].to_numpy()
 
             # individual sessions
             # add a very little random jitter
-            jit = np.random.randn(len(x_axis)) / 60
+            jit = np.random.randn(len(x_axis)) * kwargs.get("jitter_distance", 0.2)
+            # plot the lines
             ax._plot(
                 x_axis + jit,
                 y_axis,
                 c=kwargs.get("color", ANIMAL_COLORS[filt_df[0, "animalid"]]),
                 label=filt_df[0, "animalid"],
                 marker="o",
-                markersize=10,
-                markeredgewidth=1,
+                markersize=0,
+                markeredgewidth=0,
                 linewidth=2,
                 mpl_kwargs=mpl_kwargs,
                 zorder=1,
             )
 
+            # plot the dots
+            if trial_count_identifier == "dot_color":
+                ax.scatter(
+                    x_axis + jit,
+                    y_axis,
+                    # c=kwargs.get("color", ANIMAL_COLORS[filt_df[0, "animalid"]]),
+                    c=trial_count_arr,
+                    marker="o",
+                    linewidths=0,
+                    s=50,
+                    zorder=2,
+                    cmap=kwargs.get("cmap", "viridis"),
+                    norm=kwargs.get("norm", None),
+                )
+            elif trial_count_identifier == "dot_size":
+                ax.scatter(
+                    x_axis + jit,
+                    y_axis,
+                    c=kwargs.get("color", ANIMAL_COLORS[filt_df[0, "animalid"]]),
+                    marker="o",
+                    linewidths=0,
+                    s=map_to_markersize(trial_count_arr),
+                    zorder=2,
+                )
+
     # plotting average and propagated error
-    if "time" in plot_of:
+    if "time" in plot_of and min_trial_count is not None:
         panel_data = panel_data.filter(pl.col("hit_count") >= min_trial_count)
 
     avg_df = (
@@ -112,6 +165,12 @@ def _plot_single_panel(
         .agg(
             [
                 pl.col(plot_of).mean().alias(f"mean_{plot_of}"),
+                pl_weighted_mean(plot_of, "hit_count").alias(
+                    f"hit_weighted_mean_{plot_of}"
+                ),
+                pl_weighted_mean(plot_of, "count").alias(
+                    f"total_weighted_mean_{plot_of}"
+                ),
                 pl.col(plot_of).median().alias(f"median_{plot_of}"),
                 (pl.col(plot_of).std() / pl.col(plot_of).len().sqrt()).alias(
                     f"sem_{plot_of}"
@@ -138,6 +197,8 @@ def _plot_single_panel(
     if plot_of == "hit_rate":
         avg_df = avg_df.with_columns(
             mean_hit_rate=100 * pl.col("mean_hit_rate"),
+            hit_weighted_mean_hit_rate=100 * pl.col("hit_weighted_mean_hit_rate"),
+            total_weighted_mean_hit_rate=100 * pl.col("total_weighted_mean_hit_rate"),
             median_hit_rate=100 * pl.col("median_hit_rate"),
             sem_hit_rate=100 * pl.col("sem_hit_rate"),
             conf_hit_rate=100 * pl.col("conf_hit_rate"),
@@ -147,8 +208,12 @@ def _plot_single_panel(
     if plot_with == "iqr":
         _plotting = avg_df[f"median_{plot_of}"].to_numpy()
     else:
-        _plotting = avg_df[f"mean_{plot_of}"].to_numpy()
-
+        if do_weighted_average != "na":
+            _plotting = avg_df[
+                f"{do_weighted_average}_weighted_mean_{plot_of}"
+            ].to_numpy()
+        else:
+            _plotting = avg_df[f"mean_{plot_of}"].to_numpy()
     # mean or median
     ax._scatter(
         avg_df["opto_pattern"].to_numpy(),
@@ -180,6 +245,9 @@ def plot_hit_rate_change(
     data: pl.DataFrame,
     plot_with: Literal["sem", "conf", "iqr"] = "sem",
     stim_side: Literal["ipsi", "contra"] = "contra",
+    min_trial_count: int | None = None,
+    trial_count_identifier: Literal["dot_size", "dot_color"] = "dot_size",
+    do_weighted_average: Literal["hit", "total", "na"] = "na",
     p_test: Literal["wilcoxon", "paired_t", "auto"] = "auto",
     mpl_kwargs: dict | None = None,
     **kwargs,
@@ -237,6 +305,11 @@ def plot_hit_rate_change(
         figsize=mpl_kwargs.pop("figsize", (12, 12)),
     )
 
+    # colormap stuff
+    cmap = kwargs.get("dot_cmap", "viridis")
+    normalizer = Normalize(1, 150)
+    im = cm.ScalarMappable(norm=normalizer, cmap=cmap)
+
     # calculate the baseline from all the zero contrast non-optos
     zero_nonopto_df = plot_data.filter(
         (pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)
@@ -258,6 +331,11 @@ def plot_hit_rate_change(
             plot_of="hit_rate",
             plot_with=plot_with,
             mpl_kwargs=mpl_kwargs,
+            min_trial_count=min_trial_count,
+            trial_count_identifier=trial_count_identifier,
+            do_weighted_average=do_weighted_average,
+            cmap=cmap,
+            norm=normalizer,
             **kwargs,
         )
         ax.set_ylabel(f"{s}\nHit rate (%)")
@@ -277,6 +355,11 @@ def plot_hit_rate_change(
             plot_of="hit_rate",
             plot_with=plot_with,
             mpl_kwargs=mpl_kwargs,
+            min_trial_count=min_trial_count,
+            trial_count_identifier=trial_count_identifier,
+            do_weighted_average=do_weighted_average,
+            cmap=cmap,
+            norm=normalizer,
             **kwargs,
         )
 
@@ -357,6 +440,19 @@ def plot_hit_rate_change(
         ax.spines["right"].set_visible(False)
         ax.spines["top"].set_visible(False)
 
+    # add colorbar
+    if trial_count_identifier == "dot_color":
+        cbar_ax = fig.add_axes([0.95, 0, 0.05, 0.8])
+        fig.colorbar(im, cax=cbar_ax)
+    elif trial_count_identifier == "dot_size":
+        # add
+        size_ax = fig.add_axes([0.94, 0.45, 0.05, 0.2])
+        sizes = [5, 50, 100]
+        size_ax.scatter([0, 0, 0], [1, 2, 3], s=map_to_markersize(sizes), c="k")
+        for i, s in enumerate(sizes):
+            size_ax.text(0.03, i + 1, str(s))
+        size_ax.set_axis_off()
+
     plt.subplots_adjust(
         hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25)
     )
@@ -367,6 +463,9 @@ def plot_reaction_time_change(
     data: pl.DataFrame,
     reaction_of: Literal["reaction", "response"] = "reaction",
     stim_side: Literal["contra", "ipsi"] = "contra",
+    min_trial_count: int | None = None,
+    trial_count_identifier: Literal["dot_size", "dot_color"] = "dot_size",
+    do_weighted_average: Literal["hit", "total", "na"] = "hit",
     plot_with: Literal["sem", "conf"] = "sem",
     p_test: Literal["wilcoxon", "paired_t"] = "wilcoxon",
     mpl_kwargs: dict | None = None,
@@ -426,6 +525,10 @@ def plot_reaction_time_change(
         col_names=["stim_type", "contrast"],
         figsize=mpl_kwargs.pop("figsize", (12, 12)),
     )
+    # colormap stuff
+    cmap = kwargs.get("dot_cmap", "viridis")
+    normalizer = Normalize(1, 150)
+    im = cm.ScalarMappable(norm=normalizer, cmap=cmap)
 
     if not kwargs.get("include_misses", False):
         reaction_of = "hit_" + reaction_of + "_times"
@@ -446,6 +549,11 @@ def plot_reaction_time_change(
             plot_of=plot_of,
             plot_with=plot_with,
             mpl_kwargs=mpl_kwargs,
+            min_trial_count=min_trial_count,
+            trial_count_identifier=trial_count_identifier,
+            do_weighted_average=do_weighted_average,
+            cmap=cmap,
+            norm=normalizer,
             **kwargs,
         )
 
@@ -527,6 +635,10 @@ def plot_reaction_time_change(
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
         ax.set_ylim([150, 1000])
         ax.grid(True, axis="y", which="both", alpha=0.4)
+
+    # add colorbar
+    cbar_ax = fig.add_axes([0.95, 0, 0.05, 0.8])
+    fig.colorbar(im, cax=cbar_ax)
 
     plt.subplots_adjust(
         hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25)

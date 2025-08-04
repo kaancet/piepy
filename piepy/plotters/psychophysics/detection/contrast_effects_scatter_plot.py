@@ -33,14 +33,31 @@ ANIMAL_COLORS = {
 
 X_AXIS_LABEL = {-1: "Non\nOpto", 0: "Opto", 1: "Opto\nOff"}
 
+AREA_MARKERS = {"V1": "o", "HVA": "s", "dorsal": "d", "ventralPM": "P"}
+
 
 def m_line(x, m, b):
     return m * x + b
 
 
+@np.vectorize
+def lenient_div(num: np.ndarray, den: np.ndarray) -> np.ndarray:
+    """returns the numerator if denominator is zero, otherwise does regular division
+
+    Args:
+        num (Number | np.ndarray): Numerator
+        den (Number | np.ndarray): Denominator
+
+    Returns:
+        Number | np.ndarray: Division result
+    """
+    return float(den and num / den or num)
+
+
 def plot_contrast_effect_scatter_plot(
     data: pl.DataFrame,
     effect_on: Literal["hit_rate", "reaction", "response"],
+    effect_metric: Literal["delta", "BSI", "BSI_base"] = "delta",
     ax: plt.Axes | None = None,
     include_misses: bool = False,
     polarity: Literal[-1, 1] = 1,
@@ -84,6 +101,7 @@ def plot_contrast_effect_scatter_plot(
         group_by=[
             "animalid",
             "session_id",
+            "area",
             "stim_type",
             "stim_side",
             "contrast",
@@ -96,9 +114,17 @@ def plot_contrast_effect_scatter_plot(
     plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(
         pl.col("stim_side") != "ipsi"
     )
-    diffs_values = defaultdict(list)
 
-    for filt_tup in make_subsets(plot_data, ["session_id"], start_enumerate=1):
+    diffs_values = np.zeros(
+        (
+            plot_data["session_id"].n_unique(),
+            plot_data["contrast"].n_unique(),
+            plot_data["stim_type"].n_unique(),
+        )
+    )
+    diffs_values[:] = np.nan
+    areas = np.empty((plot_data["session_id"].n_unique()), dtype=object)
+    for filt_tup in make_subsets(plot_data, ["session_id"], start_enumerate=0):
         filt_df = filt_tup[-1]
         if not filt_df.is_empty():
             q = (
@@ -107,30 +133,60 @@ def plot_contrast_effect_scatter_plot(
                 .sort(["stim_type", "opto_pattern"])
             )
 
-            for stim_tup in make_subsets(q, ["stim_type"]):
+            for stim_tup in make_subsets(q, ["stim_type"], start_enumerate=0):
                 stim_df = stim_tup[-1]
-                skey = stim_tup[0]
                 c_nonopto = stim_df[0, "contrast"].to_numpy()
                 c_opto = stim_df[1, "contrast"].to_numpy()
+                e1 = np.zeros_like(c_nonopto)
+                e1[:] = np.nan
+                e2 = np.copy(e1)
                 paired_idx = [i for i, c in enumerate(c_nonopto) if c in c_opto]
 
-                e1 = stim_df[0, effect_on].to_numpy()
-                e2 = stim_df[1, effect_on].to_numpy()
+                e1[paired_idx] = stim_df[0, effect_on].to_numpy()[paired_idx]
+                e2[paired_idx] = stim_df[1, effect_on].to_numpy()
+                if effect_on == "hit_rate":
+                    if effect_metric == "delta":
+                        # simple delta
+                        temp = e1 - e2
+                    elif effect_metric == "BSI":
+                        # BSI: (nonopto - opto) / nonopto
+                        # what percentage is delta hit rates of nonopto
+                        _top = e1 - e2
+                        temp = lenient_div(_top, e1)
+                    elif effect_metric == "BSI_base":
+                        pass
+                        # BSI_base: (|nonopto - baseline| - |opto-baseline|) / (|nonopto - baseline|)
+                        # with baseline normalization
+                        # _opto = np.abs(e2 - session_baseline_hr)
+                        # _nonopto = np.abs(e1 - session_baseline_hr)
+                        # _top = _nonopto - _opto
+                        # temp = lenient_div(_top, _nonopto)
+                elif "time" in effect_on:
+                    temp = e2 - e1
 
-                diffs = e1[paired_idx] - e2
+                diffs = temp
                 diffs = polarity * diffs
 
-                diffs_values[skey].append(diffs.tolist())
+                diffs_values[filt_tup[0], :, stim_tup[0]] = diffs
+            areas[filt_tup[0]] = filt_df[0, "area"]
         else:
             print("soknfdksndf")
 
-    for i, k in enumerate(diffs_values.keys()):
-        v = diffs_values[k]
-        v = np.array(v)
+    s_type = ["0.04cpd_8.0Hz", "0.16cpd_0.5Hz"]
+
+    for s in range(diffs_values.shape[2]):
+        v = diffs_values[:, 1:, s]  # 0th column is contrast 0
         if effect_on == "hit_rate":
             v *= 100
 
-        ax.scatter(v[:, 0], v[:, 1], c=clr.stim_keys[f"{k}_-1"]["color"])
+        for a in range(v.shape[0]):
+            _marker = AREA_MARKERS[areas[a]]
+            ax.scatter(
+                v[a, 0],
+                v[a, 1],
+                c=clr.stim_keys[f"{s_type[s]}_-1"]["color"],
+                marker=_marker,
+            )
 
         x = v[:, 0]
         y = v[:, 1]
@@ -152,10 +208,13 @@ def plot_contrast_effect_scatter_plot(
 
         # ax.plot(np.arange(0,600,100), m_line(np.arange(0,600,100), *popt))
         ax.text(
-            0, 100 * i, f"p_r={res.statistic:.4f}", c=clr.stim_keys[f"{k}_-1"]["color"]
+            0,
+            100 * s,
+            f"p_r={res.statistic:.4f}",
+            c=clr.stim_keys[f"{s_type[s]}_-1"]["color"],
         )
 
-    ax.plot([0, 500], [0, 500], linestyle="--", color="k", alpha=0.5)
+    ax.plot([0, 100], [0, 100], linestyle="--", color="k", alpha=0.5)
     if "time" in effect_on:
         _y_ = np.arange(-400, 800, 200)
         y_ticks = [_t * -1 * polarity for _t in _y_]
@@ -163,8 +222,8 @@ def plot_contrast_effect_scatter_plot(
         _y_ = [0, 25, 50, 75, 100]
         y_ticks = [_t * polarity for _t in _y_]
 
-    ax.set_ylim([min(y_ticks) - 10, max(y_ticks) + 10])
-    ax.set_xlim([min(y_ticks) - 10, max(y_ticks) + 10])
+    # ax.set_ylim([min(y_ticks) - 10, max(y_ticks) + 10])
+    # ax.set_xlim([min(y_ticks) - 10, max(y_ticks) + 10])
     ax.set_yticks(y_ticks)
     ax.set_xticks(y_ticks)
     ax.set_ylabel(r"$\Delta$ Hit Rate 50 (%)")

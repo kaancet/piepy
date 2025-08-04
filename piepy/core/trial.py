@@ -11,8 +11,8 @@ class Trial(pt.Model):
 
     # provided in instantiation
     trial_no: int = pt.Field(gt=0, frozen=True, dtype=pl.UInt64)
-    t_trialstart: float = pt.Field(gt=0, dtype=pl.Float64)
-    t_trialend: float = pt.Field(gt=0, dtype=pl.Float64)
+    t_trialstart: int = pt.Field(gt=0, dtype=pl.UInt64)
+    t_trialend: int = pt.Field(gt=0, dtype=pl.UInt64)
 
 
 class TrialHandler:
@@ -136,17 +136,17 @@ class TrialHandler:
 
         # check if trial is complete
         if self.is_trial_complete(_state_transitions):
-            self._trial["t_trialstart"] = _state.filter(
-                pl.col("transition") == "trialstart"
-            )[0, "elapsed"]
+            self._trial["t_trialstart"] = int(
+                _state.filter(pl.col("transition") == "trialstart")[0, "elapsed"]
+            )
             if "trialend" in _state_transitions:
-                self._trial["t_trialend"] = _state.filter(
-                    pl.col("transition") == "trialend"
-                )[0, "elapsed"]
+                self._trial["t_trialend"] = int(
+                    _state.filter(pl.col("transition") == "trialend")[0, "elapsed"]
+                )
             else:
-                self._trial["t_trialend"] = _state.filter(
-                    pl.col("transition") == "stimtrialend"
-                )[0, "elapsed"]
+                self._trial["t_trialend"] = int(
+                    _state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"]
+                )
         else:
             return False
 

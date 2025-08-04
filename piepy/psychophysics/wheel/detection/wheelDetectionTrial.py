@@ -18,6 +18,7 @@ class WheelDetectionTrial(VisualTrial, PsychophysicalTrial):
     wheel_t: list[float] = pt.Field(default=[], dtype=pl.List(pl.Float64))
     wheel_pos: list[int] = pt.Field(default=[], dtype=pl.List(pl.Int64))
     reaction_time: float | None = pt.Field(default=None, dtype=pl.Float64)
+    peak_speed: float | None = pt.Field(default=None, dtype=pl.Float64)
 
 
 class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler):
@@ -25,7 +26,6 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         super().__init__()
         self._trial = {k: None for k in WheelDetectionTrial.columns}
         self.is_early = False
-        self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDetectionTrial)
 
     def get_trial(
@@ -41,6 +41,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         Returns:
             pt.DataFrame | dict | list | None: returned data
         """
+        self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
         self.is_early = self.check_early()
@@ -48,7 +49,8 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         if not _is_trial_set:
             return None
 
-        self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
+        if not self.is_early:
+            self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
         self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET
 
         # NOTE: sometimes due to state machine logic, the end of trial will be end of stimulus
@@ -293,7 +295,8 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
         # designate too early reaction times as early
         if self._trial["outcome"] == "hit":
-            if self._trial["reaction_time"] <= 100:
+            r_time = self._trial.get("reaction_time", None)
+            if r_time is not None and r_time <= 100:
                 self._trial["outcome"] = "early"
 
     def set_wheel_traces(self, reset_time_point: float) -> None:
@@ -376,3 +379,24 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     print(self._trial["trial_no"])
                     print(f"old:{_resp}")
                     print(f"new:{float(velo_times[idx_val])}")
+
+    def set_opto(self) -> None:
+        """Failsafe"""
+        super().set_opto()
+
+        if self._trial["opto"]:
+            _vstim = self.data["vstim"]
+            # look for opto in vstim
+            if "opto" in _vstim.columns:
+                o_len = _vstim["opto"].unique().drop_nulls().len()
+                if o_len == 2:
+                    self._trial["opto"] = False
+                    self._trial["opto_pulse"] = [[]]
+                elif o_len > 2:
+                    raise ValueError(
+                        f"[TRIAL-{self._trial['trial_no']}] Opto logging error!"
+                    )
+            else:
+                # if no opto in vstim, then it is not an opto trial
+                self._trial["opto"] = False
+                self._trial["opto_pulse"] = [[]]

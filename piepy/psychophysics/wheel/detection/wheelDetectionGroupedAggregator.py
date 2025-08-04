@@ -20,14 +20,23 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         super().__init__()
         self.set_outcomes(["hit", "miss"])
 
-    def group_data(self, group_by: list[str], do_sort: bool = True) -> None:
+    def group_data(
+        self,
+        group_by: list[str],
+        do_sort: bool = True,
+        extra_grouped: list[str] | None = None,
+    ) -> None:
         """Groups the data by group_by argument
 
         Args:
             group_by (list[str]): list of columns to be used as grouping values
             do_sort (bool, optional): Whether to sort the grouped values. Defaults to True.
+            extra_grouped(list[str]|None, optional): A list of columns that we user wants to added in the aggrgated columns.Defaults to None.
+
+        Raises:
+            ValueError: A column name in group_by does not exist in the instance data
         """
-        super().group_data(group_by, do_sort)
+        super().group_data(group_by, do_sort, extra_grouped)
 
         q = self.data.group_by(group_by).agg(
             [
@@ -58,19 +67,13 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         )
 
         # calculate confidence intervals of each columns that has "time" in it
-        time_cols = [
-            c
-            for c in q.columns
-            if "time" in c and "median" not in c and "confs" not in c
-        ]
+        time_cols = [c for c in q.columns if "time" in c and "median" not in c and "confs" not in c]
         for t_c in time_cols:
             _temp_ci = []
             for v in q[t_c].to_list():
                 v = [i for i in v if i is not None]  # drop the nulls
                 if len(v) > 1:
-                    med, ci_p, ci_n = bootstrap_confidence_interval(
-                        v, statistic=np.median
-                    )
+                    med, ci_p, ci_n = bootstrap_confidence_interval(v, statistic=np.median)
                     _temp_ci.append([ci_p, ci_n])
                 else:
                     _temp_ci.append([])
@@ -80,18 +83,12 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         if do_sort:
             q = q.sort(group_by)
 
-        self.grouped_data = self.grouped_data.join(
-            q, on=group_by, how="full", join_nulls=True
-        )
+        self.grouped_data = self.grouped_data.join(q, on=group_by, how="full", join_nulls=True)
 
     def calculate_hit_rates(self) -> None:
         """Sets the hit rates and confidence intervals for each condition based on binomial distribution of hit count,
         Needs data to be grouped first
         """
-        # hit rates
-        # self.grouped_data = self.grouped_data.with_columns(
-        #     (pl.col("hit_count") / pl.col("count")).alias("hit_rate")
-        # )
 
         hit_count = self.grouped_data["hit_count"].to_numpy().reshape(-1, 1)
         miss_count = self.grouped_data["miss_count"].to_numpy().reshape(-1, 1)
@@ -103,14 +100,24 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
             [pl.Series("hit_rate", hr.flatten()), pl.Series("hit_rate_confs", confs)]
         )
 
-        # self.grouped_data = self.grouped_data.with_columns(
-        #     (
-        #         1.96
-        #         * np.sqrt(
-        #             (pl.col("hit_rate") * (1.0 - pl.col("hit_rate"))) / pl.col("count")
-        #         )
-        #     ).alias("hit_rate_confs")
-        # )
+    def calculate_baseline_norm_hit_rates(self) -> None:
+        """_summary_"""
+
+        hit_count = self.grouped_data["hit_count"].to_numpy().reshape(-1, 1)
+        miss_count = self.grouped_data["miss_count"].to_numpy().reshape(-1, 1)
+
+        base_hit_count = self.grouped_data.filter(pl.col("isCatch"))["hit_count"].sum()
+        base_miss_count = self.grouped_data.filter(pl.col("isCatch"))["miss_count"].sum()
+
+        _, hr, _ = self.confidence95(hit_count, miss_count)
+
+        _, base_hr, _ = self.confidence95(base_hit_count, base_miss_count)
+
+        base_norm_hr = (hr - base_hr) / np.max(hr - base_hr)
+
+        self.grouped_data = self.grouped_data.with_columns(
+            pl.Series("base_norm_hit_rate", base_norm_hr.flatten())
+        )
 
     def calculate_opto_pvalues(
         self, p_method: Literal["barnard", "boschloo", "fischer"] = "barnard"
@@ -143,13 +150,9 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
                 continue
 
             if len(_df):
-                curr_p = (
-                    np.ones((len(_df), p_max_width)) * -1
-                )  # init all p-values with -1
+                curr_p = np.ones((len(_df), p_max_width)) * -1  # init all p-values with -1
 
-                for i, j in list(
-                    itertools.combinations([x for x in range(len(_df))], 2)
-                ):
+                for i, j in list(itertools.combinations([x for x in range(len(_df))], 2)):
                     table = np.vstack(
                         (
                             _df[i, ["hit_count", "miss_count"]].to_numpy(),
@@ -177,6 +180,4 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         assert len(p_vals) == len(self.grouped_data)
 
         # p values are ordered because make_subsets sorts the dataframe and then runs through it
-        self.grouped_data = self.grouped_data.with_columns(
-            pl.Series("p_hit_rate", p_vals)
-        )
+        self.grouped_data = self.grouped_data.with_columns(pl.Series("p_hit_rate", p_vals))

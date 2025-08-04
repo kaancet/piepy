@@ -116,8 +116,9 @@ class RunMeta:
                     lvl += char
                 else:
                     break
+            lvl = int(lvl)
         else:
-            lvl = "exp"
+            lvl = None  # should be experiments
         prot_dict["level"] = lvl
 
         # get the run start time
@@ -307,6 +308,7 @@ class Run:
         Returns:
             pt.DataFrame: Table of trials
         """
+        data_to_append = None
         trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
         pbar = tqdm(
             trial_nos, desc="Extracting trial data:", disable=not config.verbose
@@ -314,7 +316,7 @@ class Run:
         for t in pbar:
             _trial = self.trial_handler.get_trial(int(t), self.rawdata)
             if _trial is not None:
-                if t == 1:
+                if data_to_append is None:
                     data_to_append = _trial
                 else:
                     for k, v in _trial.items():

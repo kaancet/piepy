@@ -67,17 +67,19 @@ def weibull(params, xx):
         pars: Model parameters [alpha, beta, gamma].
             alpha:  threshold parameter (location of function)
             beta:   slope parameter (rate of change)
-            gamma:  lapse rate ()
+            guess: guess rate
+            lapse:  lapse rate
         xx: vector of stim levels (%).
     Returns:
         A vector of length xx
     """
-    if validate_params(params):
+    if validate_params(params, validate_len=4):
         alpha = params[0]
         beta = params[1]
-        gamma = params[2]
+        guess = params[2]
+        lapse = params[3]
 
-    wbull = (1 - gamma) - (1 - 2 * gamma) * np.exp(-((xx / alpha) ** beta))
+    wbull = (1 - lapse) * (1 - np.exp(-((xx / alpha) ** beta)))
     return wbull
 
 
@@ -121,7 +123,7 @@ def erf_psycho2(params, xx):
 def mle_fit(
     data,
     P_model="weibull",
-    side="right",
+    side="contra",
     parstart=None,
     parmin=None,
     parmax=None,
@@ -163,18 +165,26 @@ def mle_fit(
         raise ValueError("data must be m by 3 matrix")
 
     if parstart is None:
-        slope = 3.0 if side == "right" else -3.0
+        slope = 3.0 if side == "contra" else -3.0
         if P_model == "erf_psycho2":
+            parstart = np.array([np.mean(data[0, :]), slope, 0.05, 1.3])
+        elif P_model == "weibull":
             parstart = np.array([np.mean(data[0, :]), slope, 0.05, 1.3])
         else:
             parstart = np.array([np.mean(data[0, :]), slope, 0.05])
+
     if parmin is None:
         if P_model == "erf_psycho2":
             parmin = np.array([np.min(data[0, :]), -10.0, 0.0, 0.0])
+        elif P_model == "weibull":
+            parmin = np.array([np.min(data[0, :]), -10.0, 0.0, 0.0])
         else:
             parmin = np.array([np.min(data[0, :]), -10.0, 0.0])
+
     if parmax is None:
         if P_model == "erf_psycho2":
+            parmax = np.array([np.max(data[0, :]), 10.0, 0.4, 0.4])
+        elif P_model == "weibull":
             parmax = np.array([np.max(data[0, :]), 10.0, 0.4, 0.4])
         else:
             parmax = np.array([np.max(data[0, :]), 10.0, 0.4])
@@ -237,9 +247,9 @@ def neg_likelihood(pars, data, P_model="weibull", parmin=None, parmax=None):
         raise TypeError("data must be a list or numpy array")
 
     if parmin is None:
-        parmin = np.array([0.005, 0.0, 0.0])
+        parmin = np.array([0.005, 0.0, 0.0, 0.0])
     if parmax is None:
-        parmax = np.array([0.5, 10.0, 0.25])
+        parmax = np.array([0.5, 10.0, 0.25, 0.25])
 
     if data.shape[0] == 3:
         xx = data[0, :]
@@ -263,9 +273,9 @@ def neg_likelihood(pars, data, P_model="weibull", parmin=None, parmax=None):
     except KeyError:
         raise ValueError("invalid model, options are {0}".format(dispatcher.keys()))
 
-    assert (max(probs) <= 1) or (
-        min(probs) >= 0
-    ), "At least one of the probabilities is not between 0 and 1"
+    assert (max(probs) <= 1) or (min(probs) >= 0), (
+        "At least one of the probabilities is not between 0 and 1"
+    )
 
     probs[probs == 0] = np.finfo(float).eps
     probs[probs == 1] = 1 - np.finfo(float).eps

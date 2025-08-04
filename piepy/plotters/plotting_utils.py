@@ -8,9 +8,10 @@ import matplotlib.axes
 from typing import Literal
 import matplotlib.pyplot as plt
 from numpy.typing import ArrayLike
+from datetime import datetime as dt
 from collections.abc import Iterable
 from matplotlib.artist import ArtistInspector
-from datetime import datetime as dt
+
 
 cm = 1 / 2.54
 mplstyledict = {}
@@ -289,7 +290,7 @@ def make_label(name: np.ndarray, count: np.ndarray) -> str:
 
 
 def make_linear_axis(
-    data: pl.DataFrame, column_name: str, mid_value: float = 0
+    data: pl.DataFrame, column_name: str, mid_value: float = 0, spacing: int = 1
 ) -> dict:
     """Returns a dictionary where keys are contrast values and values are linearly seperated locations in the axis
 
@@ -297,6 +298,7 @@ def make_linear_axis(
         data (pl.DataFrame): Session or multi session data
         column_name (str): name of the column to use making the linear axis
         mid_value (float, optional): Middle value. Defaults to 0.
+        spacing
 
     Raises:
         ValueError: If column name doesn't exist
@@ -308,14 +310,39 @@ def make_linear_axis(
         raise ValueError(f"{column_name} is not a valid column")
 
     dep_lst = data[column_name].unique().drop_nulls().sort().to_list()
-    pos = np.arange(1, len([c for c in dep_lst if c > mid_value]) + 1)
-    neg = np.arange(1, len([c for c in dep_lst if c < mid_value]) + 1)[::-1] * -1
+    pos = np.arange(1, len([c for c in dep_lst if c > mid_value]) + 1) * spacing
+    neg = (
+        np.arange(1, len([c for c in dep_lst if c < mid_value]) + 1)[::-1] * -1
+    ) * spacing
     if 0 in dep_lst:
         ax_list = neg.tolist() + [0] + pos.tolist()
     else:
         ax_list = neg.tolist() + pos.tolist()
 
     return {k: v for k, v in zip(dep_lst, ax_list)}
+
+
+def map_to_markersize(
+    value: float | np.ndarray, map_array: np.ndarray | None = None
+) -> float | np.ndarray:
+    """Mapping to markersize
+
+    Args:
+        value (float | np.ndarray): _description_
+        map_array (np.ndarray | None, optional): _description_. Defaults to None.
+
+    Returns:
+        float | np.ndarray: _description_
+    """
+
+    if map_array is None:
+        map_array = np.array([[1, 10], [5, 10], [25, 40], [50, 80], [100, 160]])
+
+    assert map_array.shape[1] == 2, (
+        f"map_array needs to have 2 columns, got {map_array.shape[1]}"
+    )
+
+    return np.interp(value, map_array[:, 0], map_array[:, 1])
 
 
 def make_dot_cloud(

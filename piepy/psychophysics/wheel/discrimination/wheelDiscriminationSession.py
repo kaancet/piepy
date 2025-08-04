@@ -285,8 +285,6 @@ class WheelDiscriminationSession(Session):
                 _run.save_run()
 
             self.runs.append(_run)
-            self.metas.append(_run.meta)
-            self.stats.append(_run.stats)
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:

@@ -1,4 +1,5 @@
 import itertools
+import numpy as np
 import polars as pl
 from collections.abc import Generator
 
@@ -46,3 +47,32 @@ def make_subsets(
                 *u,
                 data.filter([pl.col(col_name[i]) == j for i, j in enumerate(u)]),
             )
+
+
+def get_baseline_hr(data: pl.DataFrame) -> float:
+    """_summary_
+
+    Args:
+        data (pl.DataFrame): _description_
+
+    Returns:
+        float: _description_
+    """
+    # assert only single session in the data
+    if "session_id" in data.columns:
+        assert data.n_unique("session_id") == 1, (
+            "Multiple sessions exit, can only do in one session"
+        )
+
+    catch_trials = data.filter(
+        (pl.col("opto_pattern") == -1)
+        & (pl.col("contrast") == 0)
+        & (pl.col("stim_side") == "catch")
+    )
+    if "outcome" in catch_trials.columns:
+        return len(catch_trials.filter(pl.col("outcome") == "hit")) / len(catch_trials)
+    else:
+        # explode the count columns
+        return np.sum(catch_trials["hit_count"].explode().to_numpy()) / np.sum(
+            catch_trials["count"].explode().to_numpy()
+        )

@@ -34,9 +34,9 @@ class MouseData:
 
     def append(self, cumul_data_list: list, summary_data_list: list) -> None:
         """Appends new data to the existing data"""
-        assert len(cumul_data_list) == len(
-            summary_data_list["date"]
-        ), f"Cumulative and summary data has to be the same length!!"
+        assert len(cumul_data_list) == len(summary_data_list["date"]), (
+            "Cumulative and summary data has to be the same length!!"
+        )
 
         tmp = pl.DataFrame(summary_data_list)
         if self.summary_data is not None:
@@ -64,7 +64,9 @@ class MouseData:
             # if there are columns that are not in df add them with None
             for c in new_cumul.columns:
                 if c not in self.cumul_data.columns:
-                    self.cumul_data = self.cumul_data.with_columns(pl.lit(None).alias(c))
+                    self.cumul_data = self.cumul_data.with_columns(
+                        pl.lit(None).alias(c)
+                    )
 
             # sorting the columns
             new_cumul = new_cumul.select(self.cumul_data.columns)
@@ -192,9 +194,9 @@ class Mouse:
             # add current day as end date
             date_interval.append(dt.today().strftime("%y%m%d"))
         elif isinstance(date_interval, list):
-            assert (
-                len(date_interval) <= 2
-            ), f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
+            assert len(date_interval) <= 2, (
+                f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
+            )
             if len(date_interval) == 1:
                 date_interval.append(dt.today().strftime("%y%m%d"))
         else:
@@ -315,7 +317,9 @@ class Mouse:
         self.faulty_sessions = []
         for i, row in enumerate(missing_sessions.iter_rows()):
             # last_saved will not enter here as missing sessions will be []
-            pbar.set_description(f"Analyzing {row[1]} [{i+1}/{len(missing_sessions)}]")
+            pbar.set_description(
+                f"Analyzing {row[1]} [{i + 1}/{len(missing_sessions)}]"
+            )
 
             if load_type == "no_load":
                 _single_session = self.session_parser(
@@ -507,9 +511,7 @@ class Mouse:
                     reverse_session_list["sessiondir"].to_numpy() == self.saved_dir
                 )[0][0]
                 missing_sessions = reverse_session_list[:_until]
-                missing_sessions = (
-                    missing_sessions.reverse()
-                )  # reverse again to have sessions added from old to new(chronological order)
+                missing_sessions = missing_sessions.reverse()  # reverse again to have sessions added from old to new(chronological order)
                 display(
                     f"Adding {len(missing_sessions)} missing sessions to last analysis data",
                     color="cyan",
@@ -569,7 +571,9 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Mouse Behavior Data Parsing Tool")
 
-    parser.add_argument("id", metavar="animalid", type=str, help="Animal ID (e.g. KC133)")
+    parser.add_argument(
+        "id", metavar="animalid", type=str, help="Animal ID (e.g. KC133)"
+    )
     parser.add_argument(
         "-p",
         "--paradigm",
@@ -577,7 +581,9 @@ def main():
         type=str,
         help="Behavior paradigm(e.g. detection)",
     )
-    parser.add_argument("-l", "--load", metavar="load_type", type=str, help=load_help_str)
+    parser.add_argument(
+        "-l", "--load", metavar="load_type", type=str, help=load_help_str
+    )
 
     def date_parser(arg) -> list:
         return arg.split(",")

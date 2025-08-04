@@ -7,10 +7,10 @@ from ...core.exceptions import ScreenPulseError
 
 
 class VisualTrial(Trial):
-    t_vstimstart_rig: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
-    t_vstimend_rig: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
-    t_vstimstart: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
-    t_vstimend: float | None = pt.Field(default=None, gt=0, dtype=pl.Float64)
+    t_vstimstart_rig: int | None = pt.Field(default=None, gt=0, dtype=pl.UInt64)
+    t_vstimend_rig: int | None = pt.Field(default=None, gt=0, dtype=pl.UInt64)
+    t_vstimstart: int | None = pt.Field(default=None, gt=0, dtype=pl.UInt64)
+    t_vstimend: int | None = pt.Field(default=None, gt=0, dtype=pl.UInt64)
     vstim_time_diff: float | None = pt.Field(default=None, dtype=pl.Float64)
     state_time_diff: float | None = pt.Field(default=None, dtype=pl.Float64)
 
@@ -18,7 +18,6 @@ class VisualTrial(Trial):
 class VisualTrialHandler(TrialHandler):
     def __init__(self) -> None:
         super().__init__()
-        self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(VisualTrial)
 
     def get_trial(
@@ -34,6 +33,7 @@ class VisualTrialHandler(TrialHandler):
         Returns:
             pt.DataFrame | dict | list | None: returned data
         """
+        self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
 
@@ -76,10 +76,10 @@ class VisualTrialHandler(TrialHandler):
         else:
             if len(screen_array) == 2:
                 # This is the correct stim ON/OFF scenario
-                self._trial["t_vstimstart_rig"] = screen_array[0, 0]
-                self._trial["t_vstimend_rig"] = screen_array[1, 0]
+                self._trial["t_vstimstart_rig"] = int(screen_array[0, 0])
+                self._trial["t_vstimend_rig"] = int(screen_array[1, 0])
             elif len(screen_array) == 1:
-                self._trial["t_vstimstart_rig"] = screen_array[0, 0]
+                self._trial["t_vstimstart_rig"] = int(screen_array[0, 0])
                 self.was_screen_off = False
             elif len(screen_array) > 2:
                 # sometimes the screen pulses are weird
@@ -91,8 +91,8 @@ class VisualTrialHandler(TrialHandler):
                     pl.col("transition").is_in(["hit", "miss"])
                 )[0, "elapsed"]
 
-                self._trial["t_vstimstart_rig"] = s1
-                self._trial["t_vstimend_rig"] = s2
+                self._trial["t_vstimstart_rig"] = int(s1)
+                self._trial["t_vstimend_rig"] = int(s2)
         # else:
         #     raise ScreenPulseError(
         #         f"[TRIAL-{self._trial['trial_no']}] Funky screen pulses with length {len(screen_array)}"
@@ -116,9 +116,9 @@ class VisualTrialHandler(TrialHandler):
             # ON and OFF values, check they have the same value for same stim
             if _screen_new.n_unique("value") == 1:
                 # found new screen event, add it
-                self._trial["t_vstimend_rig"] = _screen_new[1, "duinotime"]
+                self._trial["t_vstimend_rig"] = int(_screen_new[1, "duinotime"])
                 if self._trial["t_trialend"] <= self._trial["t_vstimend_rig"]:
-                    self._trial["t_trialend"] = _screen_new[1, "duinotime"]
+                    self._trial["t_trialend"] = int(_screen_new[1, "duinotime"])
                 self.was_screen_off = True
 
         if not self.was_screen_off:
@@ -145,9 +145,9 @@ class VisualTrialHandler(TrialHandler):
 
         if len(trial_screen) == 2:
             self.was_screen_off = True
-            self._trial["t_vstimend_rig"] = trial_screen[1, "duinotime"]
+            self._trial["t_vstimend_rig"] = int(trial_screen[1, "duinotime"])
             if self._trial["t_trialend"] <= self._trial["t_vstimend_rig"]:
-                self._trial["t_trialend"] = trial_screen[1, "duinotime"]
+                self._trial["t_trialend"] = int(trial_screen[1, "duinotime"])
 
     def sync_timeframes(self) -> None:
         """Syncs the timeframes according to visual stimulus appearance from screen events"""

@@ -91,6 +91,7 @@ class VisualSession(Session):
 
             # the run itself
             _run = VisualRun(_path)
+            _run.set_meta(skip_google)
             if _run.is_run_saved() and self.load_flag:
                 display(f"Loading from {_run.paths.save}")
                 _run.load_run()
@@ -100,4 +101,3 @@ class VisualSession(Session):
                 _run.save_run()
 
             self.runs.append(_run)
-            self.metas.append(_meta)

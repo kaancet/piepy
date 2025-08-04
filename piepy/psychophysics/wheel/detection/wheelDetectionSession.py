@@ -114,9 +114,9 @@ class WheelDetectionRunData(RunData):
 
         # add easy/hard contrast type groups
         self.data = self.data.with_columns(
-            pl.when(pl.col("contrast") >= 25)
+            pl.when(pl.col("contrast") >= 0.25)
             .then(pl.lit("easy"))
-            .when((pl.col("contrast") < 25) & (pl.col("contrast") > 0))
+            .when((pl.col("contrast") < 0.25) & (pl.col("contrast") > 0))
             .then(pl.lit("hard"))
             .when(pl.col("contrast") == 0)
             .then(pl.lit("catch"))
@@ -349,8 +349,6 @@ class WheelDetectionSession(Session):
                 _run.save_run()
 
             self.runs.append(_run)
-            self.metas.append(_run.meta)
-            self.stats.append(_run.stats)
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:

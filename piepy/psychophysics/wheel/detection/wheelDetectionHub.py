@@ -1,70 +1,16 @@
 import os
-import hashlib
 import polars as pl
 from scipy.optimize import curve_fit
-from multiprocessing import Pool, set_start_method
-
 
 from .wheelDetectionSession import WheelDetectionSession, get_run_stats
+from ....core.hub import TaskHub
 from ....core.config import config as cfg
 from ....core.data_functions import make_subsets
 
 
-def generate_unique_session_id(
-    baredate: str, animalid: str, *args, digit_len: int = 7
-) -> int:
-    """Creates a unique session no,
-    NOTE: this assumes baredate and animalid combinations are unique
-
-    Args:
-        baredate (str): date in string form (e.g. 240801)
-        animalid (str): ID of the animal in string form (e.g. KC133)
-        digit_len (int, optional): length of digits in the unique ID. Defaults to 6.
-
-    Returns:
-        int: unique id
-    """
-    all_strings = [baredate, animalid, *args]
-    combined_string = "|".join(sorted(all_strings))
-    # Create a hash from the combined string
-    hash_object = hashlib.sha256(combined_string.encode("utf-8"))
-    # Convert the hash to an integer
-    unique_id = int(hash_object.hexdigest(), 16) % 10**digit_len
-    return unique_id
-
-
-class WheelDetectionExperimentHub:
+class WheelDetectionHub(TaskHub):
     def __init__(self):
-        self.summary_data = None
-
-    def set_data(
-        self,
-        data: pl.DataFrame | list,
-        make_summary: bool = True,
-        load_sessions: bool = False,
-    ) -> None:
-        """Sets the data,
-
-        Args:
-            data (pl.DataFrame | list): can be a previously saved data frame or a list of experiment paths
-            make_summary (bool, optional): Makes a summary dataframe from the main dataframe. Defaults to True.
-            load_sessions (bool, optional): Loads the sessions instead of reanalyzing them. Defaults to False.
-        """
-        if isinstance(data, pl.DataFrame):
-            self.data = data
-            # try to extract experiment list from the data
-            self.exp_list = (
-                self.data["session_path"].unique(maintain_order=True).to_list()
-            )
-            #  = [pjoin(cfg.paths["presentation"],e) for e in exp_names]
-
-        if isinstance(data, list):
-            self.exp_list = data
-            self.gather_sessions(load_sessions=load_sessions)
-
-        if make_summary:
-            self.summary_data = self.make_summary_data()
-            return self.summary_data
+        super().__init__(paradigm="wheel_detection")
 
     @staticmethod
     def parse_session_name(session_path: str) -> dict:
@@ -78,7 +24,7 @@ class WheelDetectionExperimentHub:
         Returns:
             dict: Parsed values
         """
-        sessiondir = session_path.split(os.sep)[-1]
+        sessiondir = session_path.strip(os.sep).split(os.sep)[-1]
         parts_of_session = sessiondir.split("_")
         area = parts_of_session[4]
 
@@ -88,23 +34,20 @@ class WheelDetectionExperimentHub:
             "date": parts_of_session[0],
             "animalid": parts_of_session[1],
             "user": parts_of_session[-1],
+            "opto_power": None,
+            "imaging": None,
+            "paradigm": None,
         }
 
         for part in parts_of_session:
             if "opto" in part:
                 ret_dict["opto_power"] = int(part[-3:]) / 100
-            else:
-                ret_dict["opto_power"] = "na"
 
             if part in ["1P", "2P"]:
                 ret_dict["imaging"] = part
-            else:
-                ret_dict["imaging"] = "na"
 
             if part.lower() in ["detection", "detect"]:
                 ret_dict["paradigm"] = part.lower()
-            else:
-                ret_dict["paradigm"] = "na"
 
         isCNO = False
         if "CNO" in area:
@@ -114,60 +57,21 @@ class WheelDetectionExperimentHub:
 
         return {**ret_dict, **_temp}
 
-    # def _get_session(self, session_path: str) -> pl.DataFrame:
-    #     temp = self.parse_session_name(session_path)
-    #     cfg.set_verbosity(False)
-    #     print(temp["sessiondir"])
-    #     sesh = self.session_handler(temp.pop("sessiondir"), self.load_flag)
+    @staticmethod
+    def _filter_session_list(session_list: list) -> list:
+        """A dedicated function depending on the task paradigm.
+        Filters out the sessions that are not of a different experiment type by looking at the
+        sessiondir name.
 
-    #     sesh_df = pl.DataFrame()
-    #     for r in sesh.runs:
-    #         _data = r.data.data
-    #         _meta = r.meta
-    #         _stats = self.stat_handler(_data)
-    #         # prepend stats dict keys to then easily group them in summary
-    #         _stats = {f"stat_{k}": v for k, v in _stats.items()}
+        Args:
+            session_list (list): _description_
 
-    #         stim_combination = _data["stim_type"].unique().sort().drop_nulls().to_list()
-
-    #         _sesh_id = self.generate_unique_run_id(
-    #             temp.pop("date"),
-    #             temp.pop("animalid"),
-    #         )
-
-    #         # contrast titration boolean
-    #         uniq_stims = _data["contrast"].drop_nulls().unique().to_numpy()
-    #         isTitrated = False
-    #         if len(uniq_stims) > len(_meta["opts"]["contrastVector"]):
-    #             isTitrated = True
-
-    #         meta_lit = {
-    #             "opto_ratio": _meta["opts"]["optoRatio"],
-    #             "opto_targets": len(_data["opto_pattern"].unique().to_numpy()) - 1,
-    #             "stimulus_count": len(_data["stim_type"].unique().drop_nulls()),
-    #             "stim_combination": "+".join(stim_combination),
-    #             "isTitrated": isTitrated,  # this should only give 0 or 1
-    #             "rig": _meta["rig"]["name"],
-    #             "session_id": generate_unique_session_id(
-    #                 temp.pop("date"), temp.pop("animalid"), _meta["run_start_time"]
-    #             ),
-    #             "run_no": r,
-    #         }
-    #         non_lit = {
-    #             "contrast_vector": [_meta["opts"]["contrastVector"]] * len(_data),
-    #             "sf_values": [_data["sf"].unique().drop_nulls().to_list()] * len(_data),
-    #             "tf_values": [_data["tf"].unique().drop_nulls().to_list()] * len(_data),
-    #         }
-    #         # print(session_path,_data.shape, len(_stats), len(meta_lit), len(temp), flush=True)
-    #         lit_dict = {**_stats, **meta_lit, **temp}
-    #         # create the polars frame
-    #         df = _data.with_columns([pl.lit(v).alias(k) for k, v in lit_dict.items()])
-    #         list_df = pl.DataFrame(non_lit)
-    #         # make the run df
-    #         df = pl.concat([df, list_df], how="horizontal")
-    #         # concat it to the session df
-    #         sesh_df = pl.concat([sesh_df, df], how="vertical")
-    #     return sesh_df
+        Returns:
+            list: _description_
+        """
+        # if detect not in sessiondir, remove
+        _temp = [s for s in session_list if "detect" in s]
+        return _temp
 
     def _get_session(self, session_path: str) -> pl.DataFrame:
         """Gets a single session from the sesison path
@@ -175,104 +79,81 @@ class WheelDetectionExperimentHub:
 
         Args:
             session_path (str): Path of the session
+
+        Returns:
+            pl.DataFrame: The session data. It is empty if there was an error during session analysis
         """
         temp = self.parse_session_name(session_path)
         cfg.set_verbosity(False)
-
+        sesh_df = pl.DataFrame()
         print(temp["sessiondir"])
+
         try:
-            sesh = WheelDetectionSession(temp.pop("sessiondir"), self.load_flag)
+            sesh = WheelDetectionSession(temp["sessiondir"], self.load_flag)
         except Exception:
             print(
                 f" >> WARNING! << Session {temp['sessiondir']} was not analyzed properly, skipping..."
             )
-            return pl.DataFrame()
-        _data = sesh.runs[0].data.data
-        _meta = sesh.runs[0].meta
+            return sesh_df
+        temp.pop("sessiondir")
 
-        stim_combination = _data["stim_type"].unique().sort().drop_nulls().to_list()
+        for i, r in enumerate(sesh.runs):
+            _data = r.data.data
+            _meta = r.meta
 
-        _stats = get_run_stats(_data)
-        # prepend stats dict keys to then easily group them in summary
-        _stats = {f"stat_{k}": v for k, v in _stats.items()}
+            stim_combination = _data["stim_type"].unique().sort().drop_nulls().to_list()
 
-        # contrast titration boolean
-        uniq_stims = _data["contrast"].drop_nulls().unique().to_numpy()
-        isTitrated = False
-        if len(uniq_stims) > len(_meta["opts"]["contrastVector"]):
-            isTitrated = True
+            _stats = get_run_stats(_data)
+            # prepend stats dict keys to then easily group them in summary
+            _stats = {f"stat_{k}": v for k, v in _stats.items()}
 
-        meta_lit = {
-            "opto_ratio": _meta["opts"]["optoRatio"],
-            "opto_targets": len(_data["opto_pattern"].unique().to_numpy()) - 1,
-            "stimulus_count": len(_data["stim_type"].unique().drop_nulls()),
-            "stim_combination": "+".join(stim_combination),
-            "isTitrated": isTitrated,  # this should only give 0 or 1
-            "rig": _meta["rig"]["name"],
-            "session_id": generate_unique_session_id(
-                temp.pop("date"), temp.pop("animalid"), _meta["run_start_time"]
-            ),
-        }
-        non_lit = {
-            "contrast_vector": [_meta["opts"]["contrastVector"]] * len(_data),
-            "sf_values": [_data["sf"].unique().drop_nulls().to_list()] * len(_data),
-            "tf_values": [_data["tf"].unique().drop_nulls().to_list()] * len(_data),
-        }
-        # print(session_path,_data.shape, len(_stats), len(meta_lit), len(temp), flush=True)
-        lit_dict = {**_stats, **meta_lit, **temp}
-        # create the polars frame
-        df = _data.with_columns([pl.lit(v).alias(k) for k, v in lit_dict.items()])
-        list_df = pl.DataFrame(non_lit)
-        df = pl.concat([df, list_df], how="horizontal")
-        # self._list_data.append(df)
-        # queue.put(df)
-        return df
+            # contrast titration boolean
+            uniq_stims = _data["contrast"].drop_nulls().unique().to_numpy()
+            isTitrated = False
+            if len(uniq_stims) > len(_meta["opts"]["contrastVector"]):
+                isTitrated = True
 
-    def gather_sessions(self, load_sessions: bool = False) -> pl.DataFrame:
-        """_summary_
+            meta_lit = {
+                "task": _meta["opts"]["controller"],
+                "level": _meta["level"],
+                "run_start_time": _meta["run_start_time"],
+                "opto_ratio": _meta["opts"].get("optoRatio", None),
+                "opto_targets": len(_data["opto_pattern"].unique().to_numpy()) - 1,
+                "stimulus_count": len(_data["stim_type"].unique().drop_nulls()),
+                "stim_combination": "+".join(stim_combination),
+                "isTitrated": isTitrated,  # this should only give 0 or 1
+                "rig": _meta["rig"].get("name", None),
+                "session_id": self.generate_unique_session_id(
+                    temp.pop("date"), temp.pop("animalid")
+                ),
+                "run_no": i + 1,
+            }
+            non_lit = {
+                "contrast_vector": [_meta["opts"]["contrastVector"]] * len(_data),
+                "wait_window": _meta["opts"]["openStimDuration"],
+                "response_window": _meta["opts"]["closedStimDuration"],
+                "stim_size": _meta["params"]["width"][0],
+                "sf_values": [_data["sf"].unique().drop_nulls().to_list()] * len(_data),
+                "tf_values": [_data["tf"].unique().drop_nulls().to_list()] * len(_data),
+            }
 
-        Args:
-            load_session (bool, optional): Whether to load sessions or reanalyze them. Defaults to False.
-
-        Returns:
-            pl.DataFrame: All the trials of all the experiments in hub.exp_list
-        """
-        self.load_flag = load_sessions
-        try:
-            set_start_method("spawn")
-        except RuntimeError:
-            pass
-
-        with Pool(processes=cfg.multiprocess["cores"]) as pool:
-            _list_data = pool.map(self._get_session, self.exp_list)
-
-        # concat everything on the list
-        data = _list_data[0]
-        for df2 in _list_data[1:]:
-            df2 = df2.select(data.columns)
-            if data.dtypes != df2.dtypes:
-                data = data.with_columns(
-                    [
-                        pl.col(n).cast(t)
-                        for n, t in zip(data.columns, df2.dtypes)
-                        if t != pl.Null
-                    ]
-                )
-
-            data = pl.concat([data, df2])
-
-        data = data.sort(
-            ["date", "animalid", "session_id"], descending=[False, False, False]
-        )
-
-        # make reorder column list
-        reorder = ["total_trial_no"] + data.columns
-        # in the end add a final all trial count column
-        data = data.with_columns(
-            pl.Series(name="total_trial_no", values=list(range(1, len(data) + 1)))
-        )
-        # reorder
-        self.data = data.select(reorder)
+            print(
+                session_path,
+                _data.shape,
+                len(_stats),
+                len(meta_lit),
+                len(temp),
+                flush=True,
+            )
+            lit_dict = {**_stats, **meta_lit, **temp}
+            # create the polars frame
+            df = _data.with_columns([pl.lit(v).alias(k) for k, v in lit_dict.items()])
+            list_df = pl.DataFrame(non_lit)
+            # make the run df
+            df = pl.concat([df, list_df], how="horizontal")
+            # concat it to the session df
+            sesh_df = pl.concat([sesh_df, df], how="vertical")
+        return sesh_df
 
     @staticmethod
     def filter_sessions(data: pl.DataFrame, **kwargs) -> pl.DataFrame:

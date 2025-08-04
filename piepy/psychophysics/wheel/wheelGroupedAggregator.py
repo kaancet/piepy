@@ -54,12 +54,18 @@ class WheelGroupedAggregator:
                 )
         self.data = data
 
-    def group_data(self, group_by: list[str], do_sort: bool = True) -> None:
+    def group_data(
+        self,
+        group_by: list[str],
+        do_sort: bool = True,
+        extra_grouped: list[str] | None = None,
+    ) -> None:
         """Groups the data by given group_by column names
 
         Args:
             group_by (list[str]): List of column names to group the data by
             do_sort (bool, optional): Sort the data in the order of group_by. Defaults to True.
+            xtra_grouped(list[str]|None, optional): A list of columns that we user wants to added in the aggrgated columns.Defaults to None.
 
         Raises:
             ValueError: A column name in group_by does not exist in the instance data
@@ -68,6 +74,13 @@ class WheelGroupedAggregator:
             if c_name not in self.data.columns:
                 raise ValueError(f"{c_name} not in data columns!!")
 
+        if extra_grouped is not None:
+            for e_name in extra_grouped:
+                if e_name not in self.data.columns:
+                    raise ValueError(f"extra_grouped column {e_name} not in data columns!!")
+        else:
+            extra_grouped = []
+
         self.group_by = group_by
 
         q = self.data.group_by(group_by).agg(
@@ -75,10 +88,7 @@ class WheelGroupedAggregator:
                 # (pl.col("stim_pos").first()),
                 pl.count().alias("count"),
             ]
-            + [
-                (pl.col("outcome") == o).sum().alias(f"{o}_count")
-                for o in self.outcomes
-            ]
+            + [(pl.col("outcome") == o).sum().alias(f"{o}_count") for o in self.outcomes]
             + [
                 (pl.col("response_time").alias("response_times")),
                 (pl.col("reaction_time").alias("reaction_times")),
@@ -87,7 +97,6 @@ class WheelGroupedAggregator:
                 (pl.col("response_time").median().alias("median_response_times")),
                 (pl.col("reaction_time").median().alias("median_reaction_times")),
             ]
-            + []
             + [
                 (
                     pl.col("response_time")
@@ -126,22 +135,17 @@ class WheelGroupedAggregator:
                 (pl.col("stimkey").first()),
                 (pl.col("stim_label").first()),
             ]
+            + [(pl.col(e)) for e in extra_grouped]
         )
 
         # calculate confidence intervals of each columns that has "time" in it
-        time_cols = [
-            c
-            for c in q.columns
-            if "time" in c and "median" not in c and "confs" not in c
-        ]
+        time_cols = [c for c in q.columns if "time" in c and "median" not in c and "confs" not in c]
         for t_c in time_cols:
             _temp_ci = []
             for v in q[t_c].to_list():
                 v = [i for i in v if i is not None]  # drop the nulls
                 if len(v) > 1:
-                    med, ci_p, ci_n = bootstrap_confidence_interval(
-                        v, statistic=np.median
-                    )
+                    med, ci_p, ci_n = bootstrap_confidence_interval(v, statistic=np.median)
                     _temp_ci.append([ci_p, ci_n])
                 else:
                     _temp_ci.append([])
@@ -150,6 +154,7 @@ class WheelGroupedAggregator:
 
         if do_sort:
             q = q.sort(group_by)
+
         self.grouped_data = q
 
     @staticmethod

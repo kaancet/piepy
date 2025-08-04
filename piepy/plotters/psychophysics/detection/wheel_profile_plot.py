@@ -76,6 +76,11 @@ def plot_wheel_profile(
             wheel_tick = np.array(trial["wheel_pos"])
             reset_time_point = trial[time_reset]
 
+            if len(wheel_tick) == 0:
+                # no wheel movement
+                wheel_tick = [0, 0]
+                wheel_t = [reset_time_point, reset_time_point + 1000]
+
             _, _, t_interp, tick_interp = trace.reset_and_interpolate(
                 wheel_t, wheel_tick, reset_time_point, trace_interp_freq
             )
