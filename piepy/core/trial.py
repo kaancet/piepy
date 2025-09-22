@@ -175,6 +175,12 @@ class TrialHandler:
                                 self._trial["t_trialstart"], self._trial["t_trialend"]
                             )
                         )
+                        if trial_no not in temp_v["total_iStim"].to_list():
+                            # The timing means that the wrong trial has been selected for the visual info.
+                            temp_v = v.filter(pl.col("total_iStim") == trial_no)
+                        elif np.unique(temp_v["total_iStim"].to_numpy()).size > 1:
+                            # More than one trials data has been selected. To be safe - take based on istim label
+                            temp_v = v.filter(pl.col("total_iStim") == trial_no)
 
                 self.data[k] = temp_v
         return True
