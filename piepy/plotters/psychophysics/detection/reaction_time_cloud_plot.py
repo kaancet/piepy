@@ -29,6 +29,7 @@ def plot_reaction_time_cloud(
     cloud_offset: float = 0.5,
     cloud_spacing: int = 1,
     include_zero: bool = False,
+    log_x: bool = False,
     mpl_kwargs: dict | None = None,
     **kwargs,
 ) -> tuple[plt.Figure, plt.Axes]:
@@ -85,16 +86,9 @@ def plot_reaction_time_cloud(
         )
 
     # add the linear axis
-    lin_axis_dict = make_linear_axis(
-        grouped_nonearly_data, _axer, spacing=cloud_spacing
-    )
-    _lin_axis = [
-        float(lin_axis_dict[c]) if c is not None else None
-        for c in grouped_nonearly_data[_axer].to_list()
-    ]
-    grouped_nonearly_data = grouped_nonearly_data.with_columns(
-        pl.Series("linear_axis", _lin_axis)
-    )
+    lin_axis_dict = make_linear_axis(grouped_nonearly_data, _axer, spacing=cloud_spacing)
+    _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in grouped_nonearly_data[_axer].to_list()]
+    grouped_nonearly_data = grouped_nonearly_data.with_columns(pl.Series("linear_axis", _lin_axis))
 
     if not include_zero:
         grouped_nonearly_data = grouped_nonearly_data.filter(pl.col("contrast") != 0)
@@ -103,9 +97,7 @@ def plot_reaction_time_cloud(
         filt_df = filt_tup[-1]
         if not filt_df.is_empty():
             lin_ax = filt_df[0, "linear_axis"]
-            for stimkey_filt_tup in make_subsets(
-                filt_df, ["stimkey"], start_enumerate=0
-            ):
+            for stimkey_filt_tup in make_subsets(filt_df, ["stimkey"], start_enumerate=0):
                 stim_filt_df = stimkey_filt_tup[-1]
                 stim_filt_key = stimkey_filt_tup[1]
                 _cloud_offset = stimkey_filt_tup[0] * cloud_offset
@@ -121,16 +113,10 @@ def plot_reaction_time_cloud(
                         )
                         # add a little bit jitter to x_axis, because sparse points look like a rope...
                         jit = cloud_width * 00.1  # arbitrary
-                        x_dots = x_dots + np.random.uniform(
-                            low=-jit, high=jit, size=x_dots.shape[0]
-                        )
+                        x_dots = x_dots + np.random.uniform(low=-jit, high=jit, size=x_dots.shape[0])
 
                         medi = stim_filt_df[0, f"median_{reaction_of}"]
-                        medi_conf = (
-                            stim_filt_df[0, f"median_{reaction_of}_confs"]
-                            .to_numpy()
-                            .reshape(-1, 1)
-                        )
+                        medi_conf = stim_filt_df[0, f"median_{reaction_of}_confs"].to_numpy().reshape(-1, 1)
 
                         # medians
                         ax.scatter(

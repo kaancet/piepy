@@ -59,18 +59,12 @@ class WheelDetectionRunData(RunData):
             if col_name in self.data.columns:
                 self.data = self.data.with_columns(pl.col(col_name).alias("outcome"))
             else:
-                raise ValueError(
-                    f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'."
-                )
+                raise ValueError(f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'.")
 
     def compare_outcomes(self) -> None:
         """Compares the different outcome types and prints a small summary table"""
         out_cols = [c for c in self.data.columns if "_outcome" in c]
-        q = (
-            self.data.group_by(out_cols)
-            .agg([pl.count().alias("count")])
-            .sort(["state_outcome"])
-        )
+        q = self.data.group_by(out_cols).agg([pl.count().alias("count")]).sort(["state_outcome"])
         tmp = q.to_pandas()
         print(tabulate(tmp, headers=q.columns))
 
@@ -99,9 +93,7 @@ class WheelDetectionRunData(RunData):
 
         # adds string stimtype
         self.data = self.data.with_columns(
-            (
-                pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz"
-            ).alias("stim_type")
+            (pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz").alias("stim_type")
         )
 
         # add signed contrast
@@ -135,9 +127,7 @@ class WheelDetectionRunData(RunData):
             return m * x + a
 
         if len(rig_time):
-            popt, pcov = curve_fit(
-                m1_func, resp_time, rig_time
-            )  # popt[0] is the time diff intercept
+            popt, pcov = curve_fit(m1_func, resp_time, rig_time)  # popt[0] is the time diff intercept
 
             all_resp_time = self.data["state_response_time"]
             new_rig_times = m1_func(all_resp_time, *popt)
@@ -156,9 +146,7 @@ class WheelDetectionRunData(RunData):
             self.data = self.data.drop("temp_response_times")
         else:
             print("NO RIG TIME TO INTERPOLATE, COPYING STATE TIME")
-            self.data = self.data.with_columns(
-                pl.col("state_response_time").alias("response_time")
-            )
+            self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
     def add_pattern_related_columns(self, pattern_path: str) -> None:
         """Adds columns related to the silencing pattern if they exist
@@ -175,13 +163,9 @@ class WheelDetectionRunData(RunData):
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
             # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_-1").alias("stimkey")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type") + "_-1").alias("stimkey"))
             # add stim_label for legends and stuff
-            self.data = self.data.with_columns(
-                (pl.col("stim_type")).alias("stim_label")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
             if pattern_path is not None and os.path.exists(pattern_path):
                 pattern_names = {}
@@ -199,11 +183,7 @@ class WheelDetectionRunData(RunData):
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
                         .map_elements(
-                            lambda x: (
-                                pattern_names[x["opto_pattern"]]
-                                if x["state_outcome"] != -1
-                                else None
-                            ),
+                            lambda x: (pattern_names[x["opto_pattern"]] if x["state_outcome"] != -1 else None),
                             return_dtype=str,
                         )
                         .alias("opto_region")
@@ -217,17 +197,11 @@ class WheelDetectionRunData(RunData):
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (
-                    pl.col("stim_type")
-                    + "_"
-                    + pl.col("opto_pattern").cast(int).cast(str)
-                ).alias("stimkey")
+                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias("stimkey")
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
-                    "stim_label"
-                )
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias("stim_label")
             )
 
     @staticmethod
@@ -268,9 +242,7 @@ class WheelDetectionRun(Run):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = (
-                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
-            )
+            _stats = f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
         return _base + _stats
 
     def get_rawdata(self, transform_dict: dict) -> None:
@@ -377,28 +349,16 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["catch_trial_count"] = len(catch_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["hit_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
-    stats_dict["false_alarm_rate"] = round(
-        100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["nogo_rate"] = round(
-        100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["hit_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3)
+    stats_dict["false_alarm_rate"] = round(100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["nogo_rate"] = round(100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3)
 
     # median response time #
     stats_dict["median_response_time"] = round(
@@ -420,14 +380,12 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     easy_data = nonopto_data.filter(pl.col("contrast").is_in([1.0, 0.5]))
     stats_dict["easy_trial_count"] = len(easy_data)
     easy_correct_count = len(easy_data.filter(pl.col("outcome") == "hit"))
+    easy_miss_count = len(easy_data.filter(pl.col("outcome") == "miss"))
     if stats_dict["easy_trial_count"]:
-        stats_dict["easy_hit_rate"] = round(
-            100 * easy_correct_count / stats_dict["easy_trial_count"], 3
-        )
+        stats_dict["easy_hit_rate"] = round(100 * easy_correct_count / stats_dict["easy_trial_count"], 3)
+        stats_dict["easy_nogo_rate"] = round(100 * easy_miss_count / stats_dict["easy_trial_count"], 3)
         stats_dict["easy_median_response_time"] = round(
-            easy_data.filter(pl.col("outcome") == "hit")[
-                "state_response_time"
-            ].median(),
+            easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
             3,
         )
         stats_dict["easy_median_reaction_time"] = round(

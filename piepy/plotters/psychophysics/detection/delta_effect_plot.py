@@ -163,9 +163,7 @@ def plot_delta_effect_contrast(
 
     plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(pl.col("stim_side") != "ipsi")
     lin_axis_dict = make_linear_axis(plot_data, "signed_contrast")
-    _lin_axis = [
-        float(lin_axis_dict[c]) if c is not None else None for c in plot_data["contrast"].to_list()
-    ]
+    _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in plot_data["contrast"].to_list()]
     plot_data = plot_data.with_columns(pl.Series("linear_axis", _lin_axis))
 
     for stim_tup in make_subsets(plot_data, ["stim_type"], start_enumerate=-1):
@@ -277,9 +275,7 @@ def plot_delta_effect_contrast(
                             zorder=1,
                             mpl_kwargs=mpl_kwargs,
                             cmap=cmap,
-                            edgecolors=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"][
-                                "color"
-                            ],
+                            edgecolors=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"]["color"],
                             norm=normalizer,
                         )
                     elif trial_count_identifier == "dot_size":
@@ -295,14 +291,10 @@ def plot_delta_effect_contrast(
                     if p_test == "auto":
                         _is_norm = stats.shapiro(data_mat[:, j])
                         if _is_norm.pvalue < 0.05:  # is normal
-                            print(
-                                f"p1={_is_norm.pvalue:4}, data appears normal, doing paired t-test"
-                            )
+                            print(f"p1={_is_norm.pvalue:4}, data appears normal, doing paired t-test")
                             p_test = "t_test"
                         else:
-                            print(
-                                f"p1={_is_norm.pvalue:4}, data doesn't appear to normal, doing wilcoxon test"
-                            )
+                            print(f"p1={_is_norm.pvalue:4}, data doesn't appear to normal, doing wilcoxon test")
                             p_test = "wilcoxon"
 
                     # apply statistical test
@@ -344,7 +336,7 @@ def plot_delta_effect_contrast(
 
             # shaded 95% CI
             ax.errorbar(
-                np.unique(_lin_axis),
+                x_pos_values[0],
                 means,
                 yerr=(ci_plus, ci_neg),
                 color=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"]["color"],
@@ -357,7 +349,7 @@ def plot_delta_effect_contrast(
 
             # means
             ax.scatter(
-                np.unique(_lin_axis),
+                x_pos_values[0],
                 means,
                 s=(plt.rcParams["lines.markersize"] ** 2),
                 c=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"]["color"],
@@ -366,6 +358,9 @@ def plot_delta_effect_contrast(
                 edgecolors="w",
                 zorder=3,
             )
+            print(means)
+            print(ci_plus)
+            print(ci_neg)
 
             # plotting connecting lines
             for i in range(data_mat_x.shape[0]):
@@ -705,6 +700,8 @@ def plot_delta_effect_stimtype(
         )
 
         # # means
+        print(means)
+        print(ci_plus, ci_neg)
         ax.scatter(
             np.unique(x_pos_values),
             means,
@@ -760,7 +757,7 @@ def plot_delta_effect_areas(
         "PM",
         "AM",
     ],
-    stim_type: Literal["0.04cpd_8.0Hz", "0.16cpd_0.5Hz"] = "0.4cpd_8.0Hz",
+    stim_type: Literal["0.04cpd_8.0Hz", "0.16cpd_0.5Hz"] = "0.04cpd_8.0Hz",
     effect_metric: Literal["delta", "BSI", "BSI_base"] = "delta",
     plot_with: Literal["sem", "conf", "iqr"] = "sem",
     p_test: Literal["wilcoxon", "paired_t", "auto"] = "auto",
@@ -839,13 +836,11 @@ def plot_delta_effect_areas(
     aggregator.calculate_opto_pvalues()
 
     # manually add baselines by joining
-    catch_trials = aggregator.grouped_data.filter(
-        (pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)
-    ).select(["animalid", "area", "stim_type", "contrast", "opto_pattern", "hit_count", "count"])
-    # get baseline_hr
-    catch_trials = catch_trials.with_columns(
-        (pl.col("hit_count").sum() / pl.col("count").sum()).alias("baseline_hr")
+    catch_trials = aggregator.grouped_data.filter((pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)).select(
+        ["animalid", "area", "stim_type", "contrast", "opto_pattern", "hit_count", "count"]
     )
+    # get baseline_hr
+    catch_trials = catch_trials.with_columns((pl.col("hit_count").sum() / pl.col("count").sum()).alias("baseline_hr"))
 
     _data = aggregator.grouped_data.join(
         catch_trials.select(["animalid", "area", "stim_type", "baseline_hr"]),
@@ -1000,9 +995,10 @@ def plot_delta_effect_areas(
         print(areas[c], res, flush=True)
         uncorrected_p_vals.append(p)
 
-    # plot p in between
+    # p-vals vs null
+    print("holm-bonferonni corrected p-values")
     _, corrected_p_vals, _, _ = multipletests(uncorrected_p_vals, 0.05, "holm")
-    for ii, p_corrected in enumerate(corrected_p_vals):
+    for ii, p_corrected in enumerate(uncorrected_p_vals):
         print(p_corrected)
         ax = pval_plotter(
             ax,
@@ -1012,6 +1008,7 @@ def plot_delta_effect_areas(
             color="k",
         )
 
+    # plot p in between
     uncorrected_p_vals2 = []
     for p_idx1 in range(diff_mat.shape[1] - 1):
         for p_idx2 in range(p_idx1 + 1, diff_mat.shape[1]):
@@ -1033,7 +1030,7 @@ def plot_delta_effect_areas(
                 x_axis[int(uncorrected_p_vals2[ii, 1])],
             ],
             loc=polarity * 100,
-            color="k",
+            color="r",
         )
 
     # plot the connected lines
@@ -1094,6 +1091,9 @@ def plot_delta_effect_areas(
         elinewidth=10,
         markersize=0,
     )
+    print(x_axis)
+    print(means)
+    print(ci_plus)
 
     ax.set_xticks(x_axis)
     ax.set_xticklabels(areas)
@@ -1222,9 +1222,7 @@ def plot_delta_effect_CNO(
     aggregator.calculate_opto_pvalues()
 
     plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(pl.col("stim_side") != "ipsi")
-    plot_data = plot_data.filter(
-        (pl.col("contrast") == contrast) & (pl.col("stim_type") == stim_type)
-    )
+    plot_data = plot_data.filter((pl.col("contrast") == contrast) & (pl.col("stim_type") == stim_type))
 
     diff_values = np.zeros((plot_data["animalid"].n_unique(), 2))  # nonCNO and CNO
     trial_counts = np.zeros_like(diff_values)
@@ -1334,9 +1332,7 @@ def plot_delta_effect_CNO(
             _is_norm1 = stats.shapiro(d1)
             _is_norm2 = stats.shapiro(d2)
             if _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05:  # is normal
-                print(
-                    f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue}, data appears normal, doing paired t-test"
-                )
+                print(f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue}, data appears normal, doing paired t-test")
                 p_test = "t_test"
             else:
                 print(

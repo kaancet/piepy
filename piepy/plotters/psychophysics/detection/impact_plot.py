@@ -92,10 +92,7 @@ def _plot_single_panel(
                 trial_count_arr = filt_df["count"].to_numpy()
 
                 # patchwork, needs better solution to handle 2 stim catch trials
-                if (
-                    len(filt_df["stim_side"].unique()) == 1
-                    and filt_df[0, "stim_side"] == "catch"
-                ):
+                if len(filt_df["stim_side"].unique()) == 1 and filt_df[0, "stim_side"] == "catch":
                     trial_count_arr = np.sum(trial_count_arr)
 
             elif "time" in plot_of:
@@ -155,6 +152,16 @@ def _plot_single_panel(
                     s=map_to_markersize(trial_count_arr),
                     zorder=2,
                 )
+            else:
+                ax.scatter(
+                    x_axis + jit,
+                    y_axis,
+                    c=kwargs.get("color", ANIMAL_COLORS[filt_df[0, "animalid"]]),
+                    marker="o",
+                    linewidths=0,
+                    s=50,
+                    zorder=2
+                    )
 
     # plotting average and propagated error
     if "time" in plot_of and min_trial_count is not None:
@@ -165,20 +172,12 @@ def _plot_single_panel(
         .agg(
             [
                 pl.col(plot_of).mean().alias(f"mean_{plot_of}"),
-                pl_weighted_mean(plot_of, "hit_count").alias(
-                    f"hit_weighted_mean_{plot_of}"
-                ),
-                pl_weighted_mean(plot_of, "count").alias(
-                    f"total_weighted_mean_{plot_of}"
-                ),
+                pl_weighted_mean(plot_of, "hit_count").alias(f"hit_weighted_mean_{plot_of}"),
+                pl_weighted_mean(plot_of, "count").alias(f"total_weighted_mean_{plot_of}"),
                 pl.col(plot_of).median().alias(f"median_{plot_of}"),
-                (pl.col(plot_of).std() / pl.col(plot_of).len().sqrt()).alias(
-                    f"sem_{plot_of}"
-                ),
+                (pl.col(plot_of).std() / pl.col(plot_of).len().sqrt()).alias(f"sem_{plot_of}"),
                 pl.col(plot_of)
-                .map_elements(
-                    mean_confidence_interval, return_dtype=pl.List(pl.Float64)
-                )
+                .map_elements(mean_confidence_interval, return_dtype=pl.List(pl.Float64))
                 .alias(f"conf_{plot_of}"),
                 pl.concat_list(
                     [
@@ -209,11 +208,10 @@ def _plot_single_panel(
         _plotting = avg_df[f"median_{plot_of}"].to_numpy()
     else:
         if do_weighted_average != "na":
-            _plotting = avg_df[
-                f"{do_weighted_average}_weighted_mean_{plot_of}"
-            ].to_numpy()
+            _plotting = avg_df[f"{do_weighted_average}_weighted_mean_{plot_of}"].to_numpy()
         else:
             _plotting = avg_df[f"mean_{plot_of}"].to_numpy()
+
     # mean or median
     ax._scatter(
         avg_df["opto_pattern"].to_numpy(),
@@ -238,6 +236,8 @@ def _plot_single_panel(
         alpha=0.5,
         zorder=2,
     )
+    print(_plotting)
+    print(bars)
     return ax
 
 
@@ -311,20 +311,15 @@ def plot_hit_rate_change(
     im = cm.ScalarMappable(norm=normalizer, cmap=cmap)
 
     # calculate the baseline from all the zero contrast non-optos
-    zero_nonopto_df = plot_data.filter(
-        (pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)
-    )
+    zero_nonopto_df = plot_data.filter((pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1))
     baseline_avg = 100 * zero_nonopto_df["hit_rate"].mean()
-    baseline_err = (
-        100
-        * (zero_nonopto_df["hit_rate"].std())
-        / np.sqrt(zero_nonopto_df["hit_rate"].len())
-    )
+    baseline_err = 100 * (zero_nonopto_df["hit_rate"].std()) / np.sqrt(zero_nonopto_df["hit_rate"].len())
     # plot zero only
     zero_opto_df = plot_data.filter((pl.col("contrast") == 0))
     for s in zero_opto_df["stim_type"].drop_nulls().unique().sort().to_list():
         ax_key = f"{s}_{0.0}"
         ax = axes_dict[ax_key]
+        print(f"c=0% {s}")
         ax = _plot_single_panel(
             ax,
             zero_opto_df,
@@ -340,48 +335,17 @@ def plot_hit_rate_change(
         )
         ax.set_ylabel(f"{s}\nHit rate (%)")
 
-    # nonzero data
-    nonzero_data = plot_data.filter(pl.col("contrast") != 0)
-    for filt_tup in make_subsets(nonzero_data, ["stim_type", "contrast"]):
-        filt_df = filt_tup[-1]
-        filt_contrast = filt_tup[1]
-        filt_stimtype = filt_tup[0]
-        ax_key = f"{filt_stimtype}_{filt_contrast}"
-
-        ax = axes_dict[ax_key]
-        ax = _plot_single_panel(
-            ax,
-            filt_df,
-            plot_of="hit_rate",
-            plot_with=plot_with,
-            mpl_kwargs=mpl_kwargs,
-            min_trial_count=min_trial_count,
-            trial_count_identifier=trial_count_identifier,
-            do_weighted_average=do_weighted_average,
-            cmap=cmap,
-            norm=normalizer,
-            **kwargs,
-        )
-
-        opto_pattern_df = (
-            filt_df.group_by(["opto_pattern"]).agg([pl.col("*")]).sort("opto_pattern")
-        )
-        uniq_opto_pattern = (
-            opto_pattern_df["opto_pattern"].drop_nulls().unique().sort().to_list()
-        )
+        opto_pattern_df = zero_opto_df.group_by(["opto_pattern"]).agg([pl.col("*")]).sort("opto_pattern")
+        uniq_opto_pattern = opto_pattern_df["opto_pattern"].drop_nulls().unique().sort().to_list()
         if len(uniq_opto_pattern) > 1:
-            for i, j in list(
-                itertools.combinations([x for x in range(len(uniq_opto_pattern))], 2)
-            ):
+            for i, j in list(itertools.combinations([x for x in range(len(uniq_opto_pattern))], 2)):
                 hr_1 = opto_pattern_df[i, "hit_rate"].to_list()
                 hr_2 = opto_pattern_df[j, "hit_rate"].to_list()
 
                 if p_test == "auto":
                     _is_norm1 = shapiro(hr_1)
                     _is_norm2 = shapiro(hr_2)
-                    if (
-                        _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05
-                    ):  # both are normal
+                    if _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05:  # both are normal
                         print(
                             f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue:.4}, data appears normal, doing paired t-test"
                         )
@@ -397,14 +361,63 @@ def plot_hit_rate_change(
                 elif p_test == "paired_t":
                     res = ttest_rel(hr_1, hr_2, nan_policy="omit")
                 p = res.pvalue
-                print(filt_stimtype, filt_contrast, res, flush=True)
-                ax = pval_plotter(
-                    ax, p, pos=[uniq_opto_pattern[i], uniq_opto_pattern[j]], loc=100
-                )
+                print(s, "0%", res, flush=True)
+                ax = pval_plotter(ax, p, pos=[uniq_opto_pattern[i], uniq_opto_pattern[j]], loc=100)
 
-            ax.tick_params(
-                axis="y", labelsize=0, length=0, width=0, which="major", color="k"
-            )
+    # nonzero data
+    nonzero_data = plot_data.filter(pl.col("contrast") != 0)
+    for filt_tup in make_subsets(nonzero_data, ["stim_type", "contrast"]):
+        filt_df = filt_tup[-1]
+        filt_contrast = filt_tup[1]
+        filt_stimtype = filt_tup[0]
+        ax_key = f"{filt_stimtype}_{filt_contrast}"
+
+        ax = axes_dict[ax_key]
+        print(f"c={filt_contrast}% {filt_stimtype}")
+        ax = _plot_single_panel(
+            ax,
+            filt_df,
+            plot_of="hit_rate",
+            plot_with=plot_with,
+            mpl_kwargs=mpl_kwargs,
+            min_trial_count=min_trial_count,
+            trial_count_identifier=trial_count_identifier,
+            do_weighted_average=do_weighted_average,
+            cmap=cmap,
+            norm=normalizer,
+            **kwargs,
+        )
+
+        opto_pattern_df = filt_df.group_by(["opto_pattern"]).agg([pl.col("*")]).sort("opto_pattern")
+        uniq_opto_pattern = opto_pattern_df["opto_pattern"].drop_nulls().unique().sort().to_list()
+        if len(uniq_opto_pattern) > 1:
+            for i, j in list(itertools.combinations([x for x in range(len(uniq_opto_pattern))], 2)):
+                hr_1 = opto_pattern_df[i, "hit_rate"].to_list()
+                hr_2 = opto_pattern_df[j, "hit_rate"].to_list()
+
+                if p_test == "auto":
+                    _is_norm1 = shapiro(hr_1)
+                    _is_norm2 = shapiro(hr_2)
+                    if _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05:  # both are normal
+                        print(
+                            f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue:.4}, data appears normal, doing paired t-test"
+                        )
+                        p_test = "paired_t"
+                    else:
+                        print(
+                            f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue:.4}, data doesn't appear normal, doing wilcoxon t-test"
+                        )
+                        p_test = "wilcoxon"
+
+                if p_test == "wilcoxon":
+                    res = wilcoxon(hr_1, hr_2, nan_policy="omit")
+                elif p_test == "paired_t":
+                    res = ttest_rel(hr_1, hr_2, nan_policy="omit")
+                p = res.pvalue
+                print(filt_stimtype, filt_contrast, f"{uniq_opto_pattern[i], uniq_opto_pattern[j]}", res, flush=True)
+                ax = pval_plotter(ax, p, pos=[uniq_opto_pattern[i], uniq_opto_pattern[j]], loc=100)
+
+            ax.tick_params(axis="y", labelsize=0, length=0, width=0, which="major", color="k")
 
     # make them all look pretty
     for k in axes_dict.keys():
@@ -453,9 +466,7 @@ def plot_hit_rate_change(
             size_ax.text(0.03, i + 1, str(s))
         size_ax.set_axis_off()
 
-    plt.subplots_adjust(
-        hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25)
-    )
+    plt.subplots_adjust(hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25))
     return fig
 
 
@@ -557,25 +568,17 @@ def plot_reaction_time_change(
             **kwargs,
         )
 
-        opto_pattern_df = (
-            filt_df.group_by(["opto_pattern"]).agg([pl.col("*")]).sort("opto_pattern")
-        )
-        uniq_opto_pattern = (
-            opto_pattern_df["opto_pattern"].drop_nulls().unique().sort().to_list()
-        )
+        opto_pattern_df = filt_df.group_by(["opto_pattern"]).agg([pl.col("*")]).sort("opto_pattern")
+        uniq_opto_pattern = opto_pattern_df["opto_pattern"].drop_nulls().unique().sort().to_list()
         if len(uniq_opto_pattern) > 1:
-            for i, j in list(
-                itertools.combinations([x for x in range(len(uniq_opto_pattern))], 2)
-            ):
+            for i, j in list(itertools.combinations([x for x in range(len(uniq_opto_pattern))], 2)):
                 rt_1 = opto_pattern_df[i, f"{plot_of}"].to_numpy()
                 rt_2 = opto_pattern_df[j, f"{plot_of}"].to_numpy()
 
                 if p_test == "auto":
                     _is_norm1 = shapiro(rt_1)
                     _is_norm2 = shapiro(rt_2)
-                    if (
-                        _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05
-                    ):  # both are normal
+                    if _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05:  # both are normal
                         print(
                             f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue:.4}, data appears normal, doing paired t-test"
                         )
@@ -592,23 +595,16 @@ def plot_reaction_time_change(
                     res = ttest_rel(rt_1, rt_2, nan_policy="omit")
                 p = res.pvalue
                 print(filt_stimtype, filt_contrast, res)
-                ax = pval_plotter(
-                    ax, p, pos=[uniq_opto_pattern[i], uniq_opto_pattern[j]], loc=900
-                )
-            ax.tick_params(
-                axis="y", labelsize=0, length=0, width=0, which="major", color="k"
-            )
+                ax = pval_plotter(ax, p, pos=[uniq_opto_pattern[i], uniq_opto_pattern[j]], loc=900)
+            ax.tick_params(axis="y", labelsize=0, length=0, width=0, which="major", color="k")
 
     # make them all look pretty
     for i, k in enumerate(axes_dict.keys()):
         ax = axes_dict[k]
 
-        ax.set_ylim([100, 1000])
-        ax.set_yticks([200, 400, 600, 800, 1000])
-
-        if i == 0:
+        if i == 0 or i == 3:
             _yl = plot_of.split("_")
-            ax.set_ylabel(f"{' '.join(_yl).capitalize()} (ms)")
+            ax.set_ylabel(f"{k}\n{' '.join(_yl).capitalize()} (ms)")
 
         _x_ticks = filt_df["opto_pattern"].unique().sort().to_list()
         ax.set_xlabel(f"c={k.split('_')[-1]}", labelpad=10)
@@ -633,14 +629,12 @@ def plot_reaction_time_change(
         ax.yaxis.set_minor_formatter(plt.FormatStrFormatter("%d"))
         ax.yaxis.set_major_locator(ticker.FixedLocator([100, 1000, 10000]))
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%d"))
-        ax.set_ylim([150, 1000])
+        ax.set_ylim([90, 1000])
         ax.grid(True, axis="y", which="both", alpha=0.4)
 
     # add colorbar
-    cbar_ax = fig.add_axes([0.95, 0, 0.05, 0.8])
-    fig.colorbar(im, cax=cbar_ax)
+    # cbar_ax = fig.add_axes([0.95, 0, 0.05, 0.8])
+    # fig.colorbar(im, cax=cbar_ax)
 
-    plt.subplots_adjust(
-        hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25)
-    )
+    # plt.subplots_adjust(hspace=mpl_kwargs.pop("hspace", 0.5), wspace=mpl_kwargs.pop("wspace", 0.25))
     return fig

@@ -43,11 +43,7 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
                 (pl.col("rig_response_time").alias("rig_response_times")),
             ]
             + [
-                (
-                    pl.col("rig_response_time")
-                    .filter(pl.col("outcome") == o)
-                    .alias(f"{o}_rig_response_times")
-                )
+                (pl.col("rig_response_time").filter(pl.col("outcome") == o).alias(f"{o}_rig_response_times"))
                 for o in self.outcomes
             ]
             + [
@@ -113,15 +109,11 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
 
         _, base_hr, _ = self.confidence95(base_hit_count, base_miss_count)
 
-        base_norm_hr = (hr - base_hr) / np.max(hr - base_hr)
+        base_norm_hr = (hr - base_hr) / (1 - base_hr)
 
-        self.grouped_data = self.grouped_data.with_columns(
-            pl.Series("base_norm_hit_rate", base_norm_hr.flatten())
-        )
+        self.grouped_data = self.grouped_data.with_columns(pl.Series("base_norm_hit_rate", base_norm_hr.flatten()))
 
-    def calculate_opto_pvalues(
-        self, p_method: Literal["barnard", "boschloo", "fischer"] = "barnard"
-    ) -> None:
+    def calculate_opto_pvalues(self, p_method: Literal["barnard", "boschloo", "fischer"] = "barnard") -> None:
         """Calculates the statistical significance between opto and non-opto trials
 
         Args:
