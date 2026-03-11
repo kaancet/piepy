@@ -152,16 +152,6 @@ def _plot_single_panel(
                     s=map_to_markersize(trial_count_arr),
                     zorder=2,
                 )
-            else:
-                ax.scatter(
-                    x_axis + jit,
-                    y_axis,
-                    c=kwargs.get("color", ANIMAL_COLORS[filt_df[0, "animalid"]]),
-                    marker="o",
-                    linewidths=0,
-                    s=50,
-                    zorder=2
-                    )
 
     # plotting average and propagated error
     if "time" in plot_of and min_trial_count is not None:
