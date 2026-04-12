@@ -1,51 +1,66 @@
-[build-system]
-
-requires = ["setuptools == 68.2.2"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["piepy"]
-
 [project]
-name = "piepy"
-version = "1.0"
+name = "piepy-neuro"
+version = "0.1.0"
 description = "Code for Behavioral, Imaging Analysis"
+authors = [{name = "Sakir Kaan Cetindag", email = "cetindag.kaan@gmail.com" }]
 readme = "README.md"
-dynamic = ["dependencies"]
 requires-python = ">=3.10"
-#license = "GPL"
-#keywords = ["psychophysics", "imaging", "analysis"]
+license = { file = "LICENSE" }
+keywords = ["neuroscience","psychophysics", "imaging", "analysis"]
 
-authors = [
-  {name = "Sakir Kaan Cetindag", email = "cetindag.kaan@gmail.com" }
-]
-
-# Classifiers help users find your project by categorizing it.
-#
-# For a list of valid classifiers, see https://pypi.org/classifiers/
 classifiers = [
-  # How mature is this project? Common values are
-  #   3 - Alpha
-  #   4 - Beta
-  #   5 - Production/Stable
-  "Development Status :: 3 - Alpha",
-
-  # Specify the Python versions you support here. In particular, ensure
-  # that you indicate you support Python 3. These classifiers are *not*
-  # checked by "pip install". See instead "requires-python" key in this file.
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering",
+  "Intended Audience :: Science/Research",
+  "Typing :: Typed",
 ]
 
-[tool.setuptools.dynamic]
-dependencies = { file = ['requirements.txt'] }
+dependencies = [
+    "numpy == 1.24.0",
+    "matplotlib == 3.9.0",
+    "patito ~= 0.8.3",
+    "polars ~= 1.19.0",
+    "pyarrow == 13.0.0",
+    "tqdm == 4.65.1",
+    "bokeh",
+    "scipy",
+    "pandas",
+    "colorama",
+    "pillow",
+    "opencv-python",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "oauth2client",
+    "google-auth",
+    "gspread",
+    "ipykernel",
+    "pystackreg",
+    "tabulate",
+    "tifffile",
+    "natsort",
+    "scikit-learn",
+    "scikit-image",
+]
+
+[project.optional-dependencies]
+dev = ["pre-commit", "jupyter"]
+
 
 [project.scripts]
 parsemouse = "piepy.core.mouse:main"
 session = "piepy.core.session_launcher:main"
 dashboard = "piepy.plotters.bokeh_plot.launcher:main"
+
+[project.urls]
+Homepage = "https://github.com/kaancet/piepy"
+
+[build-system]
+requires = ["setuptools >= 68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["piepy*"]
+exclude = ["notebooks*", "res*", "build*", "*.egg-info*"]

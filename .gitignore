@@ -1,8 +1,11 @@
+build/
+__pycache__/
 *.pyc
 piepy.egg-info/*
+*.egg-info/
 *.DS_Store
 *.ipynb_checkpoints
-/piepy/notebooks
 /.vscode
 config.json
 piepy/.vscode
+/.tach
