@@ -27,6 +27,7 @@ pre-commit
 numpy == 1.24.0
 matplotlib == 3.9.0
 patito ~= 0.8.3
-polars ~= 1.19.
+polars ~= 1.19.0
 pyarrow == 13.0.0
 tqdm == 4.65.1
+statsmodels == 0.14.4

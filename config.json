@@ -1,0 +1,7 @@
+{
+    "multiprocess":
+    {
+        "enable" : false,
+        "cores" : 8
+    }
+}

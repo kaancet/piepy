@@ -10,7 +10,7 @@ import polars as pl
 import scipy.io as sio
 from tqdm import tqdm
 
-from .gsheet_functions import GSheet
+# from .gsheet_functions import GSheet
 from .config import config
 from .exceptions import StateMachineError, WrongSessionTypeError
 from .io import display

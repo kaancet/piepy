@@ -1,5 +1,3 @@
-![piepy_logo.png](/res/piepy_logo.png)
-
 # PIEPY : **P**sychophysical and **I**maging **E**xperiments **Py**peline #
 
 by Sakir Kaan Cetindag
@@ -8,49 +6,50 @@ by Sakir Kaan Cetindag
 
 ## Getting set up ##
 
-Install [git](https://git-scm.com/downloads/) and [Anaconda](https://docs.conda.io/en/latest/miniconda.html).
+Install [git](https://git-scm.com/downloads/) and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 
 ### Clone repository ###
 
-Open Git Bash in the repository you want to store the code in and **right-click -> 'Git Bash here'**
+Create a directory in your desired location, clone the repository on your computer
 
-*For Windows: If the 'conda' command is not found in Git Bash, that means that conda has not been added to the PATH, you can do it by right-clicking 'this PC' in 'this PC' (folder) panel, 'Advanced system settings', 'Environment Variables...', in 'User variables' select 'Path' and click 'Edit...', click 'New' and add  'C:\ProgramData\Miniconda3\Scripts' (this is the default directory for the conda.exe, select another if you choose another location during the installation).
-Then you can restart Git Bash and retry.*
+### Environment creation ###
 
-Clone the repository on your computer (bitbucket page, click clone and copy/paste string in Git Bash)
+Navigate into and open the terminal in your piepy directory and create a new environment by:
 
-### 3. Environment creation ###
-
-Open Git Bash in your piepy folder.
-
-In Git Bash enter:
-
-> ```conda create -n piepy python=3.10```
+> ```uv venv --python 3.10```
 
 Then activate the newly created environment using:
 
-> ```conda activate piepy```
+In MacOS/Linux:
+ >```source .venv/bin/activate```
+
+In Windows
+
+ > ```.venv/bin/activate```
 
 ### 4. Module installation ###
 
-Open Git Bash or Terminal in your BoninBehavior directory, in Git Bash enter:
+In your piepy directory, in terminal enter:
 
-> ```pip install -e .```
+> ```uv pip install -e .```
 
 This will install the module with all the necessary dependencies and you can use various CLI commands to analyse sessions etc.(WIP)
 
+## Using example notebooks ##
+
+To run analysis on already preprocessed data to generate the figure panels navigate into `example_notebooks/manuscript`. Currently, the preproceesed experimental data is already in the repository, to be able to regenerate training related fiures (Fig. 1 and Fig. 2), you need to use the dataset published in [zenodo](https://doi.org/10.5281/zenodo.19497525).
+
+To run a full analysis you can use the other notebooks, but this assumes you have already set up the `config.json` file accordingly and you have some raw behaiorial data.
+
 ## How do I use piepy? ##
 
-> **IMPORTANT : A `config.json` file is used to point piepy to the correct data and other directories. You need to change the paths variable according to your directory structure for piepy to work!**
-
-piepy assumes some BLA for data locations for data in the bkrunch server, more specifically:
+> **IMPORTANT : A `config.json` file is used to point piepy to the behavioral data and other directories. You need to change the paths variable according to your directory structure for piepy to work!**
 
 - Stimpy .stimlog and .riglog is in :  **<path_to_dir>/presentation/_your_experiment_name_**
 - Analysed data is saved(and loaded from) : **<path_to_dir>/analysis/_your_experiment_name_**
 
-Currently, the code only works for our in-house wheel detection task and teh best way to use/tesy is through Jupyter Notebooks:
-
-![example_run](/res/run_example.gif)
+Currently, the code only works for our in-house wheel detection and discrimination tasks and the best way to use/test is through Jupyter Notebooks:
 
 ## Code Architecture ##
 

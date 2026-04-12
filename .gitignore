@@ -4,5 +4,4 @@ piepy.egg-info/*
 *.ipynb_checkpoints
 /piepy/notebooks
 /.vscode
-config.json
 piepy/.vscode
