@@ -63,24 +63,14 @@ class WheelDiscriminationRunData(RunData):
         )
 
         # add response_time columns
-        self.data = self.data.with_columns(
-            pl.col("state_response_time").alias("response_time")
-        )
+        self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
         # round sf and tf
         self.data = self.data.with_columns(
-            [
-                pl.col(_sf).round(2).alias(_sf)
-                for _sf in self.data.columns
-                if _sf.endswith("_sf")
-            ]
+            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
         )
         self.data = self.data.with_columns(
-            [
-                pl.col(_tf).round(2).alias(_tf)
-                for _tf in self.data.columns
-                if _tf.endswith("_tf")
-            ]
+            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
         )
 
     def add_stim_diff_and_type(self, discrim_of: str) -> None:
@@ -106,9 +96,7 @@ class WheelDiscriminationRunData(RunData):
         self.data = self.data.with_columns(
             pl.when(pl.col("target_side") == "contra")
             .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
-            .otherwise(
-                pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}")
-            )
+            .otherwise(pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}"))
             .alias(f"diff_{discrim_of}")
         )
 
@@ -137,13 +125,9 @@ class WheelDiscriminationRunData(RunData):
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
             # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_-1").alias("stimkey")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type") + "_-1").alias("stimkey"))
             # add stim_label for legends and stuff
-            self.data = self.data.with_columns(
-                (pl.col("stim_type")).alias("stim_label")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
             if pattern_path is not None and os.path.exists(pattern_path):
                 pattern_names = {}
@@ -161,11 +145,7 @@ class WheelDiscriminationRunData(RunData):
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
                         .map_elements(
-                            lambda x: (
-                                pattern_names[x["opto_pattern"]]
-                                if x["state_outcome"] != -1
-                                else None
-                            ),
+                            lambda x: pattern_names[x["opto_pattern"]] if x["state_outcome"] != -1 else None,
                             return_dtype=str,
                         )
                         .alias("opto_region")
@@ -179,17 +159,11 @@ class WheelDiscriminationRunData(RunData):
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (
-                    pl.col("stim_type")
-                    + "_"
-                    + pl.col("opto_pattern").cast(int).cast(str)
-                ).alias("stimkey")
+                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias("stimkey")
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
-                    "stim_label"
-                )
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias("stim_label")
             )
 
 
@@ -212,6 +186,46 @@ class WheelDiscriminationRun(Run):
         super().get_rawdata(transform_dict)
 
         self.rawdata = fix_first_line_state_logging(self.rawdata)
+
+        self.rawdata["vstim"] = self.transform_header(self.rawdata["vstim"])
+
+    def transform_header(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Changes the vstim header
+
+        Args:
+            in_df (pl.DataFrame): vstim dataframe
+
+        Returns:
+            pl.DataFrame: _description_
+        """
+        header = df.columns.copy()
+        attend_name = self.meta["opts"]["AttendVectorName"]
+        distract_name = self.meta["opts"]["DistractVectorName"]
+        if distract_name == "c":
+            distract_name = "contrast"
+
+        realtf_cols = [rc for rc in header if "realtf" in rc]
+
+        if len(realtf_cols) != 0:
+            # get all the columns with _r and _l
+            l_headers = [c for c in header if "_l" in c if "pos" not in c]
+            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
+
+            for j, head_tup in enumerate(lr_headers):
+                h_pos, h_name = head_tup
+                if h_name == "contrast":
+                    header[h_pos] = "width_l"
+                    header[h_pos + 1] = "width_r"
+                elif h_name == "tf":
+                    header[h_pos] = "contrast_l"
+                    header[h_pos + 1] = "contrast_r"
+                elif h_name == "realtf":
+                    header[h_pos] = "tf_l"
+                    header[h_pos + 1] = "tf_r"
+
+            df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
+
+            return df
 
     def analyze_run(self, discrim_of: str) -> None:
         """Main loop to extract data from rawdata, should be overwritten in child classes
@@ -300,25 +314,17 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # median response time #
     stats_dict["median_response_latency "] = round(
-        nonopto_data.filter(pl.col("outcome") == "correct")[
-            "state_response_time"
-        ].median(),
+        nonopto_data.filter(pl.col("outcome") == "correct")["state_response_time"].median(),
         3,
     )
 

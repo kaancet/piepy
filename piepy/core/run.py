@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from datetime import datetime as dt
 from os.path import exists as pexists
@@ -104,15 +105,10 @@ class RunMeta:
         opts, params, _ = parse_protocol(prot_path)
 
         # get the level if exists
-        lvl = ""
         if prot_path.find("level") != -1:
-            tmp = prot_path[prot_path.find("level") + len("level") :]
-            for char in tmp:
-                if char not in [".", "_"]:
-                    lvl += char
-                else:
-                    break
-            lvl = int(lvl)
+            match = re.search(r"level(\d+)", prot_path)
+            if match:
+                lvl = int(match.group(1))
         else:
             lvl = None  # should be experiments
         prot_dict["level"] = lvl
@@ -140,29 +136,29 @@ class RunMeta:
         """
         return parse_preference(pref_path)
 
-    @staticmethod
-    def get_run_weight_and_water(animalid: str, baredate: str) -> dict:
-        """Gets the session weight from google sheet
+    # @staticmethod
+    # def get_run_weight_and_water(animalid: str, baredate: str) -> dict:
+    #     """Gets the session weight from google sheet
 
-        Args:
-            animalid: Id of the animal (KC133)
-            baredate: The date of the experiment as abare string (231108)
+    #     Args:
+    #         animalid: Id of the animal (KC133)
+    #         baredate: The date of the experiment as abare string (231108)
 
-        Returns:
-            dict: google sheet data as a dict
-        """
-        logsheet = GSheet("Mouse Database_new")
-        gsheet_df = logsheet.read_sheet(2)
-        gsheet_df = gsheet_df[(gsheet_df["Mouse ID"] == animalid) & (gsheet_df["Date [YYMMDD]"] == int(baredate))]
-        _gsheet_dict = {}
-        if not gsheet_df.empty:
-            gsheet_df.reset_index(inplace=True)
-            _gsheet_dict["weight"] = gsheet_df["weight [g]"].iloc[0]
-            try:
-                _gsheet_dict["water_consumed"] = int(gsheet_df["rig water [µl]"].iloc[0])
-            except Exception:
-                _gsheet_dict["water_consumed"] = None
-        return _gsheet_dict
+    #     Returns:
+    #         dict: google sheet data as a dict
+    #     """
+    #     logsheet = GSheet("Mouse Database_new")
+    #     gsheet_df = logsheet.read_sheet(2)
+    #     gsheet_df = gsheet_df[(gsheet_df["Mouse ID"] == animalid) & (gsheet_df["Date [YYMMDD]"] == int(baredate))]
+    #     _gsheet_dict = {}
+    #     if not gsheet_df.empty:
+    #         gsheet_df.reset_index(inplace=True)
+    #         _gsheet_dict["weight"] = gsheet_df["weight [g]"].iloc[0]
+    #         try:
+    #             _gsheet_dict["water_consumed"] = int(gsheet_df["rig water [µl]"].iloc[0])
+    #         except Exception:
+    #             _gsheet_dict["water_consumed"] = None
+    #     return _gsheet_dict
 
 
 class RunData:
