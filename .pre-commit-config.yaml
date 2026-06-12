@@ -1,9 +1,23 @@
+# Hooks run only on changed files, so this does NOT reformat the whole repo at
+# once - files get tidied as you touch them during the refactor.
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v5.0.0
     hooks:
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
+    -   id: check-yaml
+    -   id: check-toml
+    -   id: check-merge-conflict
+    -   id: check-added-large-files
+        args: ["--maxkb=1024"]
+# ruff = linter only (unused imports, undefined names, ...). Formatting stays
+# with black below, so the two never fight over layout.
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.0
+    hooks:
+    -   id: ruff
+        args: ["--fix"]
 -   repo: https://github.com/psf/black
     rev: 24.4.2
     hooks:

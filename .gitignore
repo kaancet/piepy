@@ -9,3 +9,11 @@ piepy.egg-info/*
 config.json
 piepy/.vscode
 /.tach
+
+# environments / tooling
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# local golden-master snapshots (regenerate with: pytest --update-golden)
+tests/_snapshots/

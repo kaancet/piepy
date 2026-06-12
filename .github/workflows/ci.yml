@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main, big-refactor]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project (test extra)
+        run: uv pip install --system -e ".[test]"
+
+      # Lint scope is intentionally limited to new code (tests/) for now; the
+      # full-repo lint cleanup is a separate task in docs/refactor_plan.md.
+      - name: Lint tests
+        run: |
+          ruff check tests
+          black --check --line-length 90 tests
+
+      # Golden parse tests need local session data and are excluded here.
+      - name: Run data-free tests
+        run: pytest -m "not needs_data" -v

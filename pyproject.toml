@@ -10,6 +10,8 @@ keywords = ["neuroscience","psychophysics", "imaging", "analysis"]
 
 classifiers = [
   "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
   "Natural Language :: English",
   "Operating System :: OS Independent",
@@ -19,15 +21,15 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy == 1.24.0",
-    "matplotlib == 3.9.0",
+    "numpy == 2.2.6",
+    "matplotlib == 3.10.0",
     "patito ~= 0.8.3",
     "polars ~= 1.19.0",
-    "pyarrow == 13.0.0",
+    "pyarrow",
     "tqdm == 4.65.1",
     "bokeh",
     "scipy",
-    "pandas",
+    "pandas <3",  # pinned: pandas 3.0 changes runtime behavior; revisit as its own task
     "colorama",
     "pillow",
     "opencv-python",
@@ -46,7 +48,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pre-commit", "jupyter"]
+test = ["pytest >=8", "ruff >=0.6", "black >=24"]
+dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6", "black >=24"]
 
 
 [project.scripts]
@@ -63,4 +66,25 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["piepy*"]
-exclude = ["notebooks*", "res*", "build*", "*.egg-info*"]
+exclude = ["notebooks*", "res*", "build*", "*.egg-info*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "needs_data: requires real session data resolved via ~/.piepy/config.json (skipped when absent)",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 90  # match black
+
+[tool.ruff.lint]
+# Lenient on purpose for now; full-repo lint cleanup is a separate task.
+# black owns line length, so E501 is ignored here.
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 90
+target-version = ["py312"]

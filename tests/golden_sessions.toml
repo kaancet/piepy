@@ -1,0 +1,18 @@
+# Canonical sessions for the golden-master parse tests.
+#
+# Sessions are resolved through ~/.piepy/config.json (the presentation/training
+# dirs), so they must exist locally on the machine running the tests. When a
+# session is not present, the corresponding test is SKIPPED (never failed), so
+# this suite is safe to run in CI or on a fresh checkout.
+#
+# Add a session by appending another [[<paradigm>]] table. Supported paradigms
+# are the keys in PARADIGMS in tests/conftest.py.
+
+[[detection]]
+session = "230106_KC144_detect__no_cam_KC"          # simple: single run, no camera
+
+[[detection]]
+session = "240312_KC147_detect_opto120_V1__1P_KC"   # opto + 1P imaging path
+
+[[discrimination]]
+session = "250217_VB101_discrim_opto120_V1__no_cam_VO"
