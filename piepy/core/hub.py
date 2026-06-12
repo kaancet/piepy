@@ -11,6 +11,7 @@ from os.path import dirname, abspath, normpath, join
 from .io import display
 from .utils import clean_string
 from .config import config as cfg
+from .schema import align_and_concat
 
 
 class TaskHub:
@@ -187,37 +188,37 @@ class TaskHub:
         with Pool(processes=cfg.multiprocess["cores"]) as pool:
             _list_data = pool.map(self._get_session, session_list)
 
-        # concat everything on the list
-        data = _list_data[0]
-        for df2 in _list_data[1:]:
-            if not len(df2.columns):
-                continue
-            df2 = df2.select(data.columns)
-            if data.dtypes != df2.dtypes:
-                data = data.with_columns(
-                    [
-                        pl.col(n).cast(t)
-                        for n, t in zip(data.columns, df2.dtypes)
-                        if t != pl.Null
-                    ]
-                )
-
-            data = pl.concat([data, df2])
-
-        data = data.sort(
-            ["date", "animalid", "run_no"],
-            descending=[False, False, False],
-        )
-
-        # make reorder column list
-        reorder = ["total_trial_no"] + data.columns
-        # in the end add a final all trial count column
-        data = data.with_columns(
-            pl.Series(name="total_trial_no", values=list(range(1, len(data) + 1)))
-        )
-        # reorder
-        self.data = data.select(reorder)
+        self.data = self._combine_session_data(_list_data)
         return self.data
+
+    @staticmethod
+    def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
+        """Aligns and stacks the per-session frames into the cumulative hub table.
+
+        Uses the single tested ``align_and_concat`` path (schema-aligned, null-filling,
+        supertype-coercing) instead of the previous hand-rolled dtype-reconciliation loop,
+        then sorts and prepends a cumulative ``total_trial_no``.
+
+        Args:
+            frames: one DataFrame per session (empty/None frames are dropped by the concat).
+
+        Returns:
+            pl.DataFrame: the combined, sorted, trial-numbered table (empty if nothing valid).
+        """
+        data = align_and_concat(frames)
+        if data.is_empty():
+            return data
+
+        sort_cols = [c for c in ("date", "animalid", "run_no") if c in data.columns]
+        if sort_cols:
+            data = data.sort(sort_cols)
+
+        data = data.with_columns(
+            pl.int_range(1, data.height + 1, dtype=pl.Int64).alias("total_trial_no")
+        )
+        return data.select(
+            ["total_trial_no", *(c for c in data.columns if c != "total_trial_no")]
+        )
 
     def save(self, saveloc: str = None) -> None:
         """Saves the parsed data

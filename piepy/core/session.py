@@ -1,13 +1,14 @@
-from .run import RunMeta, Run
+import polars as pl
+
+from .run import Run
 from .utils import timeit
 
 from .pathfinder import Paths, PathFinder
+from .schema import attach_run_identity, concat_session_runs
 
 
 class Session:
-    def __init__(
-        self, sessiondir: str, load_flag: bool = False, save_mat: bool = False
-    ):
+    def __init__(self, sessiondir: str, load_flag: bool = False, save_mat: bool = False):
         """A base Session object, reads and aggregates the recorded data which can then be used in user specific
         analysis pipelines
 
@@ -39,6 +40,44 @@ class Session:
             _run = Run(_path)
             _run.set_meta(skip_google)
             self.runs.append(_run)
+
+    def concatenate_runs(self, paradigm: str | None = None) -> pl.DataFrame:
+        """Concatenate this session's runs into one trial table on a session-wide clock.
+
+        Additive: this does NOT modify the per-run data and writes nothing to disk. The
+        returned DataFrame carries the canonical identity columns (``session_uid``,
+        ``run_uid``, ``run_no``, ``paradigm``, ...), a session clock (``run_time_offset``
+        plus ``*_session`` copies of every absolute-time column, originals untouched), and
+        a cumulative ``session_trial_no``.
+
+        Args:
+            paradigm: paradigm label stamped on every row. Falls back to ``self.paradigm``
+                if that attribute exists, otherwise ``None``.
+
+        Returns:
+            pl.DataFrame: the concatenated session trial table (empty if no runs have data).
+        """
+        if not self.runs:
+            raise ValueError("No runs to concatenate; call init_session_runs() first.")
+
+        paradigm = paradigm if paradigm is not None else getattr(self, "paradigm", None)
+
+        frames = []
+        for run_no, run in enumerate(self.runs, start=1):
+            data = run.data.data if run.data is not None else None
+            if data is None:
+                continue
+            meta = run.meta or {}
+            frames.append(
+                attach_run_identity(
+                    data,
+                    sessiondir=self.sessiondir,
+                    run_no=run_no,
+                    run_name=meta.get("run_name", f"run{run_no}"),
+                    paradigm=paradigm,
+                )
+            )
+        return concat_session_runs(frames)
 
     @timeit("Saving...")
     def save_session(self) -> None:

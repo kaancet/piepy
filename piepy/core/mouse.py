@@ -16,6 +16,7 @@ from ..core.config import config as cfg
 from .utils import timeit
 from .io import display
 from .gsheet_functions import GSheet
+from .schema import align_and_concat
 
 
 class MouseMeta:
@@ -34,63 +35,25 @@ class MouseData:
 
     def append(self, cumul_data_list: list, summary_data_list: list) -> None:
         """Appends new data to the existing data"""
-        assert len(cumul_data_list) == len(summary_data_list["date"]), (
-            "Cumulative and summary data has to be the same length!!"
-        )
+        assert len(cumul_data_list) == len(
+            summary_data_list["date"]
+        ), "Cumulative and summary data has to be the same length!!"
 
+        # summary: append the new summary rows onto whatever we already have
         tmp = pl.DataFrame(summary_data_list)
-        if self.summary_data is not None:
-            if self.summary_data.dtypes != tmp.dtypes:
-                self.summary_data = self.summary_data.with_columns(
-                    [
-                        pl.col(n).cast(t, strict=False)
-                        for n, t in zip(self.summary_data.columns, tmp.dtypes)
-                        if t != pl.Null
-                    ]
-                )
-            self.summary_data = pl.concat([self.summary_data, tmp])
-        else:
-            self.summary_data = tmp
+        self.summary_data = align_and_concat([self.summary_data, tmp])
 
-        if self.cumul_data is None:
-            # if no cumulative data exists, make one from the first in list and iterate over the rest
-            self.cumul_data = cumul_data_list[0]
-            cumul_data_list = cumul_data_list[1:]
-
-        if "cumul_trial_no" in self.cumul_data.columns:
-            self.cumul_data = self.cumul_data.drop("cumul_trial_no")
-
-        for new_cumul in cumul_data_list:
-            # if there are columns that are not in df add them with None
-            for c in new_cumul.columns:
-                if c not in self.cumul_data.columns:
-                    self.cumul_data = self.cumul_data.with_columns(
-                        pl.lit(None).alias(c)
-                    )
-
-            # sorting the columns
-            new_cumul = new_cumul.select(self.cumul_data.columns)
-            # fixing column datatypes
-            if self.cumul_data.dtypes != new_cumul.dtypes:
-                try:
-                    self.cumul_data = self.cumul_data.with_columns(
-                        [
-                            pl.col(n).cast(t)
-                            for n, t in zip(self.cumul_data.columns, new_cumul.dtypes)
-                            if t != pl.Null
-                        ]
-                    )
-                except:
-                    print("jlsdiobjsdf")
-            try:
-                self.cumul_data = pl.concat([self.cumul_data, new_cumul])
-            except pl.SchemaError:
-                raise pl.SchemaError("WEIRDNESS WITH COLUMNS")
+        # cumulative: drop the derived running counter (re-added below), then align + stack
+        # all incoming session frames in one schema-aligned pass
+        cumul_existing = self.cumul_data
+        if cumul_existing is not None and "cumul_trial_no" in cumul_existing.columns:
+            cumul_existing = cumul_existing.drop("cumul_trial_no")
+        self.cumul_data = align_and_concat([cumul_existing, *cumul_data_list])
 
         # sort both by date
         self.cumul_data = self.cumul_data.sort(["date", "trial_no"])
         self.summary_data = self.summary_data.sort("date")
-        self.cumul_data = self.cumul_data.with_row_count("cumul_trial_no", offset=1)
+        self.cumul_data = self.cumul_data.with_row_index("cumul_trial_no", offset=1)
 
     def save(self, save_path: str) -> None:
         """Saves the data in the given location"""
@@ -194,9 +157,9 @@ class Mouse:
             # add current day as end date
             date_interval.append(dt.today().strftime("%y%m%d"))
         elif isinstance(date_interval, list):
-            assert len(date_interval) <= 2, (
-                f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
-            )
+            assert (
+                len(date_interval) <= 2
+            ), f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
             if len(date_interval) == 1:
                 date_interval.append(dt.today().strftime("%y%m%d"))
         else:
@@ -317,9 +280,7 @@ class Mouse:
         self.faulty_sessions = []
         for i, row in enumerate(missing_sessions.iter_rows()):
             # last_saved will not enter here as missing sessions will be []
-            pbar.set_description(
-                f"Analyzing {row[1]} [{i + 1}/{len(missing_sessions)}]"
-            )
+            pbar.set_description(f"Analyzing {row[1]} [{i + 1}/{len(missing_sessions)}]")
 
             if load_type == "no_load":
                 _single_session = self.session_parser(
@@ -511,7 +472,9 @@ class Mouse:
                     reverse_session_list["sessiondir"].to_numpy() == self.saved_dir
                 )[0][0]
                 missing_sessions = reverse_session_list[:_until]
-                missing_sessions = missing_sessions.reverse()  # reverse again to have sessions added from old to new(chronological order)
+                missing_sessions = (
+                    missing_sessions.reverse()
+                )  # reverse again to have sessions added from old to new(chronological order)
                 display(
                     f"Adding {len(missing_sessions)} missing sessions to last analysis data",
                     color="cyan",
@@ -571,9 +534,7 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Mouse Behavior Data Parsing Tool")
 
-    parser.add_argument(
-        "id", metavar="animalid", type=str, help="Animal ID (e.g. KC133)"
-    )
+    parser.add_argument("id", metavar="animalid", type=str, help="Animal ID (e.g. KC133)")
     parser.add_argument(
         "-p",
         "--paradigm",
@@ -581,9 +542,7 @@ def main():
         type=str,
         help="Behavior paradigm(e.g. detection)",
     )
-    parser.add_argument(
-        "-l", "--load", metavar="load_type", type=str, help=load_help_str
-    )
+    parser.add_argument("-l", "--load", metavar="load_type", type=str, help=load_help_str)
 
     def date_parser(arg) -> list:
         return arg.split(",")

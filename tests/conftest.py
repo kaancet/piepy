@@ -66,9 +66,11 @@ def build_session(paradigm: str, session_dir: str):
     session_cls = getattr(importlib.import_module(mod_name), cls_name)
     try:
         return session_cls(session_dir, load_flag=False, skip_google=True)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, FileExistsError) as exc:
+        # not found locally, or present in >1 location (a Phase-2 pathfinder limitation):
+        # either way the session can't be resolved here, so skip rather than fail.
         raise SessionUnavailable(
-            f"{paradigm} session {session_dir!r} not available locally: {exc}"
+            f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
         ) from exc
 
 
