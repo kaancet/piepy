@@ -5,7 +5,6 @@ import argparse
 import importlib
 import numpy as np
 import polars as pl
-import pandas as pd
 from tqdm import tqdm
 from os.path import join as pjoin
 from collections import namedtuple
@@ -15,7 +14,6 @@ from os.path import dirname, abspath, normpath
 from ..core.config import config as cfg
 from .utils import timeit
 from .io import display
-from .gsheet_functions import GSheet
 from .schema import align_and_concat
 
 
@@ -132,7 +130,6 @@ class Mouse:
         if dateinterval is not None:
             self.filter_dates(dateinterval)
 
-        self.read_googlesheet()
         self.load_modes = ["no_load", "reanalyze", "load_and_add", "last_saved"]
 
     def set_paradigm(self, paradigm: str) -> None:
@@ -183,8 +180,7 @@ class Mouse:
         config = {
             n: p
             for n, p in paths.items()
-            if n
-            in ["analysis", "presentation", "training", "gsheet", "colors", "database"]
+            if n in ["analysis", "presentation", "training", "colors", "database"]
         }
         tmp_dict = {name: path[0] for name, path in config.items()}
         tmp_paths = namedtuple("Paths", list(tmp_dict.keys()))
@@ -283,27 +279,13 @@ class Mouse:
             pbar.set_description(f"Analyzing {row[1]} [{i + 1}/{len(missing_sessions)}]")
 
             if load_type == "no_load":
-                _single_session = self.session_parser(
-                    row[1], load_flag=False, skip_google=True
-                )
+                _single_session = self.session_parser(row[1], load_flag=False)
             else:
                 # reanalyze load type should enter here
-                _single_session = self.session_parser(
-                    row[1], load_flag=True, skip_google=True
-                )
+                _single_session = self.session_parser(row[1], load_flag=True)
 
             if True:
                 session_data = _single_session.data.data
-                gsheet_dict = self.get_gsheet_row(
-                    _single_session.meta.baredate,
-                    cols=[
-                        "paradigm",
-                        "supp water [µl]",
-                        "user",
-                        "time [hh:mm]",
-                        "rig water [µl]",
-                    ],
-                )
 
                 if len(session_data):
                     # add behavior related fields as a dictiionary
@@ -325,12 +307,10 @@ class Mouse:
                         summary_temp[k] = v
 
                     # put values from session meta data
-                    summary_temp["weight"] = meta.weight
                     summary_temp["task"] = meta.controller
                     summary_temp["sf"] = meta.sf_values
                     summary_temp["tf"] = meta.tf_values
                     summary_temp["rig"] = meta.rig
-                    summary_temp = {**summary_temp, **gsheet_dict}
 
                     session_data = session_data.with_columns(
                         [
@@ -357,45 +337,6 @@ class Mouse:
         if len(summary_to_append):
             self.data.append(cumul_to_append, summary_to_append)
             display("Appended new data!", color="cyan")
-
-    # TODO:
-    def get_gsheet_row(self, date: str, cols: list = None) -> pl.DataFrame:
-        sheet_stats = {}
-        if cols is None:
-            cols = ["weight [g]", "supp water [µl]", "user", "time [hh:mm]"]
-        # current date data
-        row = self.gsheet_df[self.gsheet_df["Date [YYMMDD]"] == date]
-        for c in cols:
-            key = c.split("[")[0].strip(" ")  # get rid of units in column names
-            if len(row):
-                sheet_stats[key] = row[c].values[0]
-            else:
-                sheet_stats[key] = None
-        return sheet_stats
-
-    # TODO:
-    def read_googlesheet(self) -> None:
-        """Reads all the entries from the googlesheet with the current animal id"""
-        logsheet = GSheet("Mouse Database_new")
-        # below, 2 is the log2021 sheet ID
-        temp_df = logsheet.read_sheet(2)
-
-        temp_df = temp_df[temp_df["Mouse ID"] == self.animalid]
-
-        # convert decimal "," to "." and date string to datetime and drop na
-        temp_df["weight [g]"] = temp_df["weight [g]"].apply(
-            lambda x: str(x).replace(",", ".")
-        )
-        temp_df["weight [g]"] = pd.to_numeric(temp_df["weight [g]"], errors="coerce")
-        temp_df["supp water [µl]"] = pd.to_numeric(
-            temp_df["supp water [µl]"], errors="coerce"
-        ).fillna(0)
-
-        temp_df["Date [YYMMDD]"] = temp_df["Date [YYMMDD]"].apply(lambda x: str(x))
-        temp_df["Date_dt"] = pd.to_datetime(temp_df["Date [YYMMDD]"], format="%y%m%d")
-
-        self.gsheet_df = temp_df
-        # self.gsheet_df = pl.from_pandas(data=temp_df)
 
     def save(self) -> None:
         """Saves the behavior data"""

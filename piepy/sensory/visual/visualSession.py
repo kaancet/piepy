@@ -2,11 +2,10 @@ import time
 import polars as pl
 from ...core.io import display
 from ...core.run import Run, RunData, RunMeta
-from ...core.pathfinder import Paths
 from ...core.session import Session
+from ...core.paths import RunArtifacts as Paths
 from ...core.log_repair_functions import extract_trial_count, add_total_iStim
 from .visualTrial import VisualTrialHandler
-
 
 STATE_TRANSITION_KEYS = {
     "0->1": "trialstart",
@@ -78,20 +77,16 @@ class VisualSession(Session):
         end = time.time()
         display(f"Done! t={(end - start):.2f} s")
 
-    def init_session_runs(self, skip_google=True):
-        """Initializes runs in a session
-
-        Args:
-            skip_google (bool, optional): Whether to skip reading data from google sheet. Defaults to True.
-        """
+    def init_session_runs(self):
+        """Initializes runs in a session"""
         for r in range(self.run_count):
-            _path = Paths(self.paths.all_paths, r)
+            _path = self.manifest.runs[r]
             # meta data
-            _meta = RunMeta.get_meta(_path, skip_google)
+            _meta = RunMeta.get_meta(_path)
 
             # the run itself
             _run = VisualRun(_path)
-            _run.set_meta(skip_google)
+            _run.set_meta()
             if _run.is_run_saved() and self.load_flag:
                 display(f"Loading from {_run.paths.save}")
                 _run.load_run()

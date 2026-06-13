@@ -76,12 +76,6 @@ def test_combine_session_data_coerces_supertype():
 # MouseData.append
 # --------------------------------------------------------------------------- #
 def test_mousedata_append_accumulates_and_unions():
-    # piepy.core.mouse -> gsheet_functions reads cfg.paths["gsheet"] at import time (a
-    # pre-existing bug, unrelated to MouseData.append). Inject a dummy key so we can import
-    # and exercise the concat refactor; append() itself never touches google sheets.
-    from piepy.core.config import config
-
-    config.paths.setdefault("gsheet", ["__unused_in_tests__"])
     from piepy.core.mouse import MouseData
 
     md = MouseData()

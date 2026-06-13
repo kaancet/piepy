@@ -11,10 +11,9 @@ from scipy.optimize import curve_fit
 
 from ....core.io import display, load_json_dict, save_dict_json
 from ....core.run import RunData, Run
-from ....core.pathfinder import Paths
 from ....core.session import Session
+from ....core.paths import RunArtifacts as Paths
 from .wheelDetectionTrial import WheelDetectionTrialHandler
-
 
 STATE_TRANSITION_KEYS = {
     "0->1": "trialstart",
@@ -179,9 +178,7 @@ class WheelDetectionRunData(RunData):
                 (pl.col("stim_type") + "_-1").alias("stimkey")
             )
             # add stim_label for legends and stuff
-            self.data = self.data.with_columns(
-                (pl.col("stim_type")).alias("stim_label")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
             if pattern_path is not None and os.path.exists(pattern_path):
                 pattern_names = {}
@@ -218,9 +215,7 @@ class WheelDetectionRunData(RunData):
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
                 (
-                    pl.col("stim_type")
-                    + "_"
-                    + pl.col("opto_pattern").cast(int).cast(str)
+                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
                 ).alias("stimkey")
             )
             # add stim_label for legends and stuff
@@ -313,13 +308,12 @@ class WheelDetectionSession(Session):
         sessiondir: str,
         load_flag: bool,
         save_mat: bool = False,
-        skip_google: bool = True,
     ):
         start = time.time()
         super().__init__(sessiondir, load_flag, save_mat)
 
         # initialize runs : read and parse or load the data
-        self.init_session_runs(skip_google)
+        self.init_session_runs()
 
         end = time.time()
         display(f"Done! t={(end - start):.2f} s")
@@ -328,17 +322,13 @@ class WheelDetectionSession(Session):
         r = f"Detection Session {self.sessiondir}"
         return r
 
-    def init_session_runs(self, skip_google: bool = True) -> None:
-        """Initializes runs in a session
-
-        Args:
-            skip_google (bool, optional): Whether to skip reading data from google sheet. Defaults to True.
-        """
+    def init_session_runs(self) -> None:
+        """Initializes runs in a session"""
         for r in range(self.run_count):
-            _path = Paths(self.paths.all_paths, r)
+            _path = self.manifest.runs[r]
             # the run itself
             _run = WheelDetectionRun(_path)
-            _run.set_meta(skip_google)
+            _run.set_meta()
             _run.get_rawdata(STATE_TRANSITION_KEYS)
             if _run.is_run_saved() and self.load_flag:
                 display(f"Loading from {_run.paths.save}")
@@ -425,9 +415,7 @@ def get_run_stats(data: pl.DataFrame) -> dict:
             100 * easy_correct_count / stats_dict["easy_trial_count"], 3
         )
         stats_dict["easy_median_response_time"] = round(
-            easy_data.filter(pl.col("outcome") == "hit")[
-                "state_response_time"
-            ].median(),
+            easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
             3,
         )
         stats_dict["easy_median_reaction_time"] = round(

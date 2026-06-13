@@ -3,7 +3,7 @@ import patito as pt
 import numpy as np
 from typing import Literal
 
-from ....core.exceptions import StateMachineError, VstimLoggingError  # noqa: F401
+from ....core.errors import StateMachineError, VstimLoggingError  # noqa: F401
 from ....core.utils import unique_except
 from ....sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from ...psychophysicalTrial import PsychophysicalTrial, PsychophysicalTrialHandler

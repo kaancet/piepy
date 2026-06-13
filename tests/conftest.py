@@ -62,13 +62,14 @@ def build_session(paradigm: str, session_dir: str):
     """Construct the Session for ``paradigm`` (forces a fresh re-parse)."""
     if paradigm not in PARADIGMS:
         raise ValueError(f"Unknown paradigm {paradigm!r}; known: {sorted(PARADIGMS)}")
+    from piepy.core.errors import PathfindingError
+
     mod_name, cls_name = PARADIGMS[paradigm]
     session_cls = getattr(importlib.import_module(mod_name), cls_name)
     try:
-        return session_cls(session_dir, load_flag=False, skip_google=True)
-    except (FileNotFoundError, FileExistsError) as exc:
-        # not found locally, or present in >1 location (a Phase-2 pathfinder limitation):
-        # either way the session can't be resolved here, so skip rather than fail.
+        return session_cls(session_dir, load_flag=False)
+    except (FileNotFoundError, PathfindingError) as exc:
+        # not found locally, ambiguous, or malformed -> can't resolve here, so skip not fail.
         raise SessionUnavailable(
             f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
         ) from exc

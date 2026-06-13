@@ -3,7 +3,7 @@ import polars as pl
 from .run import Run
 from .utils import timeit
 
-from .pathfinder import Paths, PathFinder
+from .paths import SessionLocator
 from .schema import attach_run_identity, concat_session_runs
 
 
@@ -23,22 +23,15 @@ class Session:
         self.save_mat = save_mat
         self.runs = []
 
-        # find relevant data paths
-        self.paths = PathFinder(self.sessiondir)
+        # resolve the session and its runs (raises a structured pathfinding error on failure)
+        self.manifest = SessionLocator().locate(self.sessiondir)
+        self.run_count = self.manifest.run_count
 
-        # look at run count
-        self.run_count = len(self.paths.all_paths["stimlog"])
-
-    def init_session_runs(self, skip_google: bool = True) -> None:
-        """Initializes runs in a session, to be overwritten by other Session types(e.g. WheelDetectionSession)
-
-        Args:
-            skip_google (bool): Flag to skip parsing google sheets
-        """
-        for r in range(self.run_count):
-            _path = Paths(self.paths.all_paths, r)
-            _run = Run(_path)
-            _run.set_meta(skip_google)
+    def init_session_runs(self) -> None:
+        """Initializes runs in a session, to be overwritten by other Session types(e.g. WheelDetectionSession)"""
+        for run_paths in self.manifest.runs:
+            _run = Run(run_paths)
+            _run.set_meta()
             self.runs.append(_run)
 
     def concatenate_runs(self, paradigm: str | None = None) -> pl.DataFrame:

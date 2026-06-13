@@ -11,9 +11,8 @@ import polars as pl
 import scipy.io as sio
 from tqdm import tqdm
 
-# from .gsheet_functions import GSheet
 from .config import config
-from .exceptions import StateMachineError, WrongSessionTypeError
+from .errors import StateMachineError, WrongSessionTypeError
 from .io import display
 from .parsers import (
     parse_labcams_log,
@@ -28,7 +27,8 @@ from .log_repair_functions import (
     stitch_logs,
     extrapolate_time,
 )
-from .pathfinder import Paths
+from .paths import RunArtifacts as Paths
+from .paths import parse_session_name
 from .trial import TrialHandler
 
 STATE_TRANSITION_KEYS = {}
@@ -39,16 +39,16 @@ class RunMeta:
         pass
 
     @classmethod
-    def get_meta(cls, path: Paths, skip_google: bool = True) -> dict:
+    def get_meta(cls, path: Paths) -> dict:
         """A wrapper function that calls
 
         Args:
             path: Paths object that has the
-            skip_google: Flag to skip parsing google sheets
 
         Returns:
             dict: metadata as a dict
         """
+        # derive the session dir name by walking up past any run<NN> component of the prot path
         _temp = path.prot.split(os.sep)
         _cntr = -1
         while True:
@@ -57,38 +57,21 @@ class RunMeta:
                 break
             _cntr -= 1
 
-        _general = {}
-        _general["sessiondir"] = sessiondir
-
-        _temp = sessiondir.split("_")
-        # get date
-        _general["baredate"] = _temp[0]
-        _general["date"] = dt.strptime(_general["baredate"], "%y%m%d").date()
-        _general["nicedate"] = dt.strftime(_general["date"], "%d %b %y")
-
-        # get animalid
-        _general["animalid"] = _temp[1]
-
-        # get userid
-        _general["user_id"] = _temp[-1]
-
-        # from google sheet
-        _waw = {}
-        if not skip_google:
-            _waw = cls.get_run_weight_and_water(animalid=_general["animalid"], baredate=_general["baredate"])
-
-        # imagingmode
-        imaging_mode = _temp[-2]
-        if imaging_mode == "cam":
-            # because "_no_cam also gets parsed here..."
-            imaging_mode = None
-        elif imaging_mode not in ["1P", "2P"]:
-            raise ValueError(f"Parsed {imaging_mode} as imaging mode, this is not possible, check the session_name!!")
-        _general["imaging_mode"] = imaging_mode
+        # identity fields come from the pluggable session-name parser (not positional split)
+        parsed = parse_session_name(sessiondir)
+        _general = {
+            "sessiondir": sessiondir,
+            "baredate": parsed.baredate,
+            "date": parsed.date,
+            "nicedate": dt.strftime(parsed.date, "%d %b %y"),
+            "animalid": parsed.animalid,
+            "user_id": parsed.extra.get("user"),
+            "imaging_mode": parsed.extra.get("imaging"),
+        }
 
         _prot = cls.get_prot(path.prot)
         _pref = cls.get_pref(path.prefs)
-        return {**_general, **_waw, **_prot, **_pref}
+        return {**_general, **_prot, **_pref}
 
     @staticmethod
     def get_prot(prot_path: str) -> dict:
@@ -136,30 +119,6 @@ class RunMeta:
         """
         return parse_preference(pref_path)
 
-    # @staticmethod
-    # def get_run_weight_and_water(animalid: str, baredate: str) -> dict:
-    #     """Gets the session weight from google sheet
-
-    #     Args:
-    #         animalid: Id of the animal (KC133)
-    #         baredate: The date of the experiment as abare string (231108)
-
-    #     Returns:
-    #         dict: google sheet data as a dict
-    #     """
-    #     logsheet = GSheet("Mouse Database_new")
-    #     gsheet_df = logsheet.read_sheet(2)
-    #     gsheet_df = gsheet_df[(gsheet_df["Mouse ID"] == animalid) & (gsheet_df["Date [YYMMDD]"] == int(baredate))]
-    #     _gsheet_dict = {}
-    #     if not gsheet_df.empty:
-    #         gsheet_df.reset_index(inplace=True)
-    #         _gsheet_dict["weight"] = gsheet_df["weight [g]"].iloc[0]
-    #         try:
-    #             _gsheet_dict["water_consumed"] = int(gsheet_df["rig water [µl]"].iloc[0])
-    #         except Exception:
-    #             _gsheet_dict["water_consumed"] = None
-    #     return _gsheet_dict
-
 
 class RunData:
     def __init__(self, data: pl.DataFrame = None) -> None:
@@ -189,7 +148,10 @@ class RunData:
 
         # datetime date
         self.data = self.data.with_columns(
-            pl.col("baredate").str.strptime(pl.Date, format="%y%m%d").cast(pl.Date).alias("date")
+            pl.col("baredate")
+            .str.strptime(pl.Date, format="%y%m%d")
+            .cast(pl.Date)
+            .alias("date")
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
@@ -247,13 +209,9 @@ class Run:
             _dat = f" - {len(self.data.data)} trials"
         return f"{_controller}{_dat}"
 
-    def set_meta(self, skip_google: bool = True) -> None:
-        """Sets the run meta
-
-        Args:
-            skip_google (bool, optional): Flag to skip parsing google sheets. Defaults to True
-        """
-        self.meta = RunMeta().get_meta(self.paths, skip_google=skip_google)
+    def set_meta(self) -> None:
+        """Sets the run meta"""
+        self.meta = RunMeta().get_meta(self.paths)
 
     def create_save_paths(self) -> None:
         """Creates save paths"""
@@ -317,7 +275,9 @@ class Run:
         )
 
     @staticmethod
-    def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:
+    def read_combine_logs(
+        stimlog_path: str | list[str], riglog_path: str | list[str]
+    ) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
@@ -328,9 +288,9 @@ class Run:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(riglog_path), (
-                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
-            )
+            assert len(stimlog_path) == len(
+                riglog_path
+            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
 
             stim_data_all = []
             rig_data_all = []
@@ -361,7 +321,9 @@ class Run:
     def read_run_data(self) -> None:
         """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
-        rawdata, self.comments = self.read_combine_logs(self.paths.stimlog, self.paths.riglog)
+        rawdata, self.comments = self.read_combine_logs(
+            self.paths.stimlog, self.paths.riglog
+        )
         self.rawdata = extrapolate_time(rawdata)
 
         # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry:
@@ -370,14 +332,20 @@ class Run:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(self.paths.onepcamlog)
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
+                self.paths.onepcamlog
+            )
 
         # try eyecam and facecam either way
         if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(self.paths.eyecamlog)
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
+                self.paths.eyecamlog
+            )
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(self.paths.facecamlog)
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
+                self.paths.facecamlog
+            )
 
         display("Read rawdata")
 
@@ -426,7 +394,9 @@ class Run:
             )
 
         # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename({"cycle": "trialNo"})
+        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
+            {"cycle": "trialNo"}
+        )
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists

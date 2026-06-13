@@ -2,7 +2,7 @@ import numpy as np
 import polars as pl
 import patito as pt
 from typing import Any, Literal
-from .exceptions import StateMachineError
+from .errors import StateMachineError
 
 
 class Trial(pt.Model):

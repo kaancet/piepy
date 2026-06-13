@@ -3,7 +3,7 @@ import patito as pt
 from ...core.io import display
 from ...core.utils import nonan_unique
 from ...core.trial import Trial, TrialHandler
-from ...core.exceptions import ScreenPulseError
+from ...core.errors import ScreenPulseError
 
 
 class VisualTrial(Trial):

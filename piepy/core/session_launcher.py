@@ -61,14 +61,7 @@ def main():
     else:
         raise ModuleNotFoundError(f"No module found at {mod_path}")
 
-    if opts.load:
-        skip_google = True
-    else:
-        skip_google = False
-
-    session_parser(
-        sessiondir=opts.sessiondir, load_flag=opts.load, skip_google=skip_google
-    )
+    session_parser(sessiondir=opts.sessiondir, load_flag=opts.load)
 
 
 if __name__ == "__main__":

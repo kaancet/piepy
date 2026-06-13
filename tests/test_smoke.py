@@ -14,15 +14,14 @@ import pytest
 CORE_MODULES = [
     "piepy",
     "piepy.core.config",
-    "piepy.core.pathfinder",
     "piepy.core.run",
     "piepy.core.session",
     "piepy.core.trial",
     "piepy.core.schema",
+    "piepy.core.errors",
+    "piepy.core.paths",
     "piepy.core.hub",
-    # NOTE: piepy.core.mouse is intentionally NOT here -- it imports gsheet_functions,
-    # which reads cfg.paths["gsheet"] at module import time, a key absent from the default
-    # config. That pre-existing import-time failure is unrelated to this suite.
+    "piepy.core.mouse",
     "piepy.core.statistics",
     "piepy.core.parsers",
     "piepy.core.log_repair_functions",
