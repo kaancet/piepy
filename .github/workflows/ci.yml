@@ -16,16 +16,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install project (test extra)
-        run: uv pip install --system -e ".[test]"
+      # Install into a venv, not --system: the runner's /usr Python is PEP-668
+      # "externally managed" and uv refuses to install there with --system.
+      - name: Create venv and install (test extra)
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[test]"
 
       # Lint scope is intentionally limited to new code (tests/) for now; the
       # full-repo lint cleanup is a separate task in docs/refactor_plan.md.
       - name: Lint tests
         run: |
-          ruff check tests
-          black --check --line-length 90 tests
+          .venv/bin/ruff check tests
+          .venv/bin/black --check --line-length 90 tests
 
       # Golden parse tests need local session data and are excluded here.
       - name: Run data-free tests
-        run: pytest -m "not needs_data" -v
+        run: .venv/bin/pytest -m "not needs_data" -v
