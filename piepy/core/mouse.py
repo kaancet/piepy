@@ -9,7 +9,6 @@ from tqdm import tqdm
 from os.path import join as pjoin
 from collections import namedtuple
 from datetime import datetime as dt
-from os.path import dirname, abspath, normpath
 
 from ..core.config import config as cfg
 from .utils import timeit
@@ -268,70 +267,78 @@ class Mouse:
             # load_and_add and last_saved will enter here
             self.load()
             session_counter = self.data.summary_data[-1, "session_no"]
-        summary_to_append = []
+        summary_to_append: dict = {}  # column name -> list of per-session values
         cumul_to_append = []
 
-        # we're analyzing the individual sessions here in this below loop
+        # analyze each missing session, resilient to individual session failures
         pbar = tqdm(missing_sessions)
         self.faulty_sessions = []
         for i, row in enumerate(missing_sessions.iter_rows()):
-            # last_saved will not enter here as missing sessions will be []
-            pbar.set_description(f"Analyzing {row[1]} [{i + 1}/{len(missing_sessions)}]")
+            sessiondir, exp_type = row[1], row[3]
+            pbar.set_description(
+                f"Analyzing {sessiondir} [{i + 1}/{len(missing_sessions)}]"
+            )
 
-            if load_type == "no_load":
-                _single_session = self.session_parser(row[1], load_flag=False)
-            else:
-                # reanalyze load type should enter here
-                _single_session = self.session_parser(row[1], load_flag=True)
+            try:
+                _single_session = self.session_parser(
+                    sessiondir, load_flag=(load_type != "no_load")
+                )
+                # one tidy trial table per session: runs concatenated onto a session clock
+                session_data = _single_session.concatenate_runs(paradigm=self.paradigm)
+            except Exception as exc:
+                display(
+                    f" >>> WARNING <<< Could not analyze {sessiondir}: {exc}",
+                    color="yellow",
+                )
+                self.faulty_sessions.append(sessiondir)
+                pbar.update()
+                continue
 
-            if True:
-                session_data = _single_session.data.data
+            if session_data.is_empty():
+                display(
+                    f" >>> WARNING <<< No data for session {sessiondir}", color="yellow"
+                )
+                self.faulty_sessions.append(sessiondir)
+                pbar.update()
+                continue
 
-                if len(session_data):
-                    # add behavior related fields as a dictiionary
-                    meta = _single_session.get_meta()
-                    summary_temp = {}
-                    summary_temp["date"] = meta.baredate
-                    summary_temp["dt_date"] = meta.date
-                    summary_temp["blank_time"] = meta.openStimDuration
-                    summary_temp["response_window"] = meta.closedStimDuration
-                    try:
-                        summary_temp["level"] = int(meta.level)
-                    except:
-                        summary_temp["level"] = -1
-                    summary_temp["session_no"] = session_counter + 1
+            # session-level meta/stats come from the runs (first run for session-level fields)
+            meta = _single_session.runs[0].meta or {}
+            stats = _single_session.runs[0].stats or {}
+            opts = meta.get("opts", {}) or {}
+            rig = meta.get("rig")
 
-                    # put data from session stats
-                    stats_dict = _single_session.stats.get_dict()
-                    for k, v in stats_dict.items():
-                        summary_temp[k] = v
+            summary_temp = {
+                "date": meta.get("baredate"),
+                "dt_date": meta.get("date"),
+                "blank_time": opts.get("openStimDuration"),
+                "response_window": opts.get("closedStimDuration"),
+                "level": int(meta["level"]) if meta.get("level") is not None else -1,
+                "session_no": session_counter + 1,
+                **stats,
+                "task": opts.get("controller"),
+                "sf": (
+                    session_data["sf"].unique().drop_nulls().to_list()
+                    if "sf" in session_data.columns
+                    else []
+                ),
+                "tf": (
+                    session_data["tf"].unique().drop_nulls().to_list()
+                    if "tf" in session_data.columns
+                    else []
+                ),
+                "rig": rig.get("name") if isinstance(rig, dict) else rig,
+            }
 
-                    # put values from session meta data
-                    summary_temp["task"] = meta.controller
-                    summary_temp["sf"] = meta.sf_values
-                    summary_temp["tf"] = meta.tf_values
-                    summary_temp["rig"] = meta.rig
+            session_data = session_data.with_columns(
+                pl.lit(session_counter + 1).alias("session_no"),
+                pl.lit(exp_type).alias("session_type"),
+            )
+            cumul_to_append.append(session_data)
+            for k, v in summary_temp.items():
+                summary_to_append.setdefault(k, []).append(v)
 
-                    session_data = session_data.with_columns(
-                        [
-                            (pl.lit(session_counter + 1)).alias("session_no"),
-                            (pl.lit(row[3])).alias("session_type"),
-                        ]
-                    )
-
-                    cumul_to_append.append(session_data)
-                    if i == 0:
-                        summary_to_append = {k: [v] for k, v in summary_temp.items()}
-                    else:
-                        for k, v in summary_temp.items():
-                            summary_to_append[k].append(v)
-
-                    session_counter += 1
-                else:
-                    display(
-                        f" >>> WARNING << NO DATA FOR SESSION {row[1]}", color="yellow"
-                    )
-                    continue
+            session_counter += 1
             pbar.update()
 
         if len(summary_to_append):
@@ -430,39 +437,34 @@ class Mouse:
             if not is_saved:
                 # no saved file found!
                 raise FileNotFoundError(
-                    f"Can't do load, there is no saved behavioral analysis files for cumulative (*.parquet) and summary (*.csv) data"
+                    "Can't do load, there is no saved behavioral analysis files for cumulative (*.parquet) and summary (*.csv) data"
                 )
             # returns an empty list, no new session will be analyzed
             missing_sessions = pl.DataFrame()
         return missing_sessions
 
-    @staticmethod
-    def get_session_class(session_type: str) -> None:
-        """Initializes the relevant session parser"""
-        session_class_name = f"{session_type}Session"
-        if session_type == "detection":
-            session_class_name = session_class_name[0].upper() + session_class_name[1:]
-            session_class_name = f"wheel{session_class_name}"
+    # paradigm name -> (module dotted path, Session class name)
+    _SESSION_CLASSES = {
+        "detection": (
+            "piepy.psychophysics.wheel.detection.wheelDetectionSession",
+            "WheelDetectionSession",
+        ),
+        "discrimination": (
+            "piepy.psychophysics.wheel.discrimination.wheelDiscriminationSession",
+            "WheelDiscriminationSession",
+        ),
+    }
 
-        # __file__ is core.mouse.py
-        mod_path = normpath(
-            pjoin(
-                abspath(dirname(dirname(__file__))),
-                "psychophysics",  # this is for behavioral analysis classes
-                session_type,
-                session_class_name + ".py",
+    @classmethod
+    def get_session_class(cls, session_type: str):
+        """Return the Session class for a paradigm (e.g. 'detection')."""
+        if session_type not in cls._SESSION_CLASSES:
+            raise ModuleNotFoundError(
+                f"No session class registered for paradigm {session_type!r}; "
+                f"known: {sorted(cls._SESSION_CLASSES)}"
             )
-        )
-        if os.path.exists(mod_path):
-            mod = importlib.import_module(
-                f"piepy.psychophysics.{session_type}.{session_class_name}"
-            )
-            session_class_name = (
-                session_class_name[0].upper() + session_class_name[1:]
-            )  # uppercasing the first letter for class name
-            return getattr(mod, session_class_name)
-        else:
-            raise ModuleNotFoundError(f"No module found at {mod_path}")
+        mod_name, class_name = cls._SESSION_CLASSES[session_type]
+        return getattr(importlib.import_module(mod_name), class_name)
 
 
 def main():

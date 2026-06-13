@@ -1,4 +1,3 @@
-import os
 import polars as pl
 from scipy.optimize import curve_fit
 
@@ -6,6 +5,7 @@ from .wheelDetectionSession import WheelDetectionSession, get_run_stats
 from ....core.hub import TaskHub
 from ....core.config import config as cfg
 from ....core.data_functions import make_subsets
+from ....core.paths import parse_session_name as core_parse_session_name
 
 
 class WheelDetectionHub(TaskHub):
@@ -14,48 +14,31 @@ class WheelDetectionHub(TaskHub):
 
     @staticmethod
     def parse_session_name(session_path: str) -> dict:
-        """Parses the exp names from the dir path of experiment
-        Expects the session directory to be of the form:
-        date_animalid_paradigm_opto_area__imaging_user
+        """Parse a session directory name into the fields the hub aggregates/groups on.
+
+        Delegates to the pluggable Phase-2 session-name parser (``piepy.core.paths``) instead
+        of a positional ``split("_")``, so the recording ``area`` is read by token rather than
+        by index (the old ``parts[4]`` logic mis-read e.g. ``"no"`` out of ``"no_cam"``).
 
         Args:
-            session_path (str): full path of the experiment
+            session_path (str): full path (or name) of the experiment session
 
         Returns:
-            dict: Parsed values
+            dict: parsed values used as identity/grouping columns downstream
         """
-        sessiondir = session_path.strip(os.sep).split(os.sep)[-1]
-        parts_of_session = sessiondir.split("_")
-        area = parts_of_session[4]
-
-        ret_dict = {
+        parsed = core_parse_session_name(session_path)
+        return {
             "session_path": session_path,
-            "sessiondir": sessiondir,
-            "date": parts_of_session[0],
-            "animalid": parts_of_session[1],
-            "user": parts_of_session[-1],
-            "opto_power": None,
-            "imaging": None,
-            "paradigm": None,
+            "sessiondir": parsed.sessiondir,
+            "date": parsed.baredate,
+            "animalid": parsed.animalid,
+            "user": parsed.extra.get("user"),
+            "opto_power": parsed.extra.get("opto_power"),
+            "imaging": parsed.extra.get("imaging"),
+            "paradigm": parsed.paradigm,
+            "area": parsed.extra.get("area"),
+            "isCNO": parsed.extra.get("isCNO", False),
         }
-
-        for part in parts_of_session:
-            if "opto" in part:
-                ret_dict["opto_power"] = int(part[-3:]) / 100
-
-            if part in ["1P", "2P"]:
-                ret_dict["imaging"] = part
-
-            if part.lower() in ["detection", "detect"]:
-                ret_dict["paradigm"] = part.lower()
-
-        isCNO = False
-        if "CNO" in area:
-            area = area.strip("CNO")
-            isCNO = True
-        _temp = {"area": area, "isCNO": isCNO}
-
-        return {**ret_dict, **_temp}
 
     @staticmethod
     def _filter_session_list(session_list: list) -> list:
@@ -427,9 +410,7 @@ class WheelDetectionHub(TaskHub):
             .to_list()
         )
 
-        multi_session_df = filt_df.filter(
-            pl.col("session_id").is_in(multi_sessions_ids)
-        )
+        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
         for filt_tup in make_subsets(multi_session_df, ["area", "animalid"]):
             _df = filt_tup[-1]
             best_id = self.get_best_session(
@@ -492,9 +473,7 @@ class WheelDetectionHub(TaskHub):
             .to_list()
         )
 
-        multi_session_df = filt_df.filter(
-            pl.col("session_id").is_in(multi_sessions_ids)
-        )
+        multi_session_df = filt_df.filter(pl.col("session_id").is_in(multi_sessions_ids))
         for filt_tup in make_subsets(multi_session_df, ["animalid", "area"]):
             _df = filt_tup[-1]
             best_id = self.get_best_session(
