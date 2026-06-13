@@ -20,7 +20,7 @@ jobs:
       # "externally managed" and uv refuses to install there with --system.
       - name: Create venv and install (test extra)
         run: |
-          uv venv --python 3.12
+          uv venv --clear --python 3.12
           uv pip install -e ".[test]"
 
       # Lint scope is intentionally limited to new code (tests/) for now; the
