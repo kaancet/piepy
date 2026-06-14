@@ -20,6 +20,8 @@ CORE_MODULES = [
     "piepy.core.schema",
     "piepy.core.errors",
     "piepy.core.paths",
+    "piepy.stats",
+    "piepy.simulations",
     "piepy.core.hub",
     "piepy.core.mouse",
     "piepy.core.statistics",
