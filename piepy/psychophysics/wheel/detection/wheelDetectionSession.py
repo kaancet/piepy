@@ -13,6 +13,9 @@ from ....core.io import display, load_json_dict, save_dict_json
 from ....core.run import RunData, Run
 from ....core.session import Session
 from ....core.paths import RunArtifacts as Paths
+from ....core.paths import parse_session_name
+from ....core.registry import register_paradigm
+from ....core.hub import generate_unique_session_id
 from .wheelDetectionTrial import WheelDetectionTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -427,3 +430,79 @@ def get_run_stats(data: pl.DataFrame) -> dict:
         stats_dict["easy_median_response_time"] = -1
 
     return stats_dict
+
+
+def _enrich_detection(session) -> pl.DataFrame:
+    """Cohort-ready detection table: concatenated runs + per-run stats & session metadata.
+
+    This is the paradigm's :func:`register_paradigm` enrich hook -- the generic
+    :class:`piepy.core.hub.Hub` calls it instead of a per-experiment hub. It reproduces the
+    columns the old ``WheelDetectionHub._get_session`` added (``stat_*``, ``task``, ``level``,
+    ``opto_targets``, ``stim_combination``, ``isTitrated``, ``session_id``, contrast/sf/tf
+    vectors, ...) on top of the canonical concatenated table.
+    """
+    base = session.concatenate_runs(paradigm="detection")
+    if base.is_empty():
+        return base
+
+    info = parse_session_name(session.sessiondir)
+    rows = []
+    for run_no, run in enumerate(session.runs, start=1):
+        d = run.data.data if run.data is not None else None
+        if d is None or d.is_empty():
+            continue
+        meta = run.meta or {}
+        opts = meta.get("opts") or {}
+        params = meta.get(
+            "params"
+        )  # a pandas DataFrame (from parse_protocol); not a dict
+        rig = meta.get("rig")
+        contrast_vector = opts.get("contrastVector", []) or []
+        n_uniq_contrast = d["contrast"].drop_nulls().unique().len()
+        try:
+            stim_size = float(params["width"][0])
+        except Exception:  # noqa: BLE001 - width may be absent / shaped differently
+            stim_size = None
+        rows.append(
+            {
+                "run_no": run_no,
+                **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
+                "task": opts.get("controller"),
+                "level": meta.get("level"),
+                "run_start_time": meta.get("run_start_time"),
+                "opto_ratio": opts.get("optoRatio"),
+                "opto_targets": d["opto_pattern"].unique().len() - 1,
+                "stimulus_count": d["stim_type"].drop_nulls().unique().len(),
+                "stim_combination": "+".join(
+                    d["stim_type"].unique().sort().drop_nulls().to_list()
+                ),
+                "isTitrated": n_uniq_contrast > len(contrast_vector),
+                "rig": rig.get("name") if isinstance(rig, dict) else rig,
+                "session_id": generate_unique_session_id(
+                    meta.get("baredate", ""), meta.get("animalid", "")
+                ),
+                "session_path": session.manifest.session_path,
+                "area": info.extra.get("area"),
+                "opto_power": info.extra.get("opto_power"),
+                "imaging": info.extra.get("imaging"),
+                "user": info.extra.get("user"),
+                "isCNO": info.extra.get("isCNO"),
+                "contrast_vector": list(contrast_vector),
+                "wait_window": opts.get("openStimDuration"),
+                "response_window": opts.get("closedStimDuration"),
+                "stim_size": stim_size,
+                "sf_values": (
+                    d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []
+                ),
+                "tf_values": (
+                    d["tf"].drop_nulls().unique().to_list() if "tf" in d.columns else []
+                ),
+            }
+        )
+    if not rows:
+        return base
+    enrich = pl.DataFrame(rows).with_columns(pl.col("run_no").cast(pl.UInt32))
+    return base.join(enrich, on="run_no", how="left")
+
+
+register_paradigm("detection", WheelDetectionSession, enrich=_enrich_detection)

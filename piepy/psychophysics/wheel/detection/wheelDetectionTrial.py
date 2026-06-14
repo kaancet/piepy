@@ -9,7 +9,6 @@ from ....sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from ...psychophysicalTrial import PsychophysicalTrial, PsychophysicalTrialHandler
 from ..wheelTrace import WheelTrace
 
-
 OUTCOMES = {-1: "early", 1: "hit", 0: "miss"}
 
 
@@ -275,9 +274,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                         print(
                             "NO RIG VSTIM TIME IN A NON_EARLY TRIAL THIS SHOULD NOT HAPPEN, USING STATE TIME"
                         )
-                        self._trial["t_vstimstart_rig"] = int(
-                            self._trial["t_vstimstart"]
-                        )
+                        self._trial["t_vstimstart_rig"] = int(self._trial["t_vstimstart"])
                         self._trial["t_vstimend_rig"] = int(self._trial["t_vstimend"])
 
                     self._trial["rig_response_time"] = float(
@@ -354,10 +351,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     )
                     break
 
-            if (
-                self._trial["state_outcome"] == 1
-                and self._trial["reaction_time"] is None
-            ):
+            if self._trial["state_outcome"] == 1 and self._trial["reaction_time"] is None:
                 # sometimes the even the rig response time is not recorded on time, so
                 # we get the peak speed time as response
                 _temp = mov_dict["speed_peaks"][:, 0].astype(int)

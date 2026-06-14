@@ -2,7 +2,6 @@ import os
 import glob
 import natsort
 import argparse
-import importlib
 import numpy as np
 import polars as pl
 from tqdm import tqdm
@@ -443,28 +442,12 @@ class Mouse:
             missing_sessions = pl.DataFrame()
         return missing_sessions
 
-    # paradigm name -> (module dotted path, Session class name)
-    _SESSION_CLASSES = {
-        "detection": (
-            "piepy.psychophysics.wheel.detection.wheelDetectionSession",
-            "WheelDetectionSession",
-        ),
-        "discrimination": (
-            "piepy.psychophysics.wheel.discrimination.wheelDiscriminationSession",
-            "WheelDiscriminationSession",
-        ),
-    }
+    @staticmethod
+    def get_session_class(session_type: str):
+        """Return the Session class for a paradigm (e.g. 'detection') via the shared registry."""
+        from .registry import get_session_class
 
-    @classmethod
-    def get_session_class(cls, session_type: str):
-        """Return the Session class for a paradigm (e.g. 'detection')."""
-        if session_type not in cls._SESSION_CLASSES:
-            raise ModuleNotFoundError(
-                f"No session class registered for paradigm {session_type!r}; "
-                f"known: {sorted(cls._SESSION_CLASSES)}"
-            )
-        mod_name, class_name = cls._SESSION_CLASSES[session_type]
-        return getattr(importlib.import_module(mod_name), class_name)
+        return get_session_class(session_type)
 
 
 def main():

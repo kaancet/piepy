@@ -17,3 +17,4 @@ piepy/.vscode
 
 # local golden-master snapshots (regenerate with: pytest --update-golden)
 tests/_snapshots/
+graphify-out

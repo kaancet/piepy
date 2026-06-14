@@ -77,7 +77,9 @@ class WheelGroupedAggregator:
         if extra_grouped is not None:
             for e_name in extra_grouped:
                 if e_name not in self.data.columns:
-                    raise ValueError(f"extra_grouped column {e_name} not in data columns!!")
+                    raise ValueError(
+                        f"extra_grouped column {e_name} not in data columns!!"
+                    )
         else:
             extra_grouped = []
 
@@ -139,13 +141,17 @@ class WheelGroupedAggregator:
         )
 
         # calculate confidence intervals of each columns that has "time" in it
-        time_cols = [c for c in q.columns if "time" in c and "median" not in c and "confs" not in c]
+        time_cols = [
+            c for c in q.columns if "time" in c and "median" not in c and "confs" not in c
+        ]
         for t_c in time_cols:
             _temp_ci = []
             for v in q[t_c].to_list():
                 v = [i for i in v if i is not None]  # drop the nulls
                 if len(v) > 1:
-                    med, ci_p, ci_n = bootstrap_confidence_interval(v, statistic=np.median)
+                    med, ci_p, ci_n = bootstrap_confidence_interval(
+                        v, statistic=np.median
+                    )
                     _temp_ci.append([ci_p, ci_n])
                 else:
                     _temp_ci.append([])

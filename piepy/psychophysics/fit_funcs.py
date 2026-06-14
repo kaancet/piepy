@@ -273,9 +273,9 @@ def neg_likelihood(pars, data, P_model="weibull", parmin=None, parmax=None):
     except KeyError:
         raise ValueError("invalid model, options are {0}".format(dispatcher.keys()))
 
-    assert (max(probs) <= 1) or (min(probs) >= 0), (
-        "At least one of the probabilities is not between 0 and 1"
-    )
+    assert (max(probs) <= 1) or (
+        min(probs) >= 0
+    ), "At least one of the probabilities is not between 0 and 1"
 
     probs[probs == 0] = np.finfo(float).eps
     probs[probs == 1] = 1 - np.finfo(float).eps

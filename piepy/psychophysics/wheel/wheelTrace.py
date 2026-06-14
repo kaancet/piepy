@@ -30,9 +30,7 @@ class WheelTrace:
         return np.nanargmin(np.abs(arr - value))
 
     @staticmethod
-    def fix_trace_timing(
-        t: np.ndarray, pos: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
+    def fix_trace_timing(t: np.ndarray, pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing)
 
         Args:
@@ -231,9 +229,7 @@ class WheelTrace:
 
         # Calculate a Hankel matrix of size t_thresh_samps in batches.  This is effectively a
         # sliding window within which we look for changes in position greater than pos_thresh
-        BATCH_SIZE = (
-            10000  # do this in batches in order to keep memory usage reasonable
-        )
+        BATCH_SIZE = 10000  # do this in batches in order to keep memory usage reasonable
         c = 0  # index of 'window' position
         while True:
             i2proc = np.arange(BATCH_SIZE) + c
@@ -302,13 +298,9 @@ class WheelTrace:
         moveGaps = onsets[1:] - offsets[:-1]
         gap_too_small = moveGaps < min_gap
         if onsets.size > 0:
-            onsets = onsets[
-                np.insert(~gap_too_small, 0, True)
-            ]  # always keep first onset
+            onsets = onsets[np.insert(~gap_too_small, 0, True)]  # always keep first onset
             onset_samps = onset_samps[np.insert(~gap_too_small, 0, True)]
-            offsets = offsets[
-                np.append(~gap_too_small, True)
-            ]  # always keep last offset
+            offsets = offsets[np.append(~gap_too_small, True)]  # always keep last offset
             offset_samps = offset_samps[np.append(~gap_too_small, True)]
 
         movement_dict["onsets"] = np.hstack(

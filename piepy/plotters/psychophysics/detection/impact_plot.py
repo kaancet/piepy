@@ -26,9 +26,7 @@ from ...plotting_utils import (
 from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
-from ....psychophysics.wheel.detection.wheelDetectionExperimentHub import (
-    generate_unique_session_id,
-)
+from ....core.hub import generate_unique_session_id
 
 
 ANIMAL_COLORS = {

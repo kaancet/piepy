@@ -1,7 +1,7 @@
 """Tests for the concat-mechanism migration onto align_and_concat.
 
 These cover the two aggregation paths that previously used hand-rolled dtype-reconciliation
-loops: ``TaskHub._combine_session_data`` (across sessions) and ``MouseData.append`` (across
+loops: ``_combine_session_data`` (across sessions) and ``MouseData.append`` (across
 an animal's sessions). Data-free, so they run in CI -- this path had no coverage before.
 """
 
@@ -13,10 +13,10 @@ import polars as pl
 
 
 # --------------------------------------------------------------------------- #
-# TaskHub._combine_session_data
+# _combine_session_data
 # --------------------------------------------------------------------------- #
 def test_combine_session_data_unions_sorts_numbers():
-    from piepy.core.hub import TaskHub
+    from piepy.core.hub import _combine_session_data
 
     # s1 is a later date; s2 is earlier and has an extra column.
     s1 = pl.DataFrame(
@@ -31,7 +31,7 @@ def test_combine_session_data_unions_sorts_numbers():
             "extra": [9],
         }
     )
-    out = TaskHub._combine_session_data([s1, pl.DataFrame(), s2])
+    out = _combine_session_data([s1, pl.DataFrame(), s2])
 
     # total_trial_no is the first column and counts every row
     assert out.columns[0] == "total_trial_no"
@@ -43,13 +43,13 @@ def test_combine_session_data_unions_sorts_numbers():
 
 
 def test_combine_session_data_empty_inputs():
-    from piepy.core.hub import TaskHub
+    from piepy.core.hub import _combine_session_data
 
-    assert TaskHub._combine_session_data([None, pl.DataFrame()]).is_empty()
+    assert _combine_session_data([None, pl.DataFrame()]).is_empty()
 
 
 def test_combine_session_data_coerces_supertype():
-    from piepy.core.hub import TaskHub
+    from piepy.core.hub import _combine_session_data
 
     a = pl.DataFrame(
         {
@@ -67,7 +67,7 @@ def test_combine_session_data_coerces_supertype():
             "v": pl.Series([2.5], dtype=pl.Float64),
         }
     )
-    out = TaskHub._combine_session_data([a, b])
+    out = _combine_session_data([a, b])
     assert out["v"].dtype == pl.Float64
     assert out["v"].to_list() == [1.0, 2.5]
 

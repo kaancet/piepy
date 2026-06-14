@@ -41,9 +41,7 @@ class WheelDiscriminationGroupedAggregator(WheelGroupedAggregator):
 
         # calculate confidence intervals of each columns that has "time" in it
         time_cols = [
-            c
-            for c in q.columns
-            if "time" in c and "median" not in c and "confs" not in c
+            c for c in q.columns if "time" in c and "median" not in c and "confs" not in c
         ]
         for t_c in time_cols:
             _temp_ci = []
@@ -123,9 +121,7 @@ class WheelDiscriminationGroupedAggregator(WheelGroupedAggregator):
                     np.ones((len(_df), p_max_width)) * -1
                 )  # init all p-values with -1
 
-                for i, j in list(
-                    itertools.combinations([x for x in range(len(_df))], 2)
-                ):
+                for i, j in list(itertools.combinations([x for x in range(len(_df))], 2)):
                     table = np.vstack(
                         (
                             _df[

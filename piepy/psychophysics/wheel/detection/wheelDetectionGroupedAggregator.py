@@ -67,13 +67,17 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         )
 
         # calculate confidence intervals of each columns that has "time" in it
-        time_cols = [c for c in q.columns if "time" in c and "median" not in c and "confs" not in c]
+        time_cols = [
+            c for c in q.columns if "time" in c and "median" not in c and "confs" not in c
+        ]
         for t_c in time_cols:
             _temp_ci = []
             for v in q[t_c].to_list():
                 v = [i for i in v if i is not None]  # drop the nulls
                 if len(v) > 1:
-                    med, ci_p, ci_n = bootstrap_confidence_interval(v, statistic=np.median)
+                    med, ci_p, ci_n = bootstrap_confidence_interval(
+                        v, statistic=np.median
+                    )
                     _temp_ci.append([ci_p, ci_n])
                 else:
                     _temp_ci.append([])
@@ -83,7 +87,9 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         if do_sort:
             q = q.sort(group_by)
 
-        self.grouped_data = self.grouped_data.join(q, on=group_by, how="full", join_nulls=True)
+        self.grouped_data = self.grouped_data.join(
+            q, on=group_by, how="full", join_nulls=True
+        )
 
     def calculate_hit_rates(self) -> None:
         """Sets the hit rates and confidence intervals for each condition based on binomial distribution of hit count,
@@ -150,7 +156,9 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
                 continue
 
             if len(_df):
-                curr_p = np.ones((len(_df), p_max_width)) * -1  # init all p-values with -1
+                curr_p = (
+                    np.ones((len(_df), p_max_width)) * -1
+                )  # init all p-values with -1
 
                 for i, j in list(itertools.combinations([x for x in range(len(_df))], 2)):
                     table = np.vstack(
@@ -180,4 +188,6 @@ class WheelDetectionGroupedAggregator(WheelGroupedAggregator):
         assert len(p_vals) == len(self.grouped_data)
 
         # p values are ordered because make_subsets sorts the dataframe and then runs through it
-        self.grouped_data = self.grouped_data.with_columns(pl.Series("p_hit_rate", p_vals))
+        self.grouped_data = self.grouped_data.with_columns(
+            pl.Series("p_hit_rate", p_vals)
+        )

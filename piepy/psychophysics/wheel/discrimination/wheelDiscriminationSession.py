@@ -8,6 +8,7 @@ from ....core.run import RunData, Run
 from ....core.session import Session
 from ....core.paths import RunArtifacts as Paths
 from ....core.io import display, load_json_dict, save_dict_json
+from ....core.registry import register_paradigm
 from ....core.log_repair_functions import fix_first_line_state_logging
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
@@ -357,3 +358,8 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     )
 
     return stats_dict
+
+
+# default enrich (None) -> the generic Hub uses Session.concatenate_runs; a richer detection-style
+# enrich hook can be added here later if discrimination needs cohort stat_* columns.
+register_paradigm("discrimination", WheelDiscriminationSession)

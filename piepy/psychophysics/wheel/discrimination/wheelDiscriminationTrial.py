@@ -74,9 +74,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
 
         self._trial["state_response_time"] += openloop_start[0, "stateElapsed"]
 
-        stim_end = self.data["state"].filter(
-            pl.col("transition").str.contains("stimend")
-        )
+        stim_end = self.data["state"].filter(pl.col("transition").str.contains("stimend"))
         if len(stim_end):
             self._trial["t_vstimend"] = stim_end[0, "corrected_elapsed"]
 

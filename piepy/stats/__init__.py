@@ -7,6 +7,7 @@ These are the compute layer used by the plotting (behaviz) and per-paradigm anal
 
 from .aggregate import Count, Mean, Median, Rate, aggregate, group_arrays
 from .estimators import Estimate, bootstrap_ci, mean_ci, median_ci, proportion_ci
+from .tests import TestResult, compare, energy_2d, ks_2d, mantel_haenszel
 
 __all__ = [
     "Estimate",
@@ -20,4 +21,9 @@ __all__ = [
     "Mean",
     "Median",
     "Count",
+    "TestResult",
+    "compare",
+    "ks_2d",
+    "energy_2d",
+    "mantel_haenszel",
 ]
