@@ -31,7 +31,15 @@ class CamDataAnalysis:
         elif len(cam_log) > 1:
             raise IOError(f"Multiple camlogs present in run directory {self.runpath}")
         elif len(cam_log) == 0:
-            raise IOError(f"!!No camlogs present in run directory!! {self.runpath}")
+            # raise IOError(f"!!No camlogs present in run directory!! {self.runpath}")
+            self.camlog = pl.DataFrame(
+                {
+                    "frame nums": np.arange(self.tif_stack.nframes, dtype=np.int64),
+                    "timestamp": np.arange(self.tif_stack.nframes, dtype=np.float64) * 0.04,
+                }
+            )
+            self.camlog_comment = "see if this causes an error"
+            print(f"!!No camlogs present in run directory!! {self.runpath} FAKING IT")
 
     def get_frame_time(self) -> None:
         """Gets the avg frame time from experiment duration and frame count"""

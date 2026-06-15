@@ -114,7 +114,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
             self._trial["isCatch"] = True
             catch_resp_time = catch[0, "stateElapsed"]
             if catch_resp_time <= 150:
-                self.trial["state_outcome"] = -1
+                self._trial["state_outcome"] = -1
 
             elif 150 < catch_resp_time < 1000:
                 self._trial["state_outcome"] = 1
