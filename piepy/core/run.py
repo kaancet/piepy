@@ -294,6 +294,7 @@ class Run:
         """
         data_to_append = None
         trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
+        trial_nos = trial_nos[:-1]  # omit the last trial because it is often incomplete and has weird state transitions
         pbar = tqdm(trial_nos, desc="Extracting trial data:", disable=not config.verbose)
         for t in pbar:
             _trial = self.trial_handler.get_trial(int(t), self.rawdata)

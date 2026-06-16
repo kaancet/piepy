@@ -200,7 +200,12 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         else:
             self._trial["opto_pattern"] = -1
 
-        if self.is_early:
+        if self._trial['isCatch'] and self._trial['t_vstimend_rig'] is not None and self._trial['t_vstimend_rig'] - self._trial['t_vstimstart_rig'] < 150:
+            early_catch = True
+        else:
+            early_catch = False
+        
+        if self.is_early or early_catch:
             for c in columns_to_modify:
                 self._trial.pop(c + "_l")
                 self._trial.pop(c + "_r")
