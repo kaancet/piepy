@@ -20,7 +20,7 @@ from ...plotting_utils import (
     pval_plotter,
 )
 from ...colors.color import Color
-from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
+from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 

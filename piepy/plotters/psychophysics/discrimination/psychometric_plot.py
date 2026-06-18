@@ -11,7 +11,7 @@ from ...plotting_utils import (
     pval_plotter,
 )
 from ....core.data_functions import make_subsets
-from ....psychophysics.wheel.discrimination.wheelDiscriminationGroupedAggregator import (
+from piepy.experiments.wheel_discrimination.wheelDiscriminationGroupedAggregator import (
     WheelDiscriminationGroupedAggregator,
 )
 

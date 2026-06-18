@@ -32,7 +32,9 @@ class VisualRun(Run):
 
         # sometimes iTrial starts from 0, shift all to start from 1
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
-            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+                (pl.col("iTrial") + 1).alias("iTrial")
+            )
 
     def analyze_run(self, transform_dict: dict) -> None:
         """Main loop to extract data from rawdata
@@ -64,6 +66,8 @@ class VisualRun(Run):
 
 
 class VisualSession(Session):
+    # visual keeps a bespoke per-run pipeline (analyze_run takes the transition map and injects
+    # fake timings), so it overrides init_session_runs; the base __init__ drives it.
     def init_session_runs(self):
         """Initializes runs in a session"""
         for r in range(self.run_count):

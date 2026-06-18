@@ -9,7 +9,16 @@ CONFIG = {
     "paths": {"colors": [str(Path.cwd().parents[0] / "plotters" / "colors")]},
 }
 
-PATHS = ["presentation", "training", "twop", "onepcam", "facecam", "eyecam", "opto_pattern", "analysis"]
+PATHS = [
+    "presentation",
+    "training",
+    "twop",
+    "onepcam",
+    "facecam",
+    "eyecam",
+    "opto_pattern",
+    "analysis",
+]
 
 
 class Config:
@@ -26,16 +35,18 @@ class Config:
         else:
             conf = self.make_config()
 
-        for k, v in conf.items():
-            setattr(self, k, v)
-
+        # backfill the paradigms drop-in path into older config.json files (lives under
+        # ~/.piepy, not the data dir, since it holds task definitions not recordings)
         conf.setdefault("paths", {})
         if "paradigms" not in conf["paths"]:
             conf["paths"]["paradigms"] = [str(self.config_dir / "paradigms")]
             with self.file_path.open("w", encoding="utf-8") as f:
                 json.dump(conf, f, indent=4)
 
-        # make the paradigm dir if it doesn't exist
+        for k, v in conf.items():
+            setattr(self, k, v)
+
+        # make sure the drop-in dir exists so users can just drop a paradigm into it
         os.makedirs(self.paths["paradigms"][0], exist_ok=True)
 
     def _set(self, name: str, value) -> None:
@@ -61,6 +72,7 @@ class Config:
         for p in PATHS:
             config["paths"][p] = [f"data/{p}"]
 
+        # paradigm drop-in store lives under ~/.piepy, not the data dir
         config["paths"]["paradigms"] = [str(self.config_dir / "paradigms")]
 
         with self.file_path.open("w", encoding="utf-8") as f:

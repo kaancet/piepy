@@ -13,7 +13,7 @@ from ...plotting_utils import (
 )
 from ....core.data_functions import make_subsets
 from ....core.statistics import nonparametric_pvalues
-from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
+from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 

@@ -148,7 +148,10 @@ class RunData:
 
         # datetime date
         self.data = self.data.with_columns(
-            pl.col("baredate").str.strptime(pl.Date, format="%y%m%d").cast(pl.Date).alias("date")
+            pl.col("baredate")
+            .str.strptime(pl.Date, format="%y%m%d")
+            .cast(pl.Date)
+            .alias("date")
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
@@ -188,6 +191,8 @@ class RunData:
 
 
 class Run:
+    # paradigm wiring -- a subclass (later, the registry ParadigmSpec) overrides these instead
+    # of re-implementing __init__/get_rawdata/analyze_run boilerplate.
     rundata_cls = RunData
     trial_handler_cls = TrialHandler
     state_transitions: dict = {}
@@ -195,8 +200,8 @@ class Run:
     def __init__(self, paths: Paths) -> None:
         self.meta = None
         self.stats = None
-        self.paths = paths
         self.comments = None
+        self.paths = paths
         # initialize the logger(only log at one analysis location, currently arbitrary)
         # self.logger = Logger(log_path=self.paths.save[0])
         self.data = self.rundata_cls()
@@ -226,12 +231,11 @@ class Run:
         """Reads the data from various logs and does some repairs/fixes for standardization
 
         Args:
-            transform_dict (dict | None): Maps numbered state transitions (2->3) to named ones, e.g.stimstart
-            Falls back to this Run's ``state_transitions`` when None.
+            transform_dict (dict | None): Maps numbered state transitions (2->3) to named ones
+                (stimstart). Falls back to this Run's ``state_transitions`` when None.
         """
         if transform_dict is None:
             transform_dict = self.state_transitions or None
-
         self.read_run_data()
         self.translate_state_changes(transform_dict)
 
@@ -297,7 +301,9 @@ class Run:
         )
 
     @staticmethod
-    def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:
+    def read_combine_logs(
+        stimlog_path: str | list[str], riglog_path: str | list[str]
+    ) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
@@ -308,9 +314,9 @@ class Run:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(riglog_path), (
-                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
-            )
+            assert len(stimlog_path) == len(
+                riglog_path
+            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
 
             stim_data_all = []
             rig_data_all = []
@@ -341,7 +347,9 @@ class Run:
     def read_run_data(self) -> None:
         """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
-        rawdata, self.comments = self.read_combine_logs(self.paths.stimlog, self.paths.riglog)
+        rawdata, self.comments = self.read_combine_logs(
+            self.paths.stimlog, self.paths.riglog
+        )
         self.rawdata = extrapolate_time(rawdata)
 
         # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry:
@@ -350,14 +358,20 @@ class Run:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(self.paths.onepcamlog)
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
+                self.paths.onepcamlog
+            )
 
         # try eyecam and facecam either way
         if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(self.paths.eyecamlog)
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
+                self.paths.eyecamlog
+            )
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(self.paths.facecamlog)
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
+                self.paths.facecamlog
+            )
 
         display("Read rawdata")
 
@@ -406,7 +420,9 @@ class Run:
             )
 
         # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename({"cycle": "trialNo"})
+        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
+            {"cycle": "trialNo"}
+        )
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists
@@ -452,6 +468,7 @@ class Run:
                 self.data.load_data(d_path)
                 display(f"Loaded session data from {d_path}", color="green")
                 break
+        self._load_stats()
 
     def _load_stats(self) -> None:
         """Load the per-run stats dict if a paradigm saved one."""

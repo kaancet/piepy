@@ -12,7 +12,7 @@ from ...plotting_utils import (
 )
 from ....psychophysics.fit_funcs import mle_fit, neg_likelihood, weibull, erf_psycho
 from ....core.data_functions import make_subsets
-from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
+from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 

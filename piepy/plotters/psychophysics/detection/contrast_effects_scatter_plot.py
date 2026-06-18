@@ -9,7 +9,7 @@ from scipy.optimize import curve_fit  # noqa: F401
 from ....core.data_functions import make_subsets
 from ...plotting_utils import set_style, override_plots
 from ...colors.color import Color
-from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
+from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 

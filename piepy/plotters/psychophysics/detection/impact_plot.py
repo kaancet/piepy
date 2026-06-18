@@ -23,7 +23,7 @@ from ...plotting_utils import (
     pval_plotter,
     map_to_markersize,
 )
-from ....psychophysics.wheel.detection.wheelDetectionGroupedAggregator import (
+from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 from ....core.hub import generate_unique_session_id

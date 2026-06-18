@@ -28,6 +28,7 @@ external paradigms register by importing their module before use.
 from __future__ import annotations
 
 import importlib
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -54,8 +55,8 @@ _REGISTRY: dict[str, ParadigmSpec] = {}
 
 # builtin paradigms, imported lazily so their @register_paradigm decorators run on first lookup
 _BUILTIN_MODULES: dict[str, str] = {
-    "detection": "piepy.psychophysics.wheel.detection.wheelDetectionSession",
-    "discrimination": "piepy.psychophysics.wheel.discrimination.wheelDiscriminationSession",
+    "detection": "piepy.experiments.wheel_detection.wheelDetectionSession",
+    "discrimination": "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
 }
 
 
@@ -99,7 +100,11 @@ def register_paradigm(
             from .paths.parser import register_scheme
 
             register_scheme(paradigm, scheme["naming_template"])
-        return _store(_build_session_cls(paradigm, trial_handler_cls, rundata_cls, state_transitions))
+        return _store(
+            _build_session_cls(
+                paradigm, trial_handler_cls, rundata_cls, state_transitions
+            )
+        )
     return _store  # decorator form: @register_paradigm("x")
 
 
@@ -146,7 +151,9 @@ def _build_session_cls(
     from .run import Run, RunData
     from .session import Session
 
-    name = "".join(w.capitalize() for w in paradigm.replace("_", " ").split()) or "Paradigm"
+    name = (
+        "".join(w.capitalize() for w in paradigm.replace("_", " ").split()) or "Paradigm"
+    )
     run_cls = type(
         f"{name}Run",
         (Run,),
@@ -160,17 +167,50 @@ def _build_session_cls(
 
 
 def get_paradigm(paradigm: str) -> ParadigmSpec:
-    """Resolve a paradigm to its :class:`ParadigmSpec`, importing a builtin on demand."""
-    if paradigm not in _REGISTRY and paradigm in _BUILTIN_MODULES:
-        importlib.import_module(_BUILTIN_MODULES[paradigm])
+    """Resolve a paradigm to its :class:`ParadigmSpec`.
+
+    On a registry miss: import a builtin module on demand, else try to discover a drop-in
+    paradigm (``<paradigms_path>/<name>/handler.py``) and import it so its register call runs.
+    This is what lets a spawned Hub worker rebuild a paradigm from just its name.
+    """
+    if paradigm not in _REGISTRY:
+        if paradigm in _BUILTIN_MODULES:
+            importlib.import_module(_BUILTIN_MODULES[paradigm])
+        else:
+            _discover_paradigm(paradigm)
     try:
         return _REGISTRY[paradigm]
     except KeyError:
         known = sorted(set(_REGISTRY) | set(_BUILTIN_MODULES))
         raise ValueError(
             f"No paradigm registered as {paradigm!r}; known: {known}. "
-            "Register one with register_paradigm(...) (decorator or direct call)."
+            "Register one with register_paradigm(...), or drop a handler.py + scheme.json "
+            "into <paradigms_path>/<name>/."
         ) from None
+
+
+def _discover_paradigm(paradigm: str) -> None:
+    """Import a drop-in paradigm's ``handler.py`` (runs its register call) from the store.
+
+    Looks for ``<root>/<paradigm>/handler.py`` for each root in ``config.paths['paradigms']``
+    (default ``~/.piepy/paradigms``). Loaded by file path, so a handler is a single self-
+    contained module. Silent no-op when none is found (the caller then raises a clear error).
+    """
+    import importlib.util
+    from pathlib import Path
+
+    from .config import config as cfg
+
+    for root in cfg.paths.get("paradigms") or []:
+        handler = Path(root) / paradigm / "handler.py"
+        if not handler.exists():
+            continue
+        mod_name = f"piepy_paradigm_{paradigm}"
+        spec = importlib.util.spec_from_file_location(mod_name, handler)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = module  # cache so re-resolution is cheap
+        spec.loader.exec_module(module)  # runs module-level register_paradigm(...)
+        return
 
 
 def get_session_class(paradigm: str) -> type:

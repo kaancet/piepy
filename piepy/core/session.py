@@ -1,4 +1,5 @@
 import time
+
 import polars as pl
 
 from .io import display
@@ -10,6 +11,7 @@ from .schema import attach_run_identity, concat_session_runs
 
 
 class Session:
+    # paradigm wiring -- a subclass sets ``run_cls`` to its Run; the rest is generic.
     run_cls = Run
 
     def __init__(self, sessiondir: str, load_flag: bool = False, save_mat: bool = False):

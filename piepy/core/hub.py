@@ -42,6 +42,27 @@ def generate_unique_session_id(
     return int(hashlib.sha256(combined.encode("utf-8")).hexdigest(), 16) % 10**digit_len
 
 
+def _analyze_one(args: tuple) -> pl.DataFrame:
+    """Worker: analyze one session into its cohort-ready frame (empty frame on failure).
+
+    Takes ``(paradigm, load_flag, sessiondir)`` -- only picklable strings/flags cross the
+    process boundary. Each worker resolves the paradigm spec itself via :func:`get_paradigm`
+    (re-importing/discovering as needed under ``spawn``), so a dynamically-synthesized Session
+    class never needs to be pickled to the worker.
+    """
+    paradigm, load_flag, sessiondir = args
+    name = os.path.basename(str(sessiondir).rstrip("/\\"))
+    try:
+        spec = get_paradigm(paradigm)
+        session = spec.session_cls(name, load_flag=load_flag)
+    except Exception as exc:  # noqa: BLE001 - one bad session shouldn't sink the gather
+        print(f" >> WARNING << {name} not analyzed ({exc}); skipping...", flush=True)
+        return pl.DataFrame()
+    if spec.enrich is not None:
+        return spec.enrich(session)
+    return session.concatenate_runs(paradigm)
+
+
 def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
     """Align + stack per-session frames into the cohort table, sorted with a cumulative count."""
     data = align_and_concat(frames)
@@ -112,27 +133,20 @@ class Hub:
         except RuntimeError:
             pass
         with Pool(processes=cfg.multiprocess["cores"]) as pool:
-            frames = pool.map(self._one_session, session_list)
+            frames = pool.map(
+                _analyze_one,
+                [(self.paradigm, self.load_flag, s) for s in session_list],
+            )
         self.data = _combine_session_data(frames)
         return self.data
 
     def _one_session(self, sessiondir: str) -> pl.DataFrame:
         """Analyze a single session into its cohort-ready table (empty frame on failure).
 
-        Accepts a bare session name or a full path (e.g. from ``glob``); the Session is built
-        from the basename.
+        Kept for direct single-process use; the parallel path uses the module-level
+        :func:`_analyze_one` so nothing on ``self`` is pickled to the workers.
         """
-        name = os.path.basename(str(sessiondir).rstrip("/\\"))
-        try:
-            session = self.spec.session_cls(name, load_flag=self.load_flag)
-        except (
-            Exception
-        ) as exc:  # noqa: BLE001 - one bad session shouldn't sink the gather
-            print(f" >> WARNING << {name} not analyzed ({exc}); skipping...", flush=True)
-            return pl.DataFrame()
-        if self.spec.enrich is not None:
-            return self.spec.enrich(session)
-        return session.concatenate_runs(self.paradigm)
+        return _analyze_one((self.paradigm, self.load_flag, sessiondir))
 
     def save(self, saveloc: str | None = None) -> None:
         """Save the cohort data as a dated parquet."""
