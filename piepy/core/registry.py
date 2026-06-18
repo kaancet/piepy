@@ -10,6 +10,13 @@ or a direct call::
     # or
     register_paradigm("detection", WheelDetectionSession, enrich=_enrich_detection)
 
+A paradigm that needs no custom per-run flow can skip the Session/Run entirely and register the
+*parts* -- a TrialHandler, a state-transition map, and (optionally) a RunData -- letting the
+registry synthesize a generic Run + Session::
+
+    register_paradigm("mytask", trial_handler_cls=MyTrialHandler,
+                      state_transitions={"0->1": "trialstart", ...}, rundata_cls=MyRunData)
+
 Both the generic :class:`piepy.core.hub.Hub` and :class:`piepy.core.mouse.Mouse` resolve their
 Session class through here, so there is one place that knows paradigm -> code (replacing the old
 string-munged dynamic import and Mouse's hard-coded dict).
@@ -30,6 +37,7 @@ __all__ = [
     "get_paradigm",
     "get_session_class",
     "registered_paradigms",
+    "load_scheme",
 ]
 
 
@@ -51,14 +59,104 @@ _BUILTIN_MODULES: dict[str, str] = {
 }
 
 
-def register_paradigm(paradigm: str, session_cls: type | None = None, *, enrich=None):
-    """Register a paradigm's Session class (+ optional enrich hook). Decorator or direct call."""
+def register_paradigm(
+    paradigm: str,
+    session_cls: type | None = None,
+    *,
+    trial_handler_cls: type | None = None,
+    rundata_cls: type | None = None,
+    state_transitions: dict | None = None,
+    enrich=None,
+):
+    """Register a paradigm. Three call styles:
 
-    def _apply(cls: type) -> type:
+    * decorator on a Session subclass:  ``@register_paradigm("x", enrich=...)``
+    * direct with a Session subclass:   ``register_paradigm("x", XSession, enrich=...)``
+    * wiring-only (no Run/Session needed)::
+
+        register_paradigm("x", trial_handler_cls=XHandler,
+                          state_transitions={...}, rundata_cls=XRunData)
+
+    The wiring-only form synthesizes a generic Run + Session from the parts, so a new paradigm
+    needs only a ``Trial`` schema, a ``TrialHandler``, and a state-transition map -- no
+    Run/Session boilerplate. An explicit ``session_cls`` always wins (for paradigms that need
+    custom per-run hooks).
+    """
+
+    def _store(cls: type) -> type:
         _REGISTRY[paradigm] = ParadigmSpec(paradigm, cls, enrich)
         return cls
 
-    return _apply(session_cls) if session_cls is not None else _apply
+    if session_cls is not None:
+        return _store(session_cls)
+    if trial_handler_cls is not None:
+        # pull the paradigm's scheme.json (~/.piepy/paradigms/<name>/scheme.json) for the
+        # naming template + state-transition map; an explicit kwarg still wins for transitions.
+        scheme = load_scheme(paradigm) or {}
+        if state_transitions is None:
+            state_transitions = scheme.get("state_transitions")
+        if scheme.get("naming_template"):
+            from .paths.parser import register_scheme
+
+            register_scheme(paradigm, scheme["naming_template"])
+        return _store(_build_session_cls(paradigm, trial_handler_cls, rundata_cls, state_transitions))
+    return _store  # decorator form: @register_paradigm("x")
+
+
+def load_scheme(paradigm: str) -> dict | None:
+    """Load a paradigm's ``scheme.json`` from the ``paradigms`` config path.
+
+    Looks for ``<paradigms_path>/<paradigm>/scheme.json`` (default
+    ``~/.piepy/paradigms/<paradigm>/scheme.json``), a JSON object with optional keys
+    ``naming_template`` (a regex defining the session-name scheme; must capture ``date`` and
+    ``animalid``) and ``state_transitions`` (the ``'<old>-><new>' -> name`` map). Returns
+    ``None`` when no file is present, so callers fall back to in-code values.
+    """
+    import json
+    from pathlib import Path
+
+    from .config import config as cfg
+
+    for root in cfg.paths.get("paradigms") or []:
+        path = Path(root) / paradigm / "scheme.json"
+        if path.exists():
+            with path.open() as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{path} must hold a JSON object with 'naming_template' and/or "
+                    f"'state_transitions'; got {type(data).__name__}."
+                )
+            return data
+    return None
+
+
+def _build_session_cls(
+    paradigm: str,
+    trial_handler_cls: type,
+    rundata_cls: type | None,
+    state_transitions: dict | None,
+) -> type:
+    """Synthesize a generic Session (and its Run) wired to the given paradigm parts.
+
+    Real named classes (``FooRun``/``FooSession``), not a metaclass trick, so tracebacks and
+    ``repr`` stay readable. The wiring lives on the Run as plain class attributes that the base
+    ``Session``/``Run`` already read.
+    """
+    from .run import Run, RunData
+    from .session import Session
+
+    name = "".join(w.capitalize() for w in paradigm.replace("_", " ").split()) or "Paradigm"
+    run_cls = type(
+        f"{name}Run",
+        (Run,),
+        {
+            "trial_handler_cls": trial_handler_cls,
+            "rundata_cls": rundata_cls or RunData,
+            "state_transitions": dict(state_transitions or {}),
+        },
+    )
+    return type(f"{name}Session", (Session,), {"run_cls": run_cls, "paradigm": paradigm})
 
 
 def get_paradigm(paradigm: str) -> ParadigmSpec:

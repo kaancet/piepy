@@ -29,6 +29,15 @@ class Config:
         for k, v in conf.items():
             setattr(self, k, v)
 
+        conf.setdefault("paths", {})
+        if "paradigms" not in conf["paths"]:
+            conf["paths"]["paradigms"] = [str(self.config_dir / "paradigms")]
+            with self.file_path.open("w", encoding="utf-8") as f:
+                json.dump(conf, f, indent=4)
+
+        # make the paradigm dir if it doesn't exist
+        os.makedirs(self.paths["paradigms"][0], exist_ok=True)
+
     def _set(self, name: str, value) -> None:
         """Function to set attributes"""
         setattr(self, name, value)
@@ -51,6 +60,8 @@ class Config:
 
         for p in PATHS:
             config["paths"][p] = [f"data/{p}"]
+
+        config["paths"]["paradigms"] = [str(self.config_dir / "paradigms")]
 
         with self.file_path.open("w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
