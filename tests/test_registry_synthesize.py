@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from piepy.core.paths import parse_session_name
 from piepy.core.registry import (
     get_paradigm,
@@ -151,3 +153,65 @@ def test_naming_template_registers_a_session_name_scheme(tmp_path, monkeypatch):
     # a name that doesn't match still falls back to the in-house default scheme
     default = parse_session_name("240810_KC150_detect__no_cam_KC")
     assert default.paradigm == "detection"
+
+
+class _StrictHandler(TrialHandler):
+    required_transitions = frozenset({"trialstart", "stimstart", "trialend"})
+
+    def get_trial(self, trial_no, rawdata):  # pragma: no cover - not parsed here
+        return None
+
+
+def test_transition_validation_passes_when_map_covers_required():
+    cls = register_paradigm(
+        "strict_ok",
+        trial_handler_cls=_StrictHandler,
+        state_transitions={"0->1": "trialstart", "1->2": "stimstart", "2->0": "trialend"},
+    )
+    assert cls.run_cls.trial_handler_cls is _StrictHandler
+
+
+def test_transition_validation_errors_on_missing_required():
+    with pytest.raises(ValueError, match=r"missing transition name\(s\) \['stimstart'\]"):
+        register_paradigm(
+            "strict_bad",
+            trial_handler_cls=_StrictHandler,
+            state_transitions={"0->1": "trialstart", "2->0": "trialend"},  # no stimstart
+        )
+
+
+def test_no_required_transitions_skips_validation():
+    # _ToyHandler declares none -> empty/omitted map is fine
+    cls = register_paradigm("lax_ok", trial_handler_cls=_ToyHandler)
+    assert cls.run_cls.trial_handler_cls is _ToyHandler
+
+
+def test_autodiscovery_imports_handler_from_store(tmp_path, monkeypatch):
+    """Drop handler.py + scheme.json into the store; get_paradigm imports it on a miss."""
+    from piepy.core.config import config
+
+    monkeypatch.setitem(config.paths, "paradigms", [str(tmp_path)])
+    d = tmp_path / "dropin"
+    d.mkdir()
+    (d / "scheme.json").write_text(
+        json.dumps(
+            {
+                "state_transitions": TRANSITIONS,
+                "naming_template": r"(?P<date>\d{6})_(?P<animalid>[^_]+)_dropin",
+            }
+        )
+    )
+    (d / "handler.py").write_text(
+        "from piepy.core.trial import TrialHandler\n"
+        "from piepy.core.registry import register_paradigm\n"
+        "\n"
+        "class DropinHandler(TrialHandler):\n"
+        "    def get_trial(self, trial_no, rawdata):\n"
+        "        return None\n"
+        "\n"
+        "register_paradigm('dropin', trial_handler_cls=DropinHandler)\n"
+    )
+
+    spec = get_paradigm("dropin")  # not registered, not builtin -> auto-discovered
+    assert spec.session_cls.run_cls.trial_handler_cls.__name__ == "DropinHandler"
+    assert spec.session_cls.run_cls.state_transitions == TRANSITIONS

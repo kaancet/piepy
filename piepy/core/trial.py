@@ -18,6 +18,11 @@ class Trial(pt.Model):
 class TrialHandler:
     """A class that houses methods for parsing/checking/filling the Trial DataFrame class"""
 
+    # Transition names this handler's get_trial relies on. The registry verifies a paradigm's
+    # state-transition map produces all of them at registration (a clear error up front instead
+    # of a deep StateMachineError mid-parse). Empty = no check.
+    required_transitions: frozenset = frozenset()
+
     def __init__(self) -> None:
         self.data = {}
         self.set_model(Trial)
@@ -44,11 +49,7 @@ class TrialHandler:
                 return (type(field_val), None)
 
         # adding new columns (this should only work in the first trial)
-        _new_cols = {
-            k: list_field_fixer(v)
-            for k, v in self._trial.items()
-            if k not in self.trial_model.columns
-        }
+        _new_cols = {k: list_field_fixer(v) for k, v in self._trial.items() if k not in self.trial_model.columns}
         if len(_new_cols):
             self.trial_model = self.trial_model.with_fields(**_new_cols)
 
@@ -61,9 +62,7 @@ class TrialHandler:
         if len(_retry_none_type_cols):
             self.trial_model = self.trial_model.with_fields(**_retry_none_type_cols)
 
-    def _update_and_return(
-        self, return_as: Literal["df", "dict", "list"] = "dict"
-    ) -> pt.DataFrame | dict | list:
+    def _update_and_return(self, return_as: Literal["df", "dict", "list"] = "dict") -> pt.DataFrame | dict | list:
         """First validates, then returns the self._trial in the form given in return_as
 
         Args:
@@ -136,17 +135,11 @@ class TrialHandler:
 
         # check if trial is complete
         if self.is_trial_complete(_state_transitions):
-            self._trial["t_trialstart"] = int(
-                _state.filter(pl.col("transition") == "trialstart")[0, "elapsed"]
-            )
+            self._trial["t_trialstart"] = int(_state.filter(pl.col("transition") == "trialstart")[0, "elapsed"])
             if "trialend" in _state_transitions:
-                self._trial["t_trialend"] = int(
-                    _state.filter(pl.col("transition") == "trialend")[0, "elapsed"]
-                )
+                self._trial["t_trialend"] = int(_state.filter(pl.col("transition") == "trialend")[0, "elapsed"])
             else:
-                self._trial["t_trialend"] = int(
-                    _state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"]
-                )
+                self._trial["t_trialend"] = int(_state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"])
         else:
             return False
 
@@ -161,9 +154,7 @@ class TrialHandler:
             if not v.is_empty():
                 if "presentTime" not in v.columns:
                     temp_v = v.filter(
-                        pl.col("duinotime").is_between(
-                            self._trial["t_trialstart"], self._trial["t_trialend"]
-                        )
+                        pl.col("duinotime").is_between(self._trial["t_trialstart"], self._trial["t_trialend"])
                     )
                 else:
                     if k == "vstim":
