@@ -1,5 +1,7 @@
+import time
 import polars as pl
 
+from .io import display
 from .run import Run
 from .utils import timeit
 
@@ -8,6 +10,8 @@ from .schema import attach_run_identity, concat_session_runs
 
 
 class Session:
+    run_cls = Run
+
     def __init__(self, sessiondir: str, load_flag: bool = False, save_mat: bool = False):
         """A base Session object, reads and aggregates the recorded data which can then be used in user specific
         analysis pipelines
@@ -18,6 +22,7 @@ class Session:
             save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
 
         """
+        start = time.time()
         self.sessiondir = sessiondir
         self.load_flag = load_flag
         self.save_mat = save_mat
@@ -27,12 +32,29 @@ class Session:
         self.manifest = SessionLocator().locate(self.sessiondir)
         self.run_count = self.manifest.run_count
 
+        self.init_session_runs()
+        display(f"Done! t={(time.time() - start):.2f} s")
+
     def init_session_runs(self) -> None:
-        """Initializes runs in a session, to be overwritten by other Session types(e.g. WheelDetectionSession)"""
+        """Build, parse (or load), and collect every run in the session.
+
+        Generic across paradigms: the run type comes from ``run_cls`` (and its
+        ``state_transitions`` / ``trial_handler_cls`` / ``rundata_cls``). A paradigm customizes
+        parsing through hooks on its Run (``repair_rawdata`` / ``augment_data`` /
+        ``compute_stats``), not by re-implementing this loop.
+        """
         for run_paths in self.manifest.runs:
-            _run = Run(run_paths)
-            _run.set_meta()
-            self.runs.append(_run)
+            run = self.run_cls(run_paths)
+            run.set_meta()
+            run.get_rawdata()
+            if run.is_run_saved() and self.load_flag:
+                display(f"Loading from {run.paths.save}")
+                run.load_run()
+            else:
+                run.analyze_run()
+                run.data.add_metadata_columns(run.meta)
+                run.save_run(self.save_mat)
+            self.runs.append(run)
 
     def concatenate_runs(self, paradigm: str | None = None) -> pl.DataFrame:
         """Concatenate this session's runs into one trial table on a session-wide clock.

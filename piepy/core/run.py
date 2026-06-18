@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from .config import config
 from .errors import StateMachineError, WrongSessionTypeError
-from .io import display
+from .io import display, load_json_dict, save_dict_json
 from .parsers import (
     parse_labcams_log,
     parse_preference,
@@ -148,10 +148,7 @@ class RunData:
 
         # datetime date
         self.data = self.data.with_columns(
-            pl.col("baredate")
-            .str.strptime(pl.Date, format="%y%m%d")
-            .cast(pl.Date)
-            .alias("date")
+            pl.col("baredate").str.strptime(pl.Date, format="%y%m%d").cast(pl.Date).alias("date")
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
@@ -191,14 +188,19 @@ class RunData:
 
 
 class Run:
+    rundata_cls = RunData
+    trial_handler_cls = TrialHandler
+    state_transitions: dict = {}
+
     def __init__(self, paths: Paths) -> None:
-        self.data = None
         self.meta = None
         self.stats = None
         self.paths = paths
+        self.comments = None
         # initialize the logger(only log at one analysis location, currently arbitrary)
         # self.logger = Logger(log_path=self.paths.save[0])
-        self.trial_handler = TrialHandler()
+        self.data = self.rundata_cls()
+        self.trial_handler = self.trial_handler_cls()
 
     def __repr__(self):
         _controller = ""
@@ -220,29 +222,49 @@ class Run:
             if not pexists(s_path):
                 os.makedirs(s_path)
 
-    def get_rawdata(self, transform_dict: dict) -> None:
+    def get_rawdata(self, transform_dict: dict | None = None) -> None:
         """Reads the data from various logs and does some repairs/fixes for standardization
 
         Args:
-            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+            transform_dict (dict | None): Maps numbered state transitions (2->3) to named ones, e.g.stimstart
+            Falls back to this Run's ``state_transitions`` when None.
         """
+        if transform_dict is None:
+            transform_dict = self.state_transitions or None
+
         self.read_run_data()
         self.translate_state_changes(transform_dict)
 
         self.rawdata = extract_trial_count(self.rawdata)
         # add total iStim just in case
         self.rawdata = add_total_iStim(self.rawdata)
+        self.repair_rawdata()
+
+    def repair_rawdata(self) -> None:
+        """Hook for paradigm-specific rawdata fixes after the standard read. No-op by default."""
+        pass
 
     def analyze_run(self) -> None:
-        """Main loop to extract data from rawdata, should be overwritten in child classes
+        """Parse rawdata into the trial table, then run the paradigm hooks.
 
-        Args:
-            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+        Subclasses customize via ``augment_data`` (derived columns) and ``compute_stats``
+        rather than overriding this loop.
         """
         run_data = self.get_trials()
 
         # set the data object
         self.data.set_data(run_data)
+
+        self.augment_data()
+        self.stats = self.compute_stats()
+
+    def augment_data(self) -> None:
+        """Hook to add paradigm-specific derived columns after set_data. No-op by default."""
+        pass
+
+    def compute_stats(self) -> dict | None:
+        """Hook returning a per-run summary-stats dict (persisted with the data). None by default."""
+        return None
 
     def get_trials(self) -> pt.DataFrame:
         """Gathers all the data, validates them and returns a dataframe
@@ -275,9 +297,7 @@ class Run:
         )
 
     @staticmethod
-    def read_combine_logs(
-        stimlog_path: str | list[str], riglog_path: str | list[str]
-    ) -> tuple[dict, dict]:
+    def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
@@ -288,9 +308,9 @@ class Run:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(
-                riglog_path
-            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            assert len(stimlog_path) == len(riglog_path), (
+                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            )
 
             stim_data_all = []
             rig_data_all = []
@@ -321,9 +341,7 @@ class Run:
     def read_run_data(self) -> None:
         """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
-        rawdata, self.comments = self.read_combine_logs(
-            self.paths.stimlog, self.paths.riglog
-        )
+        rawdata, self.comments = self.read_combine_logs(self.paths.stimlog, self.paths.riglog)
         self.rawdata = extrapolate_time(rawdata)
 
         # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry:
@@ -332,20 +350,14 @@ class Run:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
-                self.paths.onepcamlog
-            )
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(self.paths.onepcamlog)
 
         # try eyecam and facecam either way
         if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
-                self.paths.eyecamlog
-            )
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(self.paths.eyecamlog)
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
-                self.paths.facecamlog
-            )
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(self.paths.facecamlog)
 
         display("Read rawdata")
 
@@ -394,9 +406,7 @@ class Run:
             )
 
         # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
-            {"cycle": "trialNo"}
-        )
+        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename({"cycle": "trialNo"})
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists
@@ -420,18 +430,33 @@ class Run:
         Args:
             save_mat (bool, optional): Flag to save the dataframe as a .mat file. Defaults to False
         """
-        if self.data is not None:
+        if self.data is not None and self.data.data is not None:
             for s_path in self.paths.save:
                 if not pexists(s_path):
                     os.makedirs(s_path)
-                    # os.makedirs(s_path)
                 self.data.save_data(s_path, save_mat)
                 display(f"Saved session data to {s_path}", color="green")
+        self._save_stats()
+
+    def _save_stats(self) -> None:
+        """Persist the per-run stats dict (if the paradigm produced one)."""
+        if self.stats is None:
+            return
+        for s_path in self.paths.save:
+            save_dict_json(pjoin(s_path, "sessionStats.json"), self.stats)
 
     def load_run(self) -> None:
-        """Loads the saved"""
+        """Loads the saved run data (and stats, if present)."""
         for d_path in self.paths.data:
             if pexists(d_path):
                 self.data.load_data(d_path)
                 display(f"Loaded session data from {d_path}", color="green")
+                break
+
+    def _load_stats(self) -> None:
+        """Load the per-run stats dict if a paradigm saved one."""
+        for s_path in self.paths.save:
+            stat_path = pjoin(s_path, "sessionStats.json")
+            if pexists(stat_path):
+                self.stats = load_json_dict(stat_path)
                 break

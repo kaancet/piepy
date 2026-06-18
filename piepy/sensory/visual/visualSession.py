@@ -1,4 +1,3 @@
-import time
 import polars as pl
 from ...core.io import display
 from ...core.run import Run, RunData, RunMeta
@@ -33,9 +32,7 @@ class VisualRun(Run):
 
         # sometimes iTrial starts from 0, shift all to start from 1
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
-            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
-                (pl.col("iTrial") + 1).alias("iTrial")
-            )
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
 
     def analyze_run(self, transform_dict: dict) -> None:
         """Main loop to extract data from rawdata
@@ -67,16 +64,6 @@ class VisualRun(Run):
 
 
 class VisualSession(Session):
-    def __init__(self, sessiondir, load_flag=False, save_mat=False):
-        start = time.time()
-        super().__init__(sessiondir, load_flag, save_mat)
-
-        # initialize runs : read and parse or load the data
-        self.init_session_runs()
-
-        end = time.time()
-        display(f"Done! t={(end - start):.2f} s")
-
     def init_session_runs(self):
         """Initializes runs in a session"""
         for r in range(self.run_count):

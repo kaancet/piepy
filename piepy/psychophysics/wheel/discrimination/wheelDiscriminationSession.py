@@ -1,13 +1,8 @@
-import time
 import os
-from os.path import join as pjoin
 import polars as pl
-
 
 from ....core.run import RunData, Run
 from ....core.session import Session
-from ....core.paths import RunArtifacts as Paths
-from ....core.io import display, load_json_dict, save_dict_json
 from ....core.registry import register_paradigm
 from ....core.log_repair_functions import fix_first_line_state_logging
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
@@ -63,24 +58,14 @@ class WheelDiscriminationRunData(RunData):
         )
 
         # add response_time columns
-        self.data = self.data.with_columns(
-            pl.col("state_response_time").alias("response_time")
-        )
+        self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
         # round sf and tf
         self.data = self.data.with_columns(
-            [
-                pl.col(_sf).round(2).alias(_sf)
-                for _sf in self.data.columns
-                if _sf.endswith("_sf")
-            ]
+            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
         )
         self.data = self.data.with_columns(
-            [
-                pl.col(_tf).round(2).alias(_tf)
-                for _tf in self.data.columns
-                if _tf.endswith("_tf")
-            ]
+            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
         )
 
     def add_stim_diff_and_type(self, discrim_of: str) -> None:
@@ -135,9 +120,7 @@ class WheelDiscriminationRunData(RunData):
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
             # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_-1").alias("stimkey")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type") + "_-1").alias("stimkey"))
             # add stim_label for legends and stuff
             self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
@@ -157,11 +140,7 @@ class WheelDiscriminationRunData(RunData):
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
                         .map_elements(
-                            lambda x: (
-                                pattern_names[x["opto_pattern"]]
-                                if x["state_outcome"] != -1
-                                else None
-                            ),
+                            lambda x: pattern_names[x["opto_pattern"]] if x["state_outcome"] != -1 else None,
                             return_dtype=str,
                         )
                         .alias("opto_region")
@@ -175,36 +154,21 @@ class WheelDiscriminationRunData(RunData):
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (
-                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
-                ).alias("stimkey")
+                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias("stimkey")
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
-                    "stim_label"
-                )
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias("stim_label")
             )
 
 
 class WheelDiscriminationRun(Run):
-    def __init__(self, path: Paths) -> None:
-        super().__init__(path)
-        self.data = WheelDiscriminationRunData()
-        self.trial_handler = WheelDiscriminationTrialHandler()
+    rundata_cls = WheelDiscriminationRunData
+    trial_handler_cls = WheelDiscriminationTrialHandler
+    state_transitions = STATE_TRANSITION_KEYS
 
-    def __repr__(self):
-        _base = super().__repr__()
-        return _base
-
-    def get_rawdata(self, transform_dict: dict) -> None:
-        """Reads the data from various logs and does some repairs/fixes for standardization
-
-        Args:
-            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
-        """
-        super().get_rawdata(transform_dict)
-
+    def repair_rawdata(self) -> None:
+        """Discrimination-specific rawdata fixes after the standard read."""
         self.rawdata = fix_first_line_state_logging(self.rawdata)
 
         self.rawdata["vstim"] = self.transform_header(self.rawdata["vstim"])
@@ -229,9 +193,7 @@ class WheelDiscriminationRun(Run):
         if len(realtf_cols) != 0:
             # get all the columns with _r and _l
             l_headers = [c for c in header if "_l" in c if "pos" not in c]
-            lr_headers = [
-                (i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers
-            ]
+            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
 
             for j, head_tup in enumerate(lr_headers):
                 h_pos, h_name = head_tup
@@ -249,77 +211,15 @@ class WheelDiscriminationRun(Run):
 
             return df
 
-    def analyze_run(self, discrim_of: str) -> None:
-        """Main loop to extract data from rawdata, should be overwritten in child classes
-
-        Args:
-            discrim_of (str):
-        """
-
-        super().analyze_run()
-
-        self.data.add_stim_diff_and_type(discrim_of=discrim_of)
-
-        self.data.add_pattern_related_columns(self.paths.opto_pattern)
-
-        self.stats = get_run_stats(self.data.data)
-
-    def save_run(self) -> None:
-        """Saves the run data, meta and stats"""
-        super().save_run()
-
-        for s_path in self.paths.save:
-            save_dict_json(pjoin(s_path, "sessionStats.json"), self.stats)
-
-    def load_run(self) -> None:
-        """Loads the run data and stats if exists"""
-        super().load_run()
-
-        for s_path in self.paths.save:
-            stat_path = pjoin(s_path, "sessionStats.json")
-            if os.path.exists(stat_path):
-                self.stats = load_json_dict(stat_path)
-                break
+    def compute_stats(self) -> dict:
+        return get_run_stats(self.data.data)
 
 
 class WheelDiscriminationSession(Session):
-    def __init__(
-        self,
-        sessiondir,
-        load_flag: bool,
-        save_mat: bool = False,
-    ):
-        start = time.time()
-        super().__init__(sessiondir, load_flag, save_mat)
-
-        # initialize runs : read and parse or load the data
-        self.init_session_runs()
-
-        end = time.time()
-        display(f"Done! t={(end - start):.2f} s")
+    run_cls = WheelDiscriminationRun
 
     def __repr__(self):
-        r = f"Discrimination Session {self.sessiondir}"
-        return r
-
-    def init_session_runs(self) -> None:
-        """Initializes runs in a session"""
-        for r in range(self.run_count):
-            _path = self.manifest.runs[r]
-            # the run itself
-            _run = WheelDiscriminationRun(_path)
-            _run.set_meta()
-            _run.get_rawdata(STATE_TRANSITION_KEYS)
-            if _run.is_run_saved() and self.load_flag:
-                display(f"Loading from {_run.paths.save}")
-                _run.load_run()
-            else:
-                discrim_of = _run.meta["opts"]["AttendVectorName"]
-                _run.analyze_run(discrim_of)
-                _run.data.add_metadata_columns(_run.meta)
-                _run.save_run()
-
-            self.runs.append(_run)
+        return f"Discrimination Session {self.sessiondir}"
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
@@ -335,25 +235,17 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # median response time #
     stats_dict["median_response_latency "] = round(
-        nonopto_data.filter(pl.col("outcome") == "correct")[
-            "state_response_time"
-        ].median(),
+        nonopto_data.filter(pl.col("outcome") == "correct")["state_response_time"].median(),
         3,
     )
 

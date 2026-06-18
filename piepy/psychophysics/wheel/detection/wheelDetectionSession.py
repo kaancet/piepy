@@ -1,4 +1,3 @@
-import time
 import os
 import numpy as np
 from PIL import Image
@@ -9,10 +8,9 @@ from tabulate import tabulate
 from os.path import join as pjoin
 from scipy.optimize import curve_fit
 
-from ....core.io import display, load_json_dict, save_dict_json
+from ....core.io import display
 from ....core.run import RunData, Run
 from ....core.session import Session
-from ....core.paths import RunArtifacts as Paths
 from ....core.paths import parse_session_name
 from ....core.registry import register_paradigm
 from ....core.hub import generate_unique_session_id
@@ -61,18 +59,12 @@ class WheelDetectionRunData(RunData):
             if col_name in self.data.columns:
                 self.data = self.data.with_columns(pl.col(col_name).alias("outcome"))
             else:
-                raise ValueError(
-                    f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'."
-                )
+                raise ValueError(f"{outcome_type} is not a valid outcome type!!! Try 'pos', 'speed' or 'state'.")
 
     def compare_outcomes(self) -> None:
         """Compares the different outcome types and prints a small summary table"""
         out_cols = [c for c in self.data.columns if "_outcome" in c]
-        q = (
-            self.data.group_by(out_cols)
-            .agg([pl.count().alias("count")])
-            .sort(["state_outcome"])
-        )
+        q = self.data.group_by(out_cols).agg([pl.count().alias("count")]).sort(["state_outcome"])
         tmp = q.to_pandas()
         print(tabulate(tmp, headers=q.columns))
 
@@ -101,9 +93,7 @@ class WheelDetectionRunData(RunData):
 
         # adds string stimtype
         self.data = self.data.with_columns(
-            (
-                pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz"
-            ).alias("stim_type")
+            (pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz").alias("stim_type")
         )
 
         # add signed contrast
@@ -137,9 +127,7 @@ class WheelDetectionRunData(RunData):
             return m * x + a
 
         if len(rig_time):
-            popt, pcov = curve_fit(
-                m1_func, resp_time, rig_time
-            )  # popt[0] is the time diff intercept
+            popt, pcov = curve_fit(m1_func, resp_time, rig_time)  # popt[0] is the time diff intercept
 
             all_resp_time = self.data["state_response_time"]
             new_rig_times = m1_func(all_resp_time, *popt)
@@ -158,9 +146,7 @@ class WheelDetectionRunData(RunData):
             self.data = self.data.drop("temp_response_times")
         else:
             print("NO RIG TIME TO INTERPOLATE, COPYING STATE TIME")
-            self.data = self.data.with_columns(
-                pl.col("state_response_time").alias("response_time")
-            )
+            self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
     def add_pattern_related_columns(self, pattern_path: str) -> None:
         """Adds columns related to the silencing pattern if they exist
@@ -177,9 +163,7 @@ class WheelDetectionRunData(RunData):
             # add the pattern name depending on pattern id
             self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
             # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_-1").alias("stimkey")
-            )
+            self.data = self.data.with_columns((pl.col("stim_type") + "_-1").alias("stimkey"))
             # add stim_label for legends and stuff
             self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
         else:
@@ -199,11 +183,7 @@ class WheelDetectionRunData(RunData):
                     self.data = self.data.with_columns(
                         pl.struct(["opto_pattern", "state_outcome"])
                         .map_elements(
-                            lambda x: (
-                                pattern_names[x["opto_pattern"]]
-                                if x["state_outcome"] != -1
-                                else None
-                            ),
+                            lambda x: pattern_names[x["opto_pattern"]] if x["state_outcome"] != -1 else None,
                             return_dtype=str,
                         )
                         .alias("opto_region")
@@ -217,15 +197,11 @@ class WheelDetectionRunData(RunData):
 
             # add 'stimkey' from sftf
             self.data = self.data.with_columns(
-                (
-                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
-                ).alias("stimkey")
+                (pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)).alias("stimkey")
             )
             # add stim_label for legends and stuff
             self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
-                    "stim_label"
-                )
+                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias("stim_label")
             )
 
     @staticmethod
@@ -257,91 +233,29 @@ class WheelDetectionRunData(RunData):
 
 
 class WheelDetectionRun(Run):
-    def __init__(self, path: Paths) -> None:
-        super().__init__(path)
-        self.data = WheelDetectionRunData()
-        self.trial_handler = WheelDetectionTrialHandler()
+    rundata_cls = WheelDetectionRunData
+    trial_handler_cls = WheelDetectionTrialHandler
+    state_transitions = STATE_TRANSITION_KEYS
 
     def __repr__(self):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = (
-                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
-            )
+            _stats = f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
         return _base + _stats
 
-    def get_rawdata(self, transform_dict: dict) -> None:
-        """Reads the data from various logs and does some repairs/fixes for standardization
-
-        Args:
-            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
-        """
-        super().get_rawdata(transform_dict)
-
-    def analyze_run(self) -> None:
-        """Main loop to extract data from rawdata"""
-        super().analyze_run()
-
+    def augment_data(self) -> None:
         self.data.add_pattern_related_columns(self.paths.opto_pattern)
 
-        self.stats = get_run_stats(self.data.data)
-
-    def save_run(self) -> None:
-        """Saves the run data, meta and stats"""
-        super().save_run()
-
-        for s_path in self.paths.save:
-            save_dict_json(pjoin(s_path, "sessionStats.json"), self.stats)
-
-    def load_run(self) -> None:
-        """Loads the run data and stats if exists"""
-        super().load_run()
-
-        for s_path in self.paths.save:
-            stat_path = pjoin(s_path, "sessionStats.json")
-            if os.path.exists(stat_path):
-                self.stats = load_json_dict(stat_path)
-                break
+    def compute_stats(self) -> dict:
+        return get_run_stats(self.data.data)
 
 
 class WheelDetectionSession(Session):
-    def __init__(
-        self,
-        sessiondir: str,
-        load_flag: bool,
-        save_mat: bool = False,
-    ):
-        start = time.time()
-        super().__init__(sessiondir, load_flag, save_mat)
-
-        # initialize runs : read and parse or load the data
-        self.init_session_runs()
-
-        end = time.time()
-        display(f"Done! t={(end - start):.2f} s")
+    run_cls = WheelDetectionRun
 
     def __repr__(self):
-        r = f"Detection Session {self.sessiondir}"
-        return r
-
-    def init_session_runs(self) -> None:
-        """Initializes runs in a session"""
-        for r in range(self.run_count):
-            _path = self.manifest.runs[r]
-            # the run itself
-            _run = WheelDetectionRun(_path)
-            _run.set_meta()
-            _run.get_rawdata(STATE_TRANSITION_KEYS)
-            if _run.is_run_saved() and self.load_flag:
-                display(f"Loading from {_run.paths.save}")
-                _run.load_run()
-            else:
-                _run.analyze_run()
-                _run.data.add_metadata_columns(_run.meta)
-                _run.save_run()
-
-            self.runs.append(_run)
+        return f"Detection Session {self.sessiondir}"
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
@@ -370,28 +284,16 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["catch_trial_count"] = len(catch_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["hit_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
-    stats_dict["false_alarm_rate"] = round(
-        100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["nogo_rate"] = round(
-        100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["hit_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3)
+    stats_dict["false_alarm_rate"] = round(100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["nogo_rate"] = round(100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3)
 
     # median response time #
     stats_dict["median_response_time"] = round(
@@ -414,9 +316,7 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["easy_trial_count"] = len(easy_data)
     easy_correct_count = len(easy_data.filter(pl.col("outcome") == "hit"))
     if stats_dict["easy_trial_count"]:
-        stats_dict["easy_hit_rate"] = round(
-            100 * easy_correct_count / stats_dict["easy_trial_count"], 3
-        )
+        stats_dict["easy_hit_rate"] = round(100 * easy_correct_count / stats_dict["easy_trial_count"], 3)
         stats_dict["easy_median_response_time"] = round(
             easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
             3,
@@ -453,9 +353,7 @@ def _enrich_detection(session) -> pl.DataFrame:
             continue
         meta = run.meta or {}
         opts = meta.get("opts") or {}
-        params = meta.get(
-            "params"
-        )  # a pandas DataFrame (from parse_protocol); not a dict
+        params = meta.get("params")  # a pandas DataFrame (from parse_protocol); not a dict
         rig = meta.get("rig")
         contrast_vector = opts.get("contrastVector", []) or []
         n_uniq_contrast = d["contrast"].drop_nulls().unique().len()
@@ -473,14 +371,10 @@ def _enrich_detection(session) -> pl.DataFrame:
                 "opto_ratio": opts.get("optoRatio"),
                 "opto_targets": d["opto_pattern"].unique().len() - 1,
                 "stimulus_count": d["stim_type"].drop_nulls().unique().len(),
-                "stim_combination": "+".join(
-                    d["stim_type"].unique().sort().drop_nulls().to_list()
-                ),
+                "stim_combination": "+".join(d["stim_type"].unique().sort().drop_nulls().to_list()),
                 "isTitrated": n_uniq_contrast > len(contrast_vector),
                 "rig": rig.get("name") if isinstance(rig, dict) else rig,
-                "session_id": generate_unique_session_id(
-                    meta.get("baredate", ""), meta.get("animalid", "")
-                ),
+                "session_id": generate_unique_session_id(meta.get("baredate", ""), meta.get("animalid", "")),
                 "session_path": session.manifest.session_path,
                 "area": info.extra.get("area"),
                 "opto_power": info.extra.get("opto_power"),
@@ -491,12 +385,8 @@ def _enrich_detection(session) -> pl.DataFrame:
                 "wait_window": opts.get("openStimDuration"),
                 "response_window": opts.get("closedStimDuration"),
                 "stim_size": stim_size,
-                "sf_values": (
-                    d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []
-                ),
-                "tf_values": (
-                    d["tf"].drop_nulls().unique().to_list() if "tf" in d.columns else []
-                ),
+                "sf_values": (d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []),
+                "tf_values": (d["tf"].drop_nulls().unique().to_list() if "tf" in d.columns else []),
             }
         )
     if not rows:
