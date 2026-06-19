@@ -2,12 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 
-from ....psychophysics.wheel.wheelTrace import WheelTrace
+from ....psychophysics.wheelTrace import WheelTrace
 
 
-def plot_trial(
-    trial_row: pl.DataFrame, ax: plt.Axes = None, mpl_kwargs: dict = None, **kwargs
-) -> plt.Axes:
+def plot_trial(trial_row: pl.DataFrame, ax: plt.Axes = None, mpl_kwargs: dict = None, **kwargs) -> plt.Axes:
     """ """
     if ax is None:
         fig = plt.figure(figsize=kwargs.pop("figsize", (15, 8)))
@@ -22,9 +20,7 @@ def plot_trial(
     trace = WheelTrace()
 
     # look for a column that has t_*start_rig
-    _start_name = [
-        s for s in _trial.keys() if s.startswith("t_") and s.endswith("start_rig")
-    ][0]
+    _start_name = [s for s in _trial.keys() if s.startswith("t_") and s.endswith("start_rig")][0]
 
     # timeframe reset value
     if _trial[_start_name] is not None:
@@ -62,9 +58,7 @@ def plot_trial(
     ax.plot(reset_t, wheel_pos_rad)
 
     # get the epoch time points, order them and reset the timeframe
-    epochs_time_points = [
-        (c, v) for c, v in _trial.items() if c.startswith("t_") and v is not None
-    ]
+    epochs_time_points = [(c, v) for c, v in _trial.items() if c.startswith("t_") and v is not None]
 
     idx_sorted = np.argsort([v[1] for v in epochs_time_points])
     sorted_epoch_time_points = [epochs_time_points[i] for i in idx_sorted]

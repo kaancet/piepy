@@ -7,8 +7,8 @@ from piepy.core.enrich import build_enrich
 from piepy.core.paths import parse_session_name
 from piepy.core.registry import register_paradigm
 from piepy.core.hub import generate_unique_session_id
-from piepy.psychophysics.opto import OptoPattern
-from piepy.psychophysics.psychophysicalRunData import PsychophysicalRunData
+from piepy.psychophysics.opto import add_opto_pattern_columns
+from piepy.psychophysics.transforms import set_outcome, add_rig_response_time, add_stim_side, add_sftf_descriptor
 from .wheelDetectionTrial import WheelDetectionTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -25,72 +25,28 @@ STATE_TRANSITION_KEYS = {
 }
 
 
-class WheelDetectionRunData(OptoPattern, PsychophysicalRunData):
-    def __init__(self, data: pl.DataFrame = None) -> None:
-        super().__init__(data)
-
-    def set_data(self, data: pl.DataFrame) -> None:
-        """Sets the data of the session and augments it
-
-        Args:
-            data: Dataframe
-        """
-        if data is not None:
-            super().set_data(data)
-            self.add_qolumns()
-            self.add_rig_response_time()
-
-    def add_qolumns(self) -> None:
-        """Adds some quality of life (qol) columns"""
-
-        # add a stim_side column for ease of access
-        self.data = self.data.with_columns(
-            pl.when(pl.col("stim_pos") > 0)
-            .then(pl.lit("contra"))
-            .when(pl.col("stim_pos") < 0)
-            .then(pl.lit("ipsi"))
-            .when((pl.col("stim_pos") == 0) | (pl.col("isCatch") == 1))
-            .then(pl.lit("catch"))
-            .otherwise(None)
-            .alias("stim_side")
-        )
-
-        # round sf and tf
-        self.data = self.data.with_columns(
-            [
-                (pl.col("sf").round(2).alias("sf")),
-                (pl.col("tf").round(1).alias("tf")),
-            ]
-        )
-
-        # adds string stimtype
-        self.data = self.data.with_columns(
-            (pl.col("sf").round(2).cast(str) + "cpd_" + pl.col("tf").cast(str) + "Hz").alias("stim_type")
-        )
-
-        # add signed contrast
-        self.data = self.data.with_columns(
-            pl.when(pl.col("stim_side") == "ipsi")
-            .then((pl.col("contrast") * -1))
-            .otherwise(pl.col("contrast"))
-            .alias("signed_contrast")
-        )
-
-        # add easy/hard contrast type groups
-        self.data = self.data.with_columns(
-            pl.when(pl.col("contrast") >= 0.25)
-            .then(pl.lit("easy"))
-            .when((pl.col("contrast") < 0.25) & (pl.col("contrast") > 0))
-            .then(pl.lit("hard"))
-            .when(pl.col("contrast") == 0)
-            .then(pl.lit("catch"))
-            .otherwise(None)
-            .alias("contrast_type")
-        )
+# Here are more task specific augmenters
+def add_contrast_descriptors(df: pl.DataFrame) -> pl.DataFrame:
+    """Contrast columns: ``signed_contrast`` (by side) and easy/hard/catch ``contrast_type``."""
+    df = df.with_columns(
+        pl.when(pl.col("stim_side") == "ipsi")
+        .then(pl.col("contrast") * -1)
+        .otherwise(pl.col("contrast"))
+        .alias("signed_contrast")
+    )
+    return df.with_columns(
+        pl.when(pl.col("contrast") >= 0.25)
+        .then(pl.lit("easy"))
+        .when((pl.col("contrast") < 0.25) & (pl.col("contrast") > 0))
+        .then(pl.lit("hard"))
+        .when(pl.col("contrast") == 0)
+        .then(pl.lit("catch"))
+        .otherwise(None)
+        .alias("contrast_type")
+    )
 
 
 class WheelDetectionRun(Run):
-    rundata_cls = WheelDetectionRunData
     trial_handler_cls = WheelDetectionTrialHandler
     state_transitions = STATE_TRANSITION_KEYS
 
@@ -102,7 +58,16 @@ class WheelDetectionRun(Run):
         return _base + _stats
 
     def augment_data(self) -> None:
-        self.data.add_pattern_related_columns(self.paths.opto_pattern)
+        # all detection column derivation, in order (contrast needs stim_side; opto needs the
+        # per-run pattern path on self) -- composed from pure transforms.
+        d = self.data.data
+        d = set_outcome(d)
+        d = add_stim_side(d)
+        d = add_contrast_descriptors(d)
+        d = add_sftf_descriptor(d)
+        d = add_rig_response_time(d)
+        d = add_opto_pattern_columns(d, self.paths.opto_pattern)
+        self.data.data = d
 
     def compute_stats(self) -> dict:
         return get_run_stats(self.data.data)

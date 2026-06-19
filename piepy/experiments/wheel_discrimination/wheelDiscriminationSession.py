@@ -4,8 +4,8 @@ from piepy.core.run import Run
 from piepy.core.session import Session
 from piepy.core.registry import register_paradigm
 from piepy.core.log_repair_functions import fix_first_line_state_logging
-from piepy.psychophysics.opto import OptoPattern
-from piepy.psychophysics.psychophysicalRunData import PsychophysicalRunData
+from piepy.psychophysics.opto import add_opto_pattern_columns
+from piepy.psychophysics.transforms import add_rig_response_time, add_sftf_descriptor
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -21,94 +21,97 @@ STATE_TRANSITION_KEYS = {
 }
 
 
-class WheelDiscriminationRunData(OptoPattern, PsychophysicalRunData):
-    def __init__(self, data=None):
-        super().__init__(data)
+def add_choice_descriptors(df: pl.DataFrame) -> pl.DataFrame:
+    """Choice columns: ``target_side``, ``right_choice``, and a ``response_time`` copy."""
+    df = df.with_columns(
+        pl.when(pl.col("target_pos").list.get(0) > 0)
+        .then(pl.lit("contra"))
+        .when(pl.col("target_pos").list.get(0) < 0)
+        .then(pl.lit("ipsi"))
+        .otherwise(None)
+        .alias("target_side")
+    )
+    df = df.with_columns(
+        pl.col("state_outcome")
+        .cast(pl.Boolean)
+        .xor(pl.col("correct_side").cast(pl.Boolean))
+        .not_()
+        .cast(pl.Int64)
+        .alias("right_choice")
+    )
+    return df.with_columns(pl.col("state_response_time").alias("response_time"))
 
-    def set_data(self, data: pl.DataFrame) -> None:
-        """Sets the data of the session and augments it
 
-        Args:
-            data (pl.Dataframe): Dataframe to initialize the run data
-        """
-        if data is not None:
-            super().set_data(data)
-            self.add_qolumns()
+def add_stim_diff_and_type(df: pl.DataFrame, discrim_of: str) -> pl.DataFrame:
+    """Add the discriminated-feature difference + a ``stim_type`` key (needs ``discrim_of``)."""
+    unit = {"width": "deg", "sf": "cpd", "tf": "Hz", "contrast": "%"}.get(discrim_of, "NA")
+    df = df.with_columns(pl.lit(discrim_of).alias("discriminating"))
+    df = df.with_columns(
+        pl.when(pl.col("target_side") == "contra")
+        .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
+        .otherwise(pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}"))
+        .alias(f"diff_{discrim_of}")
+    )
+    return df.with_columns(
+        (
+            pl.col(f"target_{discrim_of}").cast(pl.Utf8)
+            + f"{unit}_"
+            + pl.col(f"distract_{discrim_of}").cast(pl.Utf8)
+            + f"{unit}"
+        ).alias("stim_type")
+    )
 
-    def add_qolumns(self) -> None:
-        """Adds some quality of life (qol) columns"""
 
-        # add a stim_side column for ease of access
-        self.data = self.data.with_columns(
-            pl.when(pl.col("target_pos").list.get(0) > 0)
-            .then(pl.lit("contra"))
-            .when(pl.col("target_pos").list.get(0) < 0)
-            .then(pl.lit("ipsi"))
-            .otherwise(None)
-            .alias("target_side")
-        )
+def transform_header(self, df: pl.DataFrame) -> pl.DataFrame:
+    """Changes the vstim header
 
-        # right choice
-        self.data = self.data.with_columns(
-            pl.col("state_outcome")
-            .cast(pl.Boolean)
-            .xor(pl.col("correct_side").cast(pl.Boolean))
-            .not_()
-            .cast(pl.Int64)
-            .alias("right_choice")
-        )
+    Args:
+        in_df (pl.DataFrame): vstim dataframe
 
-        # add response_time columns
-        self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
+    Returns:
+        pl.DataFrame: _description_
+    """
+    header = df.columns.copy()
+    distract_name = self.meta["opts"]["DistractVectorName"]
+    if distract_name == "c":
+        distract_name = "contrast"
 
-        # round sf and tf
-        self.data = self.data.with_columns(
-            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
-        )
-        self.data = self.data.with_columns(
-            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
-        )
+    realtf_cols = [rc for rc in header if "realtf" in rc]
 
-    def add_stim_diff_and_type(self, discrim_of: str) -> None:
-        """_summary_
+    if len(realtf_cols) != 0:
+        # get all the columns with _r and _l
+        l_headers = [c for c in header if "_l" in c if "pos" not in c]
+        lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
 
-        Args:
-            discrim_of (str): _description_
-        """
+        for j, head_tup in enumerate(lr_headers):
+            h_pos, h_name = head_tup
+            if h_name == "contrast":
+                header[h_pos] = "width_l"
+                header[h_pos + 1] = "width_r"
+            elif h_name == "tf":
+                header[h_pos] = "contrast_l"
+                header[h_pos + 1] = "contrast_r"
+            elif h_name == "realtf":
+                header[h_pos] = "tf_l"
+                header[h_pos + 1] = "tf_r"
 
-        if discrim_of == "width":
-            u = "deg"
-        elif discrim_of == "sf":
-            u = "cpd"
-        elif discrim_of == "tf":
-            u = "Hz"
-        elif discrim_of == "contrast":
-            u = "%"
-        else:
-            u = "NA"
+        df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
 
-        self.data = self.data.with_columns(pl.lit(discrim_of).alias("discriminating"))
+        return df
 
-        self.data = self.data.with_columns(
-            pl.when(pl.col("target_side") == "contra")
-            .then(pl.col(f"target_{discrim_of}") - pl.col(f"distract_{discrim_of}"))
-            .otherwise(pl.col(f"distract_{discrim_of}") - pl.col(f"target_{discrim_of}"))
-            .alias(f"diff_{discrim_of}")
-        )
 
-        # adds string stimtype
-        self.data = self.data.with_columns(
-            (
-                pl.col(f"target_{discrim_of}").cast(pl.Utf8)
-                + f"{u}_"
-                + pl.col(f"distract_{discrim_of}").cast(pl.Utf8)
-                + f"{u}"
-            ).alias("stim_type")
-        )
+# class WheelDiscriminationRunData(RunData):
+#     # context-free pipeline; stim-diff (needs discrim_of) and opto (needs pattern path) are
+#     # applied in WheelDiscriminationRun.augment_data.
+#     augmenters = [add_choice_descriptors, add_sftf_descriptor]
+
+#     def add_qolumns(self) -> None:
+#         """Adds some quality of life (qol) columns"""
+#         # add response_time columns
+#         self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
 
 class WheelDiscriminationRun(Run):
-    rundata_cls = WheelDiscriminationRunData
     trial_handler_cls = WheelDiscriminationTrialHandler
     state_transitions = STATE_TRANSITION_KEYS
 
@@ -117,47 +120,14 @@ class WheelDiscriminationRun(Run):
         self.rawdata = fix_first_line_state_logging(self.rawdata)
         self.rawdata["vstim"] = self.transform_header(self.rawdata["vstim"])
 
-    def transform_header(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Changes the vstim header
-
-        Args:
-            in_df (pl.DataFrame): vstim dataframe
-
-        Returns:
-            pl.DataFrame: _description_
-        """
-        header = df.columns.copy()
-        distract_name = self.meta["opts"]["DistractVectorName"]
-        if distract_name == "c":
-            distract_name = "contrast"
-
-        realtf_cols = [rc for rc in header if "realtf" in rc]
-
-        if len(realtf_cols) != 0:
-            # get all the columns with _r and _l
-            l_headers = [c for c in header if "_l" in c if "pos" not in c]
-            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
-
-            for j, head_tup in enumerate(lr_headers):
-                h_pos, h_name = head_tup
-                if h_name == "contrast":
-                    header[h_pos] = "width_l"
-                    header[h_pos + 1] = "width_r"
-                elif h_name == "tf":
-                    header[h_pos] = "contrast_l"
-                    header[h_pos + 1] = "contrast_r"
-                elif h_name == "realtf":
-                    header[h_pos] = "tf_l"
-                    header[h_pos + 1] = "tf_r"
-
-            df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
-
-            return df
-
     def augment_data(self) -> None:
+        # all discrimination column derivation, in order; context (attended feature, opto path)
         discrim_of = self.meta["opts"]["AttendVectorName"]
-        self.data.add_stim_diff_and_type(discrim_of=discrim_of)
-        self.data.add_pattern_related_columns(self.paths.opto_pattern)
+        d = self.data.data
+        d = add_choice_descriptors(d)
+        d = add_sftf_descriptor(d)
+        d = add_stim_diff_and_type(d, discrim_of=discrim_of)
+        d = add_opto_pattern_columns(d, self.paths.opto_pattern)
 
     def compute_stats(self) -> dict:
         return get_run_stats(self.data.data)

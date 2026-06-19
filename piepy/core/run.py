@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 
 from .config import config
-from .errors import StateMachineError, WrongSessionTypeError
+from .errors import StateMachineError, WrongSessionTypeError, DataMissingError
 from .io import display, load_json_dict, save_dict_json
 from .parsers import (
     parse_labcams_log,
@@ -36,6 +36,19 @@ from .paths import parse_session_name
 from .trial import TrialHandler
 
 STATE_TRANSITION_KEYS = {}
+
+
+def to_plain_polars(frame: pl.DataFrame) -> pl.DataFrame:
+    """Strip a DataFrame subclass down to a base polars DataFrame (zero-copy).
+
+    Parsing produces a *patito* ``DataFrame`` whose ``.model`` is a dynamically-expanded class
+    (e.g. ``ExpandedExpandedWheelDetectionTrialDataFrame``) that is **not importable by name** and
+    so cannot be pickled. Polars ops like ``with_columns`` preserve that subclass, so the
+    patito-ness would otherwise ride all the way to the value a ``Hub`` ``spawn`` worker returns
+    to the parent -- where multiprocessing pickles it and fails. Validation is done by the time we
+    call this, so we reuse the underlying ``PyDataFrame`` as a plain ``pl.DataFrame``.
+    """
+    return pl.DataFrame._from_pydf(frame._df)
 
 
 class RunMeta:
@@ -125,15 +138,21 @@ class RunMeta:
 
 
 class RunData:
-    def __init__(self, data: pl.DataFrame = None) -> None:
-        self.set_data(data)
+    """Holds a run's trial table + its IO. A pure store all column derivation happens once,
+    on the parse path, in the task's ``Run.augment_data`` (so loading a saved table never
+    re-derives)"""
+
+    def __init__(self) -> None:
+        pass
 
     def set_data(self, data: pl.DataFrame) -> None:
-        """Sets the data of the
+        """Set the trial table, running this RunData's ``augmenters`` pipeline over it.
 
         Args:
             data: The dataframe that has the trials
         """
+        if not isinstance(data, pl.DataFrame):
+            raise DataMissingError(f"Need a DataFrame to set Run data, got {type(data)} instead")
         self.data = data
 
     def add_metadata_columns(self, metadata: dict) -> None:
@@ -322,7 +341,7 @@ class Run:
 
             pbar.update()
 
-        return (
+        validated = (
             pt.DataFrame(data_to_append)
             .set_model(self.trial_handler.trial_model)
             .derive()
@@ -331,6 +350,7 @@ class Run:
             .fill_null(strategy="defaults")
             .validate()
         )
+        return to_plain_polars(validated)
 
     @staticmethod
     def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:

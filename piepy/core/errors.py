@@ -140,6 +140,10 @@ class SchemaError(PiepyError):
     category = "schema"
 
 
+class DataMissingError(ParsingError):
+    category = "parsing"
+
+
 # --------------------------------------------------------------------------- #
 # Placeholders migrated from the old core/exceptions.py (2026-06-13).
 #

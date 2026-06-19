@@ -4,7 +4,7 @@ from scipy import stats
 import matplotlib.pyplot as plt
 
 from ...colors.color import Color
-from ....psychophysics.wheel.wheelTrace import WheelTrace
+from ....psychophysics.wheelTrace import WheelTrace
 from ...plotting_utils import set_style, override_plots
 from ....core.data_functions import make_subsets
 
@@ -87,13 +87,8 @@ def plot_wheel_profile(
             # convert the interpolation to rad
             interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
 
-            speed = (
-                np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq))
-                * 1000
-            )  # rad/s
-            idx_in_time_range = np.where(
-                (t_interp >= time_lims[0]) & (t_interp <= time_lims[1])
-            )
+            speed = np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq)) * 1000  # rad/s
+            idx_in_time_range = np.where((t_interp >= time_lims[0]) & (t_interp <= time_lims[1]))
 
             if len(idx_in_time_range):
                 time_window = t_interp[idx_in_time_range]
@@ -101,19 +96,13 @@ def plot_wheel_profile(
                     speed_window = speed[idx_in_time_range]
                     y_in_rads = speed_window
                     if trial["rig_response_tick"] is not None:
-                        speed_thresh = trial["rig_response_tick"] / (
-                            trial["median_loop_time"] * 5
-                        )  # 5 is wheelbuffer
-                        speed_thresh = (
-                            trace.cm_to_rad(trace.ticks_to_cm(speed_thresh)) * 1000
-                        )  # rad/s
+                        speed_thresh = trial["rig_response_tick"] / (trial["median_loop_time"] * 5)  # 5 is wheelbuffer
+                        speed_thresh = trace.cm_to_rad(trace.ticks_to_cm(speed_thresh)) * 1000  # rad/s
                         _rig_response_rad_list.append(speed_thresh)
                 else:
                     y_in_rads = interp_pos[idx_in_time_range]
                     if trial["rig_response_tick"] is not None:
-                        pos_thresh = trace.cm_to_rad(
-                            trace.ticks_to_cm(trial["rig_response_tick"])
-                        )
+                        pos_thresh = trace.cm_to_rad(trace.ticks_to_cm(trial["rig_response_tick"]))
                         _rig_response_rad_list.append(pos_thresh)
 
                 trials_wheel_list.append(y_in_rads.tolist())
@@ -142,9 +131,7 @@ def plot_wheel_profile(
             alpha=0.2,
             linewidth=0,
         )
-        ax._plot(
-            _longest_time, avg, **clr.contrast_keys[str(sep)], mpl_kwargs=mpl_kwargs
-        )
+        ax._plot(_longest_time, avg, **clr.contrast_keys[str(sep)], mpl_kwargs=mpl_kwargs)
 
     thresh_mean = np.mean(all_thresh)
     ax.axhline(thresh_mean, color="#147800", linewidth=0.5, alpha=0.8)
@@ -288,13 +275,8 @@ def plot_wheel_heatmap(
             # convert the interpolation to rad
             interp_pos = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
 
-            speed = (
-                np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq))
-                * 1000
-            )  # rad/s
-            idx_in_time_range = np.where(
-                (t_interp >= time_lims[0]) & (t_interp <= time_lims[1])
-            )
+            speed = np.abs(trace.get_filtered_velocity(interp_pos, trace_interp_freq)) * 1000  # rad/s
+            idx_in_time_range = np.where((t_interp >= time_lims[0]) & (t_interp <= time_lims[1]))
 
             if len(idx_in_time_range):
                 time_window = t_interp[idx_in_time_range]
@@ -302,19 +284,13 @@ def plot_wheel_heatmap(
                     speed_window = speed[idx_in_time_range]
                     y_in_rads = speed_window
                     if trial["rig_response_tick"] is not None:
-                        speed_thresh = trial["rig_response_tick"] / (
-                            trial["median_loop_time"] * 5
-                        )  # 5 is wheelbuffer
-                        speed_thresh = (
-                            trace.cm_to_rad(trace.ticks_to_cm(speed_thresh)) * 1000
-                        )  # rad/s
+                        speed_thresh = trial["rig_response_tick"] / (trial["median_loop_time"] * 5)  # 5 is wheelbuffer
+                        speed_thresh = trace.cm_to_rad(trace.ticks_to_cm(speed_thresh)) * 1000  # rad/s
                         _rig_response_rad_list.append(speed_thresh)
                 else:
                     y_in_rads = interp_pos[idx_in_time_range]
                     if trial["rig_response_tick"] is not None:
-                        pos_thresh = trace.cm_to_rad(
-                            trace.ticks_to_cm(trial["rig_response_tick"])
-                        )
+                        pos_thresh = trace.cm_to_rad(trace.ticks_to_cm(trial["rig_response_tick"]))
                         _rig_response_rad_list.append(pos_thresh)
 
                 trials_wheel_list.append(y_in_rads.tolist())
@@ -325,9 +301,6 @@ def plot_wheel_heatmap(
 
             # make a matrix to avreage over the rows, pad with None until reaching longest trace
             all_traces_mat = np.array(
-                [
-                    xi + [None] * (_longest_trace_len - len(xi))
-                    for xi in trials_wheel_list
-                ],
+                [xi + [None] * (_longest_trace_len - len(xi)) for xi in trials_wheel_list],
                 dtype=float,
             )
