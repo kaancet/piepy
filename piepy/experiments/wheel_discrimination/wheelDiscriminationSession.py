@@ -1,10 +1,11 @@
-import os
 import polars as pl
 
-from piepy.core.run import RunData, Run
+from piepy.core.run import Run
 from piepy.core.session import Session
 from piepy.core.registry import register_paradigm
 from piepy.core.log_repair_functions import fix_first_line_state_logging
+from piepy.psychophysics.opto import OptoPattern
+from piepy.psychophysics.psychophysicalRunData import PsychophysicalRunData
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -20,7 +21,7 @@ STATE_TRANSITION_KEYS = {
 }
 
 
-class WheelDiscriminationRunData(RunData):
+class WheelDiscriminationRunData(OptoPattern, PsychophysicalRunData):
     def __init__(self, data=None):
         super().__init__(data)
 
@@ -58,24 +59,14 @@ class WheelDiscriminationRunData(RunData):
         )
 
         # add response_time columns
-        self.data = self.data.with_columns(
-            pl.col("state_response_time").alias("response_time")
-        )
+        self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
 
         # round sf and tf
         self.data = self.data.with_columns(
-            [
-                pl.col(_sf).round(2).alias(_sf)
-                for _sf in self.data.columns
-                if _sf.endswith("_sf")
-            ]
+            [pl.col(_sf).round(2).alias(_sf) for _sf in self.data.columns if _sf.endswith("_sf")]
         )
         self.data = self.data.with_columns(
-            [
-                pl.col(_tf).round(2).alias(_tf)
-                for _tf in self.data.columns
-                if _tf.endswith("_tf")
-            ]
+            [pl.col(_tf).round(2).alias(_tf) for _tf in self.data.columns if _tf.endswith("_tf")]
         )
 
     def add_stim_diff_and_type(self, discrim_of: str) -> None:
@@ -115,72 +106,6 @@ class WheelDiscriminationRunData(RunData):
             ).alias("stim_type")
         )
 
-    def add_pattern_related_columns(self, pattern_path: str) -> None:
-        """_Adds columns related to the silencing pattern if they exist
-
-        Args:
-            pattern_path (str): path to the opto_pattern
-
-        Raises:
-            KeyError: _description_
-            ValueError: _description_
-        """
-        if len(self.data["opto"].unique()) == 1:
-            # Regular training sessions
-            # add the pattern name depending on pattern id
-            self.data = self.data.with_columns(pl.lit(None).alias("opto_region"))
-            # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_-1").alias("stimkey")
-            )
-            # add stim_label for legends and stuff
-            self.data = self.data.with_columns((pl.col("stim_type")).alias("stim_label"))
-        else:
-            if pattern_path is not None and os.path.exists(pattern_path):
-                pattern_names = {}
-                for im in os.listdir(pattern_path):
-                    if im.endswith(".tif"):
-                        pattern_id = int(im[:-4].split("_")[-1])
-                        if pattern_id == -1:
-                            pattern_names[pattern_id] = "nonopto"
-                        else:
-                            name = im[:-4].split("_")[-2]
-                            pattern_names[pattern_id] = name
-
-                try:
-                    # add the pattern name depending on pattern id
-                    self.data = self.data.with_columns(
-                        pl.struct(["opto_pattern", "state_outcome"])
-                        .map_elements(
-                            lambda x: (
-                                pattern_names[x["opto_pattern"]]
-                                if x["state_outcome"] != -1
-                                else None
-                            ),
-                            return_dtype=str,
-                        )
-                        .alias("opto_region")
-                    )
-                except KeyError:
-                    raise KeyError(
-                        "Opto pattern not set correctly. You need to change the number at the end of the opto pattern image file to an integer (0,-1,1,..)!"
-                    )
-            else:
-                raise ValueError(f"{pattern_path} is not a valid path")
-
-            # add 'stimkey' from sftf
-            self.data = self.data.with_columns(
-                (
-                    pl.col("stim_type") + "_" + pl.col("opto_pattern").cast(int).cast(str)
-                ).alias("stimkey")
-            )
-            # add stim_label for legends and stuff
-            self.data = self.data.with_columns(
-                (pl.col("stim_type") + "_" + pl.col("opto_region").cast(str)).alias(
-                    "stim_label"
-                )
-            )
-
 
 class WheelDiscriminationRun(Run):
     rundata_cls = WheelDiscriminationRunData
@@ -211,9 +136,7 @@ class WheelDiscriminationRun(Run):
         if len(realtf_cols) != 0:
             # get all the columns with _r and _l
             l_headers = [c for c in header if "_l" in c if "pos" not in c]
-            lr_headers = [
-                (i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers
-            ]
+            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
 
             for j, head_tup in enumerate(lr_headers):
                 h_pos, h_name = head_tup
@@ -260,25 +183,17 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
 
     # median response time #
     stats_dict["median_response_latency "] = round(
-        nonopto_data.filter(pl.col("outcome") == "correct")[
-            "state_response_time"
-        ].median(),
+        nonopto_data.filter(pl.col("outcome") == "correct")["state_response_time"].median(),
         3,
     )
 

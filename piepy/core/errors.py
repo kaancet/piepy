@@ -131,6 +131,11 @@ class ParsingError(PiepyError):
     category = "parsing"
 
 
+class OptoPatternError(ParsingError):
+    """An optogenetics silencing-pattern directory is missing/invalid, or its image ids are
+    misnamed (don't match the logged ``opto_pattern`` values)."""
+
+
 class SchemaError(PiepyError):
     category = "schema"
 

@@ -16,7 +16,21 @@ class Trial(pt.Model):
 
 
 class TrialHandler:
-    """A class that houses methods for parsing/checking/filling the Trial DataFrame class"""
+    """Channel-agnostic StimPy trial base: parse one trial out of the rawdata channels.
+
+    This is the reuse surface for *any* StimPy task (wheel or not). A paradigm subclasses it and
+    implements ``get_trial``; the base supplies the StimPy primitives so that method stays short:
+
+    * ``set_trial(trial_no, rawdata)`` -- slice every channel to the trial's time window (fills
+      ``self.data``; returns False for an incomplete trial),
+    * ``state_table()`` / ``transition_time(name)`` -- the trial's statemachine slice and the
+      elapsed time of a named transition,
+    * ``rig_event(name)`` -- ``(time, value)`` hardware events for a channel (lick/reward/opto/...),
+    * ``set_opto`` / ``set_frame_endpoints`` -- opto flag + imaging/cam frame windows.
+
+    Visual/wheel parsing (screen photodiode, vstim sync, wheel traces) lives in optional mixins
+    *on top* of this base, never the other way around.
+    """
 
     # Transition names this handler's get_trial relies on. The registry verifies a paradigm's
     # state-transition map produces all of them at registration (a clear error up front instead
@@ -184,6 +198,21 @@ class TrialHandler:
         self._trial["opto"] = _is_opto
         self._trial["opto_pulse"] = _opto_time
 
+    def state_table(self) -> pl.DataFrame | None:
+        """The current trial's statemachine slice (``transition``/``elapsed`` rows), or None.
+
+        Populated by :meth:`set_trial`; the channel-agnostic source of trial state events.
+        """
+        return self.data.get("state")
+
+    def transition_time(self, name: str) -> int | None:
+        """Elapsed time of the first occurrence of state transition ``name`` this trial, or None."""
+        st = self.state_table()
+        if st is None:
+            return None
+        hit = st.filter(pl.col("transition") == name)
+        return int(hit[0, "elapsed"]) if not hit.is_empty() else None
+
     def set_frame_endpoints(
         self,
         imaging_mode: Literal["imaging", "onepcam", "facecam", "eyecam"],
@@ -258,3 +287,11 @@ class TrialHandler:
         else:
             event_arr = None
         return event_arr
+
+    def rig_event(self, event_name: str) -> np.ndarray | None:
+        """Public accessor for a channel's ``(duinotime, value)`` hardware events this trial.
+
+        Thin alias of :meth:`_get_rig_event` -- part of the StimPy extension surface a custom
+        ``get_trial`` builds on (returns None when the channel is absent/empty this trial).
+        """
+        return self._get_rig_event(event_name)

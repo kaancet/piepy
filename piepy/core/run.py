@@ -1,15 +1,19 @@
 import os
 import re
 import sys
+import json
+import hashlib
 from datetime import datetime as dt
 from os.path import exists as pexists
 from os.path import join as pjoin
+from importlib.metadata import version
 
 import numpy as np
 import patito as pt
 import polars as pl
 import scipy.io as sio
 from tqdm import tqdm
+
 
 from .config import config
 from .errors import StateMachineError, WrongSessionTypeError
@@ -148,10 +152,7 @@ class RunData:
 
         # datetime date
         self.data = self.data.with_columns(
-            pl.col("baredate")
-            .str.strptime(pl.Date, format="%y%m%d")
-            .cast(pl.Date)
-            .alias("date")
+            pl.col("baredate").str.strptime(pl.Date, format="%y%m%d").cast(pl.Date).alias("date")
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
@@ -201,6 +202,7 @@ class Run:
         self.meta = None
         self.stats = None
         self.comments = None
+        self.provenance = None
         self.paths = paths
         # initialize the logger(only log at one analysis location, currently arbitrary)
         # self.logger = Logger(log_path=self.paths.save[0])
@@ -261,10 +263,40 @@ class Run:
 
         self.augment_data()
         self.stats = self.compute_stats()
+        self._stamp_provenance()
 
     def augment_data(self) -> None:
         """Hook to add paradigm-specific derived columns after set_data. No-op by default."""
         pass
+
+    def _provenance(self) -> dict:
+        """What produced this parse: the resolved state-transition map + a short hash, the
+        piepy version, and a timestamp. Recorded so a saved parquet is traceable/reproducible.
+        """
+        transitions = dict(self.state_transitions or {})
+        blob = json.dumps(transitions, sort_keys=True)
+        return {
+            "paradigm": self._paradigm_label(),
+            "state_transitions": transitions,
+            "state_transitions_hash": hashlib.sha256(blob.encode()).hexdigest()[:12],
+            "piepy_version": version("piepy"),
+            "parsed_at": dt.now().isoformat(timespec="seconds"),
+        }
+
+    def _paradigm_label(self) -> str | None:
+        """Best-effort paradigm name from the session dir (None if unparseable)."""
+        try:
+            return parse_session_name(self.meta["sessiondir"]).paradigm
+        except Exception:  # noqa: BLE001 - provenance label is informational, never fatal
+            return None
+
+    def _stamp_provenance(self) -> None:
+        """Build the provenance record and stamp its hash as a column on the trial table."""
+        self.provenance = self._provenance()
+        if self.data is not None and self.data.data is not None:
+            self.data.data = self.data.data.with_columns(
+                pl.lit(self.provenance["state_transitions_hash"]).alias("state_transitions_hash")
+            )
 
     def compute_stats(self) -> dict | None:
         """Hook returning a per-run summary-stats dict (persisted with the data). None by default."""
@@ -301,9 +333,7 @@ class Run:
         )
 
     @staticmethod
-    def read_combine_logs(
-        stimlog_path: str | list[str], riglog_path: str | list[str]
-    ) -> tuple[dict, dict]:
+    def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
@@ -314,9 +344,9 @@ class Run:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(
-                riglog_path
-            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            assert len(stimlog_path) == len(riglog_path), (
+                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
+            )
 
             stim_data_all = []
             rig_data_all = []
@@ -347,31 +377,23 @@ class Run:
     def read_run_data(self) -> None:
         """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
-        rawdata, self.comments = self.read_combine_logs(
-            self.paths.stimlog, self.paths.riglog
-        )
+        rawdata, self.comments = self.read_combine_logs(self.paths.stimlog, self.paths.riglog)
         self.rawdata = extrapolate_time(rawdata)
 
-        # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry:
-        if len(self.rawdata["screen"]):
+        # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry.
+        if "screen" in self.rawdata and len(self.rawdata["screen"]):
             if self.rawdata["screen"][0, "value"] == 0:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
-                self.paths.onepcamlog
-            )
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(self.paths.onepcamlog)
 
         # try eyecam and facecam either way
         if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
-                self.paths.eyecamlog
-            )
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(self.paths.eyecamlog)
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
-                self.paths.facecamlog
-            )
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(self.paths.facecamlog)
 
         display("Read rawdata")
 
@@ -420,9 +442,7 @@ class Run:
             )
 
         # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
-            {"cycle": "trialNo"}
-        )
+        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename({"cycle": "trialNo"})
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists
@@ -453,6 +473,7 @@ class Run:
                 self.data.save_data(s_path, save_mat)
                 display(f"Saved session data to {s_path}", color="green")
         self._save_stats()
+        self._save_provenance()
 
     def _save_stats(self) -> None:
         """Persist the per-run stats dict (if the paradigm produced one)."""
@@ -460,6 +481,13 @@ class Run:
             return
         for s_path in self.paths.save:
             save_dict_json(pjoin(s_path, "sessionStats.json"), self.stats)
+
+    def _save_provenance(self) -> None:
+        """Persist the readable provenance sidecar (what produced this parse)."""
+        if self.provenance is None:
+            return
+        for s_path in self.paths.save:
+            save_dict_json(pjoin(s_path, "runProvenance.json"), self.provenance)
 
     def load_run(self) -> None:
         """Loads the saved run data (and stats, if present)."""
@@ -469,6 +497,7 @@ class Run:
                 display(f"Loaded session data from {d_path}", color="green")
                 break
         self._load_stats()
+        self._load_provenance()
 
     def _load_stats(self) -> None:
         """Load the per-run stats dict if a paradigm saved one."""
@@ -476,4 +505,12 @@ class Run:
             stat_path = pjoin(s_path, "sessionStats.json")
             if pexists(stat_path):
                 self.stats = load_json_dict(stat_path)
+                break
+
+    def _load_provenance(self) -> None:
+        """Load the provenance sidecar if one was saved alongside the data."""
+        for s_path in self.paths.save:
+            prov_path = pjoin(s_path, "runProvenance.json")
+            if pexists(prov_path):
+                self.provenance = load_json_dict(prov_path)
                 break
