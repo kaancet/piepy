@@ -136,6 +136,10 @@ class OptoPatternError(ParsingError):
     misnamed (don't match the logged ``opto_pattern`` values)."""
 
 
+class ScreenPulseError(ParsingError):
+    """Screen pulses does not match the expected 2 per visual trial schema"""
+
+
 class SchemaError(PiepyError):
     category = "schema"
 

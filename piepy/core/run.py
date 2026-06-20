@@ -6,7 +6,8 @@ import hashlib
 from datetime import datetime as dt
 from os.path import exists as pexists
 from os.path import join as pjoin
-from importlib.metadata import version
+from piepy import __version__
+
 
 import numpy as np
 import patito as pt
@@ -298,7 +299,7 @@ class Run:
             "paradigm": self._paradigm_label(),
             "state_transitions": transitions,
             "state_transitions_hash": hashlib.sha256(blob.encode()).hexdigest()[:12],
-            "piepy_version": version("piepy"),
+            "piepy_version": __version__,
             "parsed_at": dt.now().isoformat(timespec="seconds"),
         }
 

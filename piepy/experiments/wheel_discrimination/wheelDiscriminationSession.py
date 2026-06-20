@@ -62,44 +62,6 @@ def add_stim_diff_and_type(df: pl.DataFrame, discrim_of: str) -> pl.DataFrame:
     )
 
 
-def transform_header(self, df: pl.DataFrame) -> pl.DataFrame:
-    """Changes the vstim header
-
-    Args:
-        in_df (pl.DataFrame): vstim dataframe
-
-    Returns:
-        pl.DataFrame: _description_
-    """
-    header = df.columns.copy()
-    distract_name = self.meta["opts"]["DistractVectorName"]
-    if distract_name == "c":
-        distract_name = "contrast"
-
-    realtf_cols = [rc for rc in header if "realtf" in rc]
-
-    if len(realtf_cols) != 0:
-        # get all the columns with _r and _l
-        l_headers = [c for c in header if "_l" in c if "pos" not in c]
-        lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
-
-        for j, head_tup in enumerate(lr_headers):
-            h_pos, h_name = head_tup
-            if h_name == "contrast":
-                header[h_pos] = "width_l"
-                header[h_pos + 1] = "width_r"
-            elif h_name == "tf":
-                header[h_pos] = "contrast_l"
-                header[h_pos + 1] = "contrast_r"
-            elif h_name == "realtf":
-                header[h_pos] = "tf_l"
-                header[h_pos + 1] = "tf_r"
-
-        df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
-
-        return df
-
-
 # class WheelDiscriminationRunData(RunData):
 #     # context-free pipeline; stim-diff (needs discrim_of) and opto (needs pattern path) are
 #     # applied in WheelDiscriminationRun.augment_data.
@@ -120,12 +82,48 @@ class WheelDiscriminationRun(Run):
         self.rawdata = fix_first_line_state_logging(self.rawdata)
         self.rawdata["vstim"] = self.transform_header(self.rawdata["vstim"])
 
+    def transform_header(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Changes the vstim header
+
+        Args:
+            in_df (pl.DataFrame): vstim dataframe
+
+        Returns:
+            pl.DataFrame: _description_
+        """
+        header = df.columns.copy()
+        distract_name = self.meta["opts"]["DistractVectorName"]
+        if distract_name == "c":
+            distract_name = "contrast"
+
+        realtf_cols = [rc for rc in header if "realtf" in rc]
+
+        if len(realtf_cols) != 0:
+            # get all the columns with _r and _l
+            l_headers = [c for c in header if "_l" in c if "pos" not in c]
+            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
+
+            for j, head_tup in enumerate(lr_headers):
+                h_pos, h_name = head_tup
+                if h_name == "contrast":
+                    header[h_pos] = "width_l"
+                    header[h_pos + 1] = "width_r"
+                elif h_name == "tf":
+                    header[h_pos] = "contrast_l"
+                    header[h_pos + 1] = "contrast_r"
+                elif h_name == "realtf":
+                    header[h_pos] = "tf_l"
+                    header[h_pos + 1] = "tf_r"
+
+            df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
+
+        return df
+
     def augment_data(self) -> None:
         # all discrimination column derivation, in order; context (attended feature, opto path)
         discrim_of = self.meta["opts"]["AttendVectorName"]
         d = self.data.data
         d = add_choice_descriptors(d)
-        d = add_sftf_descriptor(d)
         d = add_stim_diff_and_type(d, discrim_of=discrim_of)
         d = add_opto_pattern_columns(d, self.paths.opto_pattern)
 

@@ -7,17 +7,8 @@ from __future__ import annotations
 
 import polars as pl
 
-from piepy.core.run import RunData
-from piepy.experiments.wheel_detection.wheelDetectionSession import (
-    add_contrast_descriptors,
-    add_stim_descriptors,
-)
-
-
-def test_set_data_is_a_pure_store():
-    df = pl.DataFrame({"a": [1, 2]})
-    assert RunData(df).data is df  # stored unchanged -- no augmentation, no copy
-    assert RunData().data is None  # no data -> no-op
+from piepy.experiments.wheel_detection.wheelDetectionSession import add_contrast_descriptors, add_sftf_descriptor
+from piepy.psychophysics.transforms import add_stim_side
 
 
 def test_detection_transforms_compose_in_order():
@@ -30,7 +21,8 @@ def test_detection_transforms_compose_in_order():
             "contrast": [0.5, 0.0625, 0.0],
         }
     )
-    df = add_stim_descriptors(df)
+    df = add_stim_side(df)
+    df = add_sftf_descriptor(df)
     assert df["stim_side"].to_list() == ["contra", "ipsi", "catch"]
     assert "stim_type" in df.columns
 

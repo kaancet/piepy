@@ -31,11 +31,11 @@ DEFAULT_SNAPSHOT_DIR = HERE / "_snapshots"
 # paradigm name -> (module path, Session class name)
 PARADIGMS: dict[str, tuple[str, str]] = {
     "detection": (
-        "piepy.psychophysics.wheel.detection.wheelDetectionSession",
+        "piepy.experiments.wheel_detection.wheelDetectionSession",
         "WheelDetectionSession",
     ),
     "discrimination": (
-        "piepy.psychophysics.wheel.discrimination.wheelDiscriminationSession",
+        "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
         "WheelDiscriminationSession",
     ),
 }
@@ -70,9 +70,7 @@ def build_session(paradigm: str, session_dir: str):
         return session_cls(session_dir, load_flag=False)
     except (FileNotFoundError, PathfindingError) as exc:
         # not found locally, ambiguous, or malformed -> can't resolve here, so skip not fail.
-        raise SessionUnavailable(
-            f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
-        ) from exc
+        raise SessionUnavailable(f"{paradigm} session {session_dir!r} not resolvable locally: {exc}") from exc
 
 
 # --------------------------------------------------------------------------- #

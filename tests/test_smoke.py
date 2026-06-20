@@ -31,13 +31,12 @@ CORE_MODULES = [
     "piepy.core.parsers",
     "piepy.core.log_repair_functions",
     "piepy.core.data_functions",
-    "piepy.psychophysics.fit_funcs",
     "piepy.psychophysics.psychophysicalRunData",
     "piepy.psychophysics.opto",
-    "piepy.psychophysics.wheel.detection.wheelDetectionSession",
-    "piepy.psychophysics.wheel.detection.wheelDetectionTrial",
-    "piepy.psychophysics.wheel.discrimination.wheelDiscriminationSession",
-    "piepy.psychophysics.wheel.wheelTrace",
+    "piepy.experiments.wheel_detection.wheelDetectionSession",
+    "piepy.experiments.wheel_detection.wheelDetectionTrial",
+    "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
+    "piepy.psychophysics.wheelTrace",
 ]
 
 
