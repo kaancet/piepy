@@ -32,9 +32,9 @@ CORE_MODULES = [
     "piepy.core.data_functions",
     "piepy.psychophysics.psychophysicalRunData",
     "piepy.psychophysics.opto",
-    "piepy.experiments.wheel_detection.wheelDetectionSession",
-    "piepy.experiments.wheel_detection.wheelDetectionTrial",
-    "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
+    "piepy.tasks.wheel_detection.wheelDetectionSession",
+    "piepy.tasks.wheel_detection.wheelDetectionTrial",
+    "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
     "piepy.psychophysics.wheelTrace",
 ]
 

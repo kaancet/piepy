@@ -20,7 +20,7 @@ from ...plotting_utils import (
     pval_plotter,
 )
 from ...colors.color import Color
-from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
+from piepy.tasks.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 
@@ -163,9 +163,7 @@ def plot_delta_effect_contrast(
 
     plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(pl.col("stim_side") != "ipsi")
     lin_axis_dict = make_linear_axis(plot_data, "signed_contrast")
-    _lin_axis = [
-        float(lin_axis_dict[c]) if c is not None else None for c in plot_data["contrast"].to_list()
-    ]
+    _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in plot_data["contrast"].to_list()]
     plot_data = plot_data.with_columns(pl.Series("linear_axis", _lin_axis))
 
     for stim_tup in make_subsets(plot_data, ["stim_type"], start_enumerate=-1):
@@ -277,9 +275,7 @@ def plot_delta_effect_contrast(
                             zorder=1,
                             mpl_kwargs=mpl_kwargs,
                             cmap=cmap,
-                            edgecolors=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"][
-                                "color"
-                            ],
+                            edgecolors=clr.stim_keys[f"{stim_df[0, 'stim_type']}_{int(k)}"]["color"],
                             norm=normalizer,
                         )
                     elif trial_count_identifier == "dot_size":
@@ -295,14 +291,10 @@ def plot_delta_effect_contrast(
                     if p_test == "auto":
                         _is_norm = stats.shapiro(data_mat[:, j])
                         if _is_norm.pvalue < 0.05:  # is normal
-                            print(
-                                f"p1={_is_norm.pvalue:4}, data appears normal, doing paired t-test"
-                            )
+                            print(f"p1={_is_norm.pvalue:4}, data appears normal, doing paired t-test")
                             p_test = "t_test"
                         else:
-                            print(
-                                f"p1={_is_norm.pvalue:4}, data doesn't appear to normal, doing wilcoxon test"
-                            )
+                            print(f"p1={_is_norm.pvalue:4}, data doesn't appear to normal, doing wilcoxon test")
                             p_test = "wilcoxon"
 
                     # apply statistical test
@@ -839,13 +831,11 @@ def plot_delta_effect_areas(
     aggregator.calculate_opto_pvalues()
 
     # manually add baselines by joining
-    catch_trials = aggregator.grouped_data.filter(
-        (pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)
-    ).select(["animalid", "area", "stim_type", "contrast", "opto_pattern", "hit_count", "count"])
-    # get baseline_hr
-    catch_trials = catch_trials.with_columns(
-        (pl.col("hit_count").sum() / pl.col("count").sum()).alias("baseline_hr")
+    catch_trials = aggregator.grouped_data.filter((pl.col("contrast") == 0) & (pl.col("opto_pattern") == -1)).select(
+        ["animalid", "area", "stim_type", "contrast", "opto_pattern", "hit_count", "count"]
     )
+    # get baseline_hr
+    catch_trials = catch_trials.with_columns((pl.col("hit_count").sum() / pl.col("count").sum()).alias("baseline_hr"))
 
     _data = aggregator.grouped_data.join(
         catch_trials.select(["animalid", "area", "stim_type", "baseline_hr"]),
@@ -1222,9 +1212,7 @@ def plot_delta_effect_CNO(
     aggregator.calculate_opto_pvalues()
 
     plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(pl.col("stim_side") != "ipsi")
-    plot_data = plot_data.filter(
-        (pl.col("contrast") == contrast) & (pl.col("stim_type") == stim_type)
-    )
+    plot_data = plot_data.filter((pl.col("contrast") == contrast) & (pl.col("stim_type") == stim_type))
 
     diff_values = np.zeros((plot_data["animalid"].n_unique(), 2))  # nonCNO and CNO
     trial_counts = np.zeros_like(diff_values)
@@ -1334,9 +1322,7 @@ def plot_delta_effect_CNO(
             _is_norm1 = stats.shapiro(d1)
             _is_norm2 = stats.shapiro(d2)
             if _is_norm1.pvalue < 0.05 and _is_norm2.pvalue < 0.05:  # is normal
-                print(
-                    f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue}, data appears normal, doing paired t-test"
-                )
+                print(f"p1={_is_norm1.pvalue:4} and p2={_is_norm2.pvalue}, data appears normal, doing paired t-test")
                 p_test = "t_test"
             else:
                 print(

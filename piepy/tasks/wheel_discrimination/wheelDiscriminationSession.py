@@ -62,17 +62,6 @@ def add_stim_diff_and_type(df: pl.DataFrame, discrim_of: str) -> pl.DataFrame:
     )
 
 
-# class WheelDiscriminationRunData(RunData):
-#     # context-free pipeline; stim-diff (needs discrim_of) and opto (needs pattern path) are
-#     # applied in WheelDiscriminationRun.augment_data.
-#     augmenters = [add_choice_descriptors, add_sftf_descriptor]
-
-#     def add_qolumns(self) -> None:
-#         """Adds some quality of life (qol) columns"""
-#         # add response_time columns
-#         self.data = self.data.with_columns(pl.col("state_response_time").alias("response_time"))
-
-
 class WheelDiscriminationRun(Run):
     trial_handler_cls = WheelDiscriminationTrialHandler
     state_transitions = STATE_TRANSITION_KEYS
@@ -126,6 +115,7 @@ class WheelDiscriminationRun(Run):
         d = add_choice_descriptors(d)
         d = add_stim_diff_and_type(d, discrim_of=discrim_of)
         d = add_opto_pattern_columns(d, self.paths.opto_pattern)
+        self.data.data = d
 
     def compute_stats(self) -> dict:
         return get_run_stats(self.data.data)

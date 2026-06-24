@@ -1,9 +1,9 @@
 import polars as pl
 import patito as pt
-from ...core.io import display
-from ...core.utils import nonan_unique
-from ...core.trial import Trial, TrialHandler
-from ...core.errors import ScreenPulseError
+from ....core.io import display
+from ....core.utils import nonan_unique
+from ....core.trial import Trial, TrialHandler
+from ....core.errors import ScreenPulseError
 
 
 class VisualTrial(Trial):

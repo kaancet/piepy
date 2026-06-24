@@ -9,7 +9,7 @@ from scipy.optimize import curve_fit  # noqa: F401
 from ....core.data_functions import make_subsets
 from ...plotting_utils import set_style, override_plots
 from ...colors.color import Color
-from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
+from piepy.tasks.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 
@@ -111,9 +111,7 @@ def plot_contrast_effect_scatter_plot(
     aggregator.calculate_hit_rates()
     aggregator.calculate_opto_pvalues()
 
-    plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(
-        pl.col("stim_side") != "ipsi"
-    )
+    plot_data = aggregator.grouped_data.drop_nulls("contrast").filter(pl.col("stim_side") != "ipsi")
 
     diffs_values = np.zeros(
         (

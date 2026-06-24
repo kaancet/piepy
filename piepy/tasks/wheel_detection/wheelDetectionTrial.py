@@ -5,7 +5,7 @@ from typing import Literal
 
 from piepy.core.errors import StateMachineError, VstimLoggingError  # noqa: F401
 from piepy.core.utils import unique_except
-from piepy.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
+from piepy.tasks.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from piepy.psychophysics.psychophysicalTrial import (
     PsychophysicalTrial,
     PsychophysicalTrialHandler,
