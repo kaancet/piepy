@@ -37,6 +37,13 @@ class Session:
         self.init_session_runs()
         display(f"Done! t={(time.time() - start):.2f} s")
 
+    @property
+    def viz(self):
+        """Plotting bound to this session: ``session.viz.psychometric(...)`` (pools its runs)."""
+        from piepy.viz import Viz
+
+        return Viz(self)
+
     def init_session_runs(self) -> None:
         """Build, parse (or load), and collect every run in the session.
 

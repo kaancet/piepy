@@ -30,9 +30,7 @@ from .schema import align_and_concat
 __all__ = ["Hub", "generate_unique_session_id"]
 
 
-def generate_unique_session_id(
-    baredate: str, animalid: str, *args, digit_len: int = 7
-) -> int:
+def generate_unique_session_id(baredate: str, animalid: str, *args, digit_len: int = 7) -> int:
     """A deterministic legacy session id from date+animal (used by the detection plotters).
 
     NOTE: this assumes baredate+animalid is unique. For the canonical, collision-free id use
@@ -71,12 +69,8 @@ def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
     sort_cols = [c for c in ("date", "animalid", "run_no") if c in data.columns]
     if sort_cols:
         data = data.sort(sort_cols)
-    data = data.with_columns(
-        pl.int_range(1, data.height + 1, dtype=pl.Int64).alias("total_trial_no")
-    )
-    return data.select(
-        ["total_trial_no", *(c for c in data.columns if c != "total_trial_no")]
-    )
+    data = data.with_columns(pl.int_range(1, data.height + 1, dtype=pl.Int64).alias("total_trial_no"))
+    return data.select(["total_trial_no", *(c for c in data.columns if c != "total_trial_no")])
 
 
 class Hub:
@@ -93,6 +87,17 @@ class Hub:
         self.load_flag = False
         display(f"Hub set to paradigm {paradigm!r}", color="cyan")
 
+    @property
+    def viz(self):
+        """Plotting bound to this cohort: ``hub.viz.psychometric(...)``.
+
+        Cohort scope -> defaults to subject-averaging over ``animalid`` (override per call, e.g.
+        ``hub.viz.psychometric(average_over="mouse")``).
+        """
+        from piepy.viz import Viz
+
+        return Viz(self, subject="animalid")
+
     def initialize(self, data: pl.DataFrame | list, load_sessions: bool = False) -> None:
         """Initialize from a previously-gathered DataFrame, or gather from a session list."""
         if isinstance(data, pl.DataFrame):
@@ -102,9 +107,7 @@ class Hub:
                     f">>> WARNING <<< No trials match paradigm {self.paradigm!r}; data is empty!",
                     color="red",
                 )
-            id_col = (
-                "session_path" if "session_path" in self.data.columns else "session_uid"
-            )
+            id_col = "session_path" if "session_path" in self.data.columns else "session_uid"
             self.session_list = self.data[id_col].unique(maintain_order=True).to_list()
         else:
             self.session_list = natsort.natsorted(self._filter_session_list(data))
@@ -117,15 +120,11 @@ class Hub:
             try:
                 if parse_session_name(s).paradigm == self.paradigm:
                     kept.append(s)
-            except (
-                Exception
-            ):  # noqa: BLE001 - an unparseable name just isn't this paradigm
+            except Exception:  # noqa: BLE001 - an unparseable name just isn't this paradigm
                 continue
         return kept
 
-    def gather_sessions(
-        self, session_list: list, load_sessions: bool = False
-    ) -> pl.DataFrame:
+    def gather_sessions(self, session_list: list, load_sessions: bool = False) -> pl.DataFrame:
         """Analyze each session in parallel and stack into the cohort table."""
         self.load_flag = load_sessions
         try:

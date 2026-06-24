@@ -1,8 +1,4 @@
-"""The canonical data contract for piepy trial tables.
-
-This module is the keystone of the refactor. Everything downstream -- concatenating
-runs/sessions/animals, statistics, plotting, and the future dashboard -- depends on it
-for three things:
+"""The canonical data contract for piepy trial tables. Important for:
 
 1. **Stable identity** (`session_uid`, `run_uid`, `run_no`, `paradigm`, ...): who/when/which
    run a trial belongs to, computed deterministically so they're reproducible across
@@ -14,7 +10,7 @@ for three things:
    a single session-wide clock while keeping the original per-run times intact.
 
 Design note: this module is **additive**. It does not change how individual trials are
-parsed or validated -- that stays with the patito ``Trial`` models. It formalizes the layer
+parsed or validated (that stays with the patito ``Trial`` models). It formalizes the layer
 *above* the per-trial schema (identity + how frames combine).
 """
 
@@ -124,9 +120,7 @@ def attach_run_identity(
     if "baredate" not in out.columns and baredate is not None:
         out = out.with_columns(pl.lit(baredate).cast(pl.Utf8).alias("baredate"))
     if "date" not in out.columns and "baredate" in out.columns:
-        out = out.with_columns(
-            pl.col("baredate").str.strptime(pl.Date, "%y%m%d", strict=False).alias("date")
-        )
+        out = out.with_columns(pl.col("baredate").str.strptime(pl.Date, "%y%m%d", strict=False).alias("date"))
 
     front = [c for c in IDENTITY_COLUMNS if c in out.columns]
     rest = [c for c in out.columns if c not in front]
@@ -166,9 +160,7 @@ def align_and_concat(frames: Sequence[pl.DataFrame | None]) -> pl.DataFrame:
         # diagonal_relaxed: union columns + null-fill missing + coerce to supertypes.
         out = pl.concat(real, how="diagonal_relaxed")
     except Exception as exc:  # noqa: BLE001 - re-raised as a domain error with context
-        raise SchemaContractError(
-            f"Could not align {len(real)} frames into one table: {exc}"
-        ) from exc
+        raise SchemaContractError(f"Could not align {len(real)} frames into one table: {exc}") from exc
 
     return out.select(ordered_cols)
 
@@ -205,11 +197,7 @@ def _session_clock_exprs(
         if c in df.columns:
             exprs.append(
                 pl.col(c)
-                .list.eval(
-                    pl.when(pl.int_range(0, pl.len()) == 0)
-                    .then(pl.element() + offset)
-                    .otherwise(pl.element())
-                )
+                .list.eval(pl.when(pl.int_range(0, pl.len()) == 0).then(pl.element() + offset).otherwise(pl.element()))
                 .alias(f"{c}_session")
             )
 
@@ -253,16 +241,8 @@ def concat_session_runs(
     adjusted: list[pl.DataFrame] = []
     trials_so_far = 0
     for f, off in zip(frames, offsets):
-        f2 = f.with_columns(
-            _session_clock_exprs(
-                f, off, pure_time_list_columns, time_at_index0_list_columns
-            )
-        )
-        f2 = f2.with_columns(
-            (pl.int_range(1, pl.len() + 1, dtype=pl.UInt64) + trials_so_far).alias(
-                "session_trial_no"
-            )
-        )
+        f2 = f.with_columns(_session_clock_exprs(f, off, pure_time_list_columns, time_at_index0_list_columns))
+        f2 = f2.with_columns((pl.int_range(1, pl.len() + 1, dtype=pl.UInt64) + trials_so_far).alias("session_trial_no"))
         trials_so_far += f2.height
         adjusted.append(f2)
 

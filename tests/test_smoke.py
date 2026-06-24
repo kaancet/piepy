@@ -27,7 +27,6 @@ CORE_MODULES = [
     "piepy.simulations",
     "piepy.core.hub",
     "piepy.core.mouse",
-    "piepy.core.statistics",
     "piepy.core.parsers",
     "piepy.core.log_repair_functions",
     "piepy.core.data_functions",

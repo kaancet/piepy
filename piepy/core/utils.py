@@ -71,9 +71,7 @@ def timeit(msg):
 #######################
 
 
-def pl_weighted_mean(
-    value_col: str, weight_col: str, ignore_nulls: bool = True
-) -> pl.Expr:
+def pl_weighted_mean(value_col: str, weight_col: str, ignore_nulls: bool = True) -> pl.Expr:
     """Generate a Polars aggregation expression to take a weighted mean
     https://github.com/pola-rs/polars/issues/7499
 

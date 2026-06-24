@@ -5,9 +5,9 @@ Pure numpy/scipy. Estimators return :class:`Estimate` (value + CI + n); tests re
 These are the compute layer used by the plotting (behaviz) and per-paradigm analysis pipelines.
 """
 
-from .aggregate import Count, Mean, Median, Rate, aggregate, group_arrays
+from .aggregate import Count, Mean, Median, Rate, aggregate, group_arrays, subject_average
 from .estimators import Estimate, bootstrap_ci, mean_ci, median_ci, proportion_ci
-from .tests import TestResult, compare, energy_2d, ks_2d, mantel_haenszel
+from .tests import TestResult, compare, compare_by_x, energy_2d, ks_2d, mantel_haenzsel
 
 __all__ = [
     "Estimate",
@@ -16,6 +16,7 @@ __all__ = [
     "median_ci",
     "bootstrap_ci",
     "aggregate",
+    "subject_average",
     "group_arrays",
     "Rate",
     "Mean",
@@ -23,7 +24,8 @@ __all__ = [
     "Count",
     "TestResult",
     "compare",
+    "compare_by_x",
     "ks_2d",
     "energy_2d",
-    "mantel_haenszel",
+    "mantel_haenzsel",
 ]

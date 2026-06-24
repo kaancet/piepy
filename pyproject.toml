@@ -21,15 +21,16 @@ classifiers = [
 ]
 
 dependencies = [
+    "behaviz",
     "numpy == 2.2.6",
-    "matplotlib == 3.10.0",
+    "matplotlib >= 3.10.0",
     "patito ~= 0.8.3",
     "polars ~= 1.19.0",
     "pyarrow",
     "tqdm == 4.65.1",
     "bokeh",
     "scipy",
-    "pandas <3",  # pinned: pandas 3.0 changes runtime behavior; revisit as its own task
+    "pandas <3",
     "colorama",
     "pillow",
     "opencv-python",

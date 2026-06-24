@@ -17,7 +17,7 @@ It generalizes the old ``WheelGroupedAggregator``, with three deliberate improve
 Metrics are small specs::
 
     aggregate(df, group=["signed_contrast"], rate="is_hit")                 # shorthand
-    aggregate(df, group=["opto"], metrics=[Rate("outcome", success="hit"),  # composable
+    aggregate(df, group=["opto"], metrics=[Rate("outcome", rate_of="hit"),  # composable
                                            Median("reaction_time"),
                                            Count()])
 """
@@ -32,7 +32,7 @@ from scipy import stats as sps
 
 from .estimators import bootstrap_ci
 
-__all__ = ["Rate", "Mean", "Median", "Count", "aggregate", "group_arrays"]
+__all__ = ["Rate", "Mean", "Median", "Count", "aggregate", "subject_rate", "group_arrays"]
 
 _TIDY_COLS = ("metric", "value", "ci_low", "ci_high", "n")
 
@@ -42,14 +42,14 @@ _TIDY_COLS = ("metric", "value", "ci_low", "ci_high", "n")
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Rate:
-    """Proportion of successes (e.g. hit rate), with a Wilson confidence interval.
+    """Proportion of something, with a Wilson confidence interval.
 
-    If ``success`` is None the column is treated as boolean / 0-1; otherwise the rate is the
-    fraction of (non-null) rows equal to ``success``.
+    If ``rate_of`` is None the column is treated as boolean / 0-1; otherwise the rate is the
+    fraction of (non-null) rows equal to ``rate_of``.
     """
 
     column: str
-    success: object | None = None
+    rate_of: object | None = None
     name: str | None = None
 
     @property
@@ -60,16 +60,14 @@ class Rate:
     def label(self) -> str:
         if self.name:
             return self.name
-        tag = self.column if self.success is None else f"{self.column}={self.success}"
+        tag = self.column if self.rate_of is None else f"{self.column}={self.rate_of}"
         return f"rate[{tag}]"
 
-    def compute(
-        self, df: pl.DataFrame, group: list[str], confidence: float
-    ) -> pl.DataFrame:
+    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
         succ = (
             pl.col(self.column).cast(pl.Float64)
-            if self.success is None
-            else (pl.col(self.column) == self.success).cast(pl.Float64)
+            if self.rate_of is None
+            else (pl.col(self.column) == self.rate_of).cast(pl.Float64)
         )
         agg = df.group_by(group).agg(
             pl.col(self.column).is_not_null().sum().cast(pl.Int64).alias("n"),
@@ -111,9 +109,7 @@ class Mean:
     def label(self) -> str:
         return self.name or f"mean[{self.column}]"
 
-    def compute(
-        self, df: pl.DataFrame, group: list[str], confidence: float
-    ) -> pl.DataFrame:
+    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
         agg = df.group_by(group).agg(
             pl.col(self.column).drop_nulls().mean().alias("value"),
             pl.col(self.column).drop_nulls().std().alias("_sd"),
@@ -157,9 +153,7 @@ class Median:
     def label(self) -> str:
         return self.name or f"median[{self.column}]"
 
-    def compute(
-        self, df: pl.DataFrame, group: list[str], confidence: float
-    ) -> pl.DataFrame:
+    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
         agg = df.group_by(group).agg(
             pl.col(self.column).drop_nulls().sort().alias("_vals"),
             pl.col(self.column).drop_nulls().median().alias("value"),
@@ -232,9 +226,7 @@ class Count:
     def label(self) -> str:
         return self.name
 
-    def compute(
-        self, df: pl.DataFrame, group: list[str], confidence: float
-    ) -> pl.DataFrame:
+    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
         return (
             df.group_by(group)
             .agg(pl.len().cast(pl.Int64).alias("n"))
@@ -259,12 +251,14 @@ def _as_list(x) -> list[str]:
     return [x] if isinstance(x, str) else list(x)
 
 
-def _resolve_metrics(metrics, rate, value, stat, success) -> list[Metric]:
+def _resolve_metrics(metrics, rate, value, stat, rate_of) -> list[Metric]:
     if metrics is not None:
         return list(metrics)
     out: list[Metric] = []
     if rate is not None:
-        out.append(Rate(rate, success=success))
+        if rate_of is None:
+            raise ValueError("A rate_of argument is needed to calculate the rate")
+        out.append(Rate(rate, rate_of=rate_of))
     if value is not None:
         if stat == "median":
             out.append(Median(value))
@@ -285,8 +279,9 @@ def aggregate(
     rate: str | None = None,
     value: str | None = None,
     stat: str = "median",
-    success: object | None = None,
+    rate_of: object | None = None,
     confidence: float = 0.95,
+    points: bool = False,
     sort: bool = True,
 ) -> pl.DataFrame:
     """Per-group estimate(s) with confidence intervals, as a tidy frame.
@@ -295,32 +290,76 @@ def aggregate(
         df: the trial table.
         group: column(s) to group by (animal, condition, contrast, ...).
         metrics: list of metric specs (:class:`Rate`/:class:`Mean`/:class:`Median`/:class:`Count`).
-        rate / value / stat / success: shorthands for a single metric when ``metrics`` is None
+        rate / value / stat / rate_of: shorthands for a single metric when ``metrics`` is None
             (``rate="is_hit"`` -> ``Rate``; ``value="reaction_time", stat="median"`` -> ``Median``).
         confidence: CI level.
         sort: sort the result by ``group`` then ``metric``.
+        points: also attach a ``points`` list column of the raw values behind each row, for the
+            value metrics (:class:`Mean`/:class:`Median`); ``Rate``/``Count`` rows leave it null.
 
     Returns:
-        pl.DataFrame with columns ``[*group, "metric", "value", "ci_low", "ci_high", "n"]``,
-        one row per group x metric. Empty groups yield NaN/None estimates rather than errors.
+        pl.DataFrame with columns ``[*group, "metric", "value", "ci_low", "ci_high", "n"]``
+        (plus ``points`` when ``points=True``), one row per group x metric. Empty groups yield
+        NaN/None estimates rather than errors.
     """
     group = _as_list(group)
-    resolved = _resolve_metrics(metrics, rate, value, stat, success)
+    resolved = _resolve_metrics(metrics, rate, value, stat, rate_of)
 
     missing = [c for c in group if c not in df.columns]
     for m in resolved:
         missing += [c for c in m.columns if c not in df.columns]
     if missing:
-        raise ValueError(
-            f"aggregate: column(s) {sorted(set(missing))} not in the dataframe "
-            f"(have: {df.columns})."
-        )
+        raise ValueError(f"aggregate: column(s) {sorted(set(missing))} not in the dataframe (have: {df.columns}).")
 
-    parts = [m.compute(df, group, confidence) for m in resolved]
-    out = pl.concat(parts, how="diagonal_relaxed").select(*group, *_TIDY_COLS)
+    parts = []
+    for m in resolved:
+        part = m.compute(df, group, confidence)
+        if points and isinstance(m, (Mean, Median)):  # raw distribution only for value metrics
+            pts = df.group_by(group).agg(pl.col(m.column).drop_nulls().alias("points"))
+            part = part.join(pts, on=group)
+        parts.append(part)
+
+    out = pl.concat(parts, how="diagonal_relaxed")
+    keep = [*group, *_TIDY_COLS, *(["points"] if "points" in out.columns else [])]
+    out = out.select(keep)
     if sort:
         out = out.sort([*group, "metric"])
     return out
+
+
+def subject_average(
+    df: pl.DataFrame,
+    *,
+    x: str | None = None,
+    subject: str,
+    rate: str | None = None,
+    rate_of: object | None = None,
+    value: str | None = None,
+    stat: str = "median",
+    compare: str | None = None,
+    confidence: float = 0.95,
+    points: bool = False,
+) -> pl.DataFrame:
+    """Subject-averaged estimate per ``x`` -- the two-stage (hierarchical) estimate.
+
+    Stage 1: summarize each ``subject`` at every ``x`` -- their **rate** (pass ``rate``/``rate_of``)
+    or a **continuous summary** (pass ``value`` with ``stat="median"``/``"mean"``, e.g. each
+    subject's median reaction time). Stage 2: the **mean of those per-subject values** with a
+    Student-t interval *across subjects*. This weights every subject equally (no pseudoreplication
+    from animals with more trials) -- the correct cohort estimate, unlike pooling all trials with a
+    single :func:`aggregate`. Give exactly one of ``rate`` / ``value`` (same rule as
+    :func:`aggregate`).
+
+    Returns the same tidy schema as :func:`aggregate` (``[x(, compare), metric, value, ci_low,
+    ci_high, n]`` where ``n`` is the **number of subjects**), so it drops into the same downstream
+    plotting/fitting. Note: because ``n`` is subjects (not trials), fit such curves with
+    least-squares, not binomial MLE.
+    """
+    g = ([x] if x else []) + ([compare] if compare else [])
+    # stage 1: one estimate per (x[, compare], subject) -- rate or median/mean of `value`.
+    per_subject = aggregate(df, group=g + [subject], rate=rate, rate_of=rate_of, value=value, stat=stat, sort=False)
+    # stage 2: mean of the per-subject estimates across subjects, with a t-CI.
+    return aggregate(per_subject, group=g, value="value", stat="mean", points=points, confidence=confidence)
 
 
 def group_arrays(df: pl.DataFrame, *, group: str | list[str], value: str) -> dict:

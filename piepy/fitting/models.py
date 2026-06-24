@@ -18,7 +18,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.special import erf as _erf
 
-__all__ = ["Model", "Logistic", "Weibull", "Erf", "MODELS", "get_model"]
+__all__ = ["Model", "Logistic", "Weibull", "NakaRushton", "Erf", "MODELS", "get_model"]
 
 
 class Model(ABC):
@@ -100,6 +100,35 @@ class Weibull(Model):
         return ([1e-6, 0.0, 0.0, 0.0], [float(np.abs(x).max()) * 4 + 1, np.inf, 0.5, 0.5])
 
 
+class NakaRushton(Model):
+    """Naka-Rushton on contrast
+
+    ``` p(x) = baseline + gr * ((x**n) / (gc**n + x**n))```
+
+
+    n = the exponent, which determines the slope of the function
+    gc = contrast gain, which determines the horizontal position of the function
+    baseline = baseline
+    gr = response gain, which determines how much the functions rises above baseline
+    """
+
+    name = "naka-rushton"
+    param_names = ("n", "gc", "baseline", "gr")
+
+    def predict(self, x, params):
+        n, gc, baseline, gr = params
+        x = np.asarray(x, dtype=float)
+        # return baseline + (gr - baseline) / (1 + (gc / x) ** n)
+        return baseline + gr * ((x**n) / (gc**n + x**n))
+
+    def guess(self, x, y):
+        span = max(float(x.max() - x.min()), 1e-9)
+        return np.array([span / 4.0, span / 2.0, 0.0, 1.0])
+
+    def bounds(self, x, y):
+        return ([0.0, 1e-6, 0.0, 0.0], [np.inf, 1.0, 1.0, 1.0])  # n, c50, pfalse, pmax
+
+
 class Erf(Model):
     """Cumulative-Gaussian (erf) with a symmetric lapse; the discrimination shape (P(right) vs x).
 
@@ -124,7 +153,7 @@ class Erf(Model):
         return ([float(x.min()) - span, 1e-6, 0.0], [float(x.max()) + span, np.inf, 0.5])
 
 
-MODELS: dict[str, type[Model]] = {m.name: m for m in (Logistic, Weibull, Erf)}
+MODELS: dict[str, type[Model]] = {m.name: m for m in (Logistic, Weibull, Erf, NakaRushton)}
 
 
 def get_model(model: str | Model) -> Model:
@@ -134,6 +163,4 @@ def get_model(model: str | Model) -> Model:
     try:
         return MODELS[model]()
     except KeyError:
-        raise ValueError(
-            f"Unknown model {model!r}; registered: {sorted(MODELS)}"
-        ) from None
+        raise ValueError(f"Unknown model {model!r}; registered: {sorted(MODELS)}") from None

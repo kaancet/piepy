@@ -6,14 +6,19 @@ import hashlib
 from datetime import datetime as dt
 from os.path import exists as pexists
 from os.path import join as pjoin
-from piepy import __version__
-
 
 import numpy as np
 import patito as pt
 import polars as pl
 import scipy.io as sio
 from tqdm import tqdm
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    ver = version("piepy-neuro")
+except PackageNotFoundError:  # running from a source tree, not installed
+    ver = "0.0.0+unknown"
 
 
 from .config import config
@@ -35,6 +40,7 @@ from .log_repair_functions import (
 from .paths import RunArtifacts as Paths
 from .paths import parse_session_name
 from .trial import TrialHandler
+
 
 STATE_TRANSITION_KEYS = {}
 
@@ -229,6 +235,13 @@ class Run:
         self.data = self.rundata_cls()
         self.trial_handler = self.trial_handler_cls()
 
+    @property
+    def viz(self):
+        """Plotting bound to this run: ``run.viz.psychometric(...)``"""
+        from piepy.viz import Viz
+
+        return Viz(self)
+
     def __repr__(self):
         _controller = ""
         if self.meta is not None:
@@ -299,7 +312,7 @@ class Run:
             "paradigm": self._paradigm_label(),
             "state_transitions": transitions,
             "state_transitions_hash": hashlib.sha256(blob.encode()).hexdigest()[:12],
-            "piepy_version": __version__,
+            "piepy_version": ver,
             "parsed_at": dt.now().isoformat(timespec="seconds"),
         }
 

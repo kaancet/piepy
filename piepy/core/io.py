@@ -36,28 +36,6 @@ def JSONConverter(obj):
         return obj.tolist()
 
 
-def jsonify(data: dict):
-    """Jsonifies the numpy arrays inside the analysis dictionary, mostly for saving and pretty printing
-
-    Args:
-        data: Data as a dict to be saved
-    """
-    jsonified = {}
-
-    for key, value in data.items():
-        if isinstance(value, list):
-            value = [
-                jsonify(item) if isinstance(item, dict) else item for item in value
-            ]
-        if isinstance(value, dict):
-            value = jsonify(value)
-        if type(value).__module__ == "numpy":
-            value = value.tolist()
-        jsonified[key] = value
-
-    return jsonified
-
-
 def save_dict_json(path: str, dict_in: dict) -> None:
     """Saves a dictionary as a .json file
 
