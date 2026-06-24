@@ -31,11 +31,11 @@ DEFAULT_SNAPSHOT_DIR = HERE / "_snapshots"
 # paradigm name -> (module path, Session class name)
 PARADIGMS: dict[str, tuple[str, str]] = {
     "detection": (
-        "piepy.experiments.wheel_detection.wheelDetectionSession",
+        "piepy.tasks.wheel_detection.wheelDetectionSession",
         "WheelDetectionSession",
     ),
     "discrimination": (
-        "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
+        "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
         "WheelDiscriminationSession",
     ),
 }

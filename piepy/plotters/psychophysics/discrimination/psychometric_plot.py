@@ -11,7 +11,7 @@ from ...plotting_utils import (
     pval_plotter,
 )
 from ....core.data_functions import make_subsets
-from piepy.experiments.wheel_discrimination.wheelDiscriminationGroupedAggregator import (
+from piepy.tasks.wheel_discrimination.wheelDiscriminationGroupedAggregator import (
     WheelDiscriminationGroupedAggregator,
 )
 
@@ -46,24 +46,17 @@ def plot_psychometric(
     signed_diff = f"diff_{discrim_of}"
     analyzer = WheelDiscriminationGroupedAggregator()
     analyzer.set_data(data=data)
-    analyzer.group_data(
-        group_by=["stim_type", "target_side", signed_diff, "opto_pattern"]
-    )
+    analyzer.group_data(group_by=["stim_type", "target_side", signed_diff, "opto_pattern"])
     analyzer.calculate_proportion()
     analyzer.calculate_opto_pvalues()
 
     plot_data = analyzer.grouped_data
 
     lin_axis_dict = make_linear_axis(plot_data, signed_diff)
-    _lin_axis = [
-        float(lin_axis_dict[c]) if c is not None else None
-        for c in plot_data[signed_diff].to_list()
-    ]
+    _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in plot_data[signed_diff].to_list()]
     plot_data = plot_data.with_columns(pl.Series("linear_axis", _lin_axis))
 
-    for filt_tup in make_subsets(
-        plot_data, ["stimkey", "target_side"], start_enumerate=0
-    ):
+    for filt_tup in make_subsets(plot_data, ["stimkey", "target_side"], start_enumerate=0):
         i = filt_tup[0]
         filt_df = filt_tup[-1]
         filt_key = filt_tup[1]
@@ -90,9 +83,7 @@ def plot_psychometric(
             if not np.all(p_val[:, 0] == -1):
                 _p = p_val[:, 0]
                 for j, p in enumerate(_p):
-                    ax = pval_plotter(
-                        ax, p, pos=[lin_ax[j], lin_ax[j]], loc=102 + i, tail_height=0
-                    )
+                    ax = pval_plotter(ax, p, pos=[lin_ax[j], lin_ax[j]], loc=102 + i, tail_height=0)
 
     x_ticks = plot_data["linear_axis"].unique().sort().to_numpy()
     x_labels = plot_data[signed_diff].unique().sort().to_numpy()

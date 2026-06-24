@@ -1,9 +1,9 @@
 import polars as pl
-from ...core.io import display
-from ...core.run import Run, RunData, RunMeta
-from ...core.session import Session
-from ...core.paths import RunArtifacts as Paths
-from ...core.log_repair_functions import extract_trial_count, add_total_iStim
+from ....core.io import display
+from ....core.run import Run, RunData, RunMeta
+from ....core.session import Session
+from ....core.paths import RunArtifacts as Paths
+from ....core.log_repair_functions import extract_trial_count, add_total_iStim
 from .visualTrial import VisualTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -32,9 +32,7 @@ class VisualRun(Run):
 
         # sometimes iTrial starts from 0, shift all to start from 1
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
-            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
-                (pl.col("iTrial") + 1).alias("iTrial")
-            )
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
 
     def analyze_run(self, transform_dict: dict) -> None:
         """Main loop to extract data from rawdata

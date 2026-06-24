@@ -55,8 +55,8 @@ _REGISTRY: dict[str, ParadigmSpec] = {}
 
 # builtin paradigms, imported lazily so their @register_paradigm decorators run on first lookup
 _BUILTIN_MODULES: dict[str, str] = {
-    "detection": "piepy.experiments.wheel_detection.wheelDetectionSession",
-    "discrimination": "piepy.experiments.wheel_discrimination.wheelDiscriminationSession",
+    "detection": "piepy.tasks.wheel_detection.wheelDetectionSession",
+    "discrimination": "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
 }
 
 

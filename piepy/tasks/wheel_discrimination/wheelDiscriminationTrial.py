@@ -3,7 +3,7 @@ import patito as pt
 from typing import Literal
 
 from piepy.psychophysics.wheelTrace import WheelTrace
-from piepy.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
+from piepy.tasks.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from piepy.psychophysics.psychophysicalTrial import (
     PsychophysicalTrial,
     PsychophysicalTrialHandler,

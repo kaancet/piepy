@@ -12,7 +12,7 @@ from ...plotting_utils import (
 )
 from ....psychophysics.fit_funcs import mle_fit, neg_likelihood, weibull, erf_psycho
 from ....core.data_functions import make_subsets
-from piepy.experiments.wheel_detection.wheelDetectionGroupedAggregator import (
+from piepy.tasks.wheel_detection.wheelDetectionGroupedAggregator import (
     WheelDetectionGroupedAggregator,
 )
 
@@ -69,10 +69,7 @@ def plot_psychometric(
     nonearly_data = analyzer.grouped_data.drop_nulls("contrast")
 
     lin_axis_dict = make_linear_axis(nonearly_data, _axer)
-    _lin_axis = [
-        float(lin_axis_dict[c]) if c is not None else None
-        for c in nonearly_data[_axer].to_list()
-    ]
+    _lin_axis = [float(lin_axis_dict[c]) if c is not None else None for c in nonearly_data[_axer].to_list()]
     nonearly_data = nonearly_data.with_columns(pl.Series("linear_axis", _lin_axis))
     catch_data = nonearly_data.filter(pl.col("isCatch"))
     noncatch_data = nonearly_data.filter(~pl.col("isCatch"))
@@ -88,9 +85,7 @@ def plot_psychometric(
             confs = np.round(100 * filt_df["hit_rate_confs"].to_numpy().transpose(), 3)
             count = filt_df["count"].to_numpy()
             if baseline_normalize:
-                hr = np.round(
-                    100 * filt_df["base_norm_hit_rate"].to_numpy().flatten(), 3
-                )
+                hr = np.round(100 * filt_df["base_norm_hit_rate"].to_numpy().flatten(), 3)
             else:
                 hr = np.round(100 * filt_df["hit_rate"].to_numpy().flatten(), 3)
 
@@ -119,14 +114,10 @@ def plot_psychometric(
                 _threshold = x_fit[np.argmin(np.abs(y_fit - 0.5))]
                 if not combine_sides and filt_tup[2] == "ipsi":
                     # np.interp needs increasing order
-                    _contrast_val = np.interp(
-                        _threshold, lin_ax[::-1], contrast_label[::-1]
-                    )
+                    _contrast_val = np.interp(_threshold, lin_ax[::-1], contrast_label[::-1])
                 else:
                     _contrast_val = np.interp(_threshold, lin_ax, contrast_label)
-                ax.plot(
-                    [_threshold, _threshold], [0, 50], "k", linewidth=0.5, linestyle=":"
-                )
+                ax.plot([_threshold, _threshold], [0, 50], "k", linewidth=0.5, linestyle=":")
                 ax.text(_threshold + 0.05, 50, round(_contrast_val, 3))
 
             ax._errorbar(
