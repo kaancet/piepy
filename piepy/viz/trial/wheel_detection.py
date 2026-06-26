@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 
 from ..base import PlotResult, _resolve
+from ...psychophysics.wheelTrace import WheelTrace
 
 
 def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
@@ -35,15 +36,20 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
     title = f"{row['trial_no']}-{row['outcome']}"
     spec = spec.with_title(title)
 
+    # always look for rig times first, if not use state times
     z_state = (
         row["t_vstimstart"] if row["t_vstimstart"] is not None else row["t_trialinit"] + (row["duration_blank"] or 0)
     )
     z_rig = row["t_vstimstart_rig"] if row["t_vstimstart_rig"] is not None else z_state
 
     # wheel trace (raw rig time -> shift onto the stim-onset frame)
-    wheel_t = np.array(row["wheel_t"], float) - z_rig
-    wheel_pos = np.abs(np.diff(row["wheel_pos"]))
-    fig, ax = bv.plot_line(wheel_t[:-1], wheel_pos, spec=spec, ax=ax, **style_overrides["wheel"])
+    wheel_t = np.array(row["wheel_t"], float)
+    wheel_pos = np.array(row["wheel_pos"], float)
+
+    trace = WheelTrace(t=wheel_t, pos=wheel_pos)
+    res = trace.process(reset_time=z_rig, freq=5, units="rad")
+
+    fig, ax = bv.plot_line(res["t"], np.abs(res["velocity"] * 1000), spec=spec, ax=ax, **style_overrides["wheel"])
 
     # state-clock event markers, drawn only when present
     for label, col in [

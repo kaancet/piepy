@@ -1,18 +1,93 @@
+from __future__ import annotations
+
 import numpy as np
 from numpy.typing import ArrayLike
 import scipy.signal
 from scipy.linalg import hankel
 from scipy.interpolate import PchipInterpolator
 
-WHEEL_DIAMETER = 2 * 3.1
+WHEEL_RADIUS_CM = 3.1
 WHEEL_TICKS_PER_REV = 1024
+
+_MOVEMENTS = ("onsets", "offsets", "peaks", "speed_peaks")
 
 
 class WheelTrace:
-    _interpolator = None
+    def __init__(self, t: ArrayLike | None = None, pos: ArrayLike | None = None) -> None:
+        self._interp: PchipInterpolator | None = None
+        self.load(t, pos)
 
-    def __init__(self):
-        pass
+    def load(self, t: ArrayLike | None = None, pos: ArrayLike | None = None) -> "WheelTrace":
+        """Bind a new trace to this instance and clear its interpolator; returns ``self``.
+
+        Lets one ``WheelTrace`` be reused across trials (``wt.load(t, pos).process(...)``) instead of
+        allocating a new object each time.
+        """
+        t = np.asarray([] if t is None else t, dtype=float)
+        pos = np.asarray([] if pos is None else pos, dtype=float)
+        if t.size != pos.size:
+            raise ValueError(f"wheel t and pos differ in length ({t.size} vs {pos.size}).")
+        if t.size:
+            t, pos = self.fix_trace_timing(t, pos)
+        self.t, self.pos = t, pos
+        self._interp = None
+        return self
+
+    def process(self, reset_time: float, *, freq: float = 5, units: str = "rad", **movement_kw) -> dict:
+        """Full pipeline: reset+interpolate -> convert units -> velocity -> movements.
+
+        Returns a dict with ``t``, ``pos`` (in ``units``), ``tick``, ``reset_t``, ``reset_tick``,
+        ``velocity``, ``movements`` and ``freq``. Total over signal variety (empty -> empty result).
+        """
+        reset_t, reset_tick, t_interp, tick_interp = self.reset_and_interpolate(reset_time, freq)
+        pos = self._to_units(tick_interp, units)
+        if pos.size:
+            vel = self.velocity(pos, freq)
+            mov = self.get_movements(t_interp, pos, freq, **movement_kw)
+        else:
+            vel = pos
+            mov = {k: np.empty((0, 2)) for k in _MOVEMENTS}
+        return {
+            "t": t_interp,
+            "pos": pos,
+            "tick": tick_interp,
+            "reset_t": reset_t,
+            "reset_tick": reset_tick,
+            "velocity": vel,
+            "movements": mov,
+            "freq": freq,
+        }
+
+    @staticmethod
+    def fix_trace_timing(t: np.ndarray, pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Drop samples that break strict monotonicity of ``t`` (rig occasionally logs out of order)."""
+        while t.size > 1 and not np.all(np.diff(t) > 0):
+            if np.diff(t)[-1] < 0:  # last element is the usual culprit
+                t, pos = t[:-1], pos[:-1]
+            else:
+                bad = np.where(np.diff(t) <= 0)[0]
+                t, pos = np.delete(t, bad), np.delete(pos, bad)
+        return t, pos
+
+    @staticmethod
+    def ticks_to_cm(positions: ArrayLike) -> np.ndarray:
+        """Encoder ticks -> cm of linear surface displacement."""
+        return np.asarray(positions) / WHEEL_TICKS_PER_REV * (2 * np.pi * WHEEL_RADIUS_CM)
+
+    @staticmethod
+    def cm_to_rad(positions: ArrayLike) -> np.ndarray:
+        """cm of surface displacement -> radians turned."""
+        return np.asarray(positions) / WHEEL_RADIUS_CM
+
+    def _to_units(self, ticks: np.ndarray, units: str) -> np.ndarray:
+        if units == "tick":
+            return np.asarray(ticks, dtype=float)
+        cm = self.ticks_to_cm(ticks)
+        if units == "cm":
+            return cm
+        if units == "rad":
+            return self.cm_to_rad(cm)
+        raise ValueError(f"units must be 'tick', 'cm' or 'rad', got {units!r}.")
 
     @staticmethod
     def find_nearest(arr: ArrayLike, value: float) -> int:
@@ -29,159 +104,70 @@ class WheelTrace:
             arr = np.array(arr)
         return np.nanargmin(np.abs(arr - value))
 
-    @staticmethod
-    def fix_trace_timing(t: np.ndarray, pos: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Looks at differences between time points and make sure the difference is always positive(strictly monotonically increasing)
-
-        Args:
-            t (np.ndarray): Time values of the wheel trace
-            pos (np.ndarray): Position values of the wheel trace
-
-        Returns:
-            tuple[np.ndarray,np.ndarray]: Fixed time and pos values
-        """
-        while not np.all(np.diff(t) > 0):
-            if np.diff(t)[-1] < 0:
-                # sometimes the last element is problematic
-                t = t[:-1]
-                pos = pos[:-1]
-            else:
-                # find and delete that fucker
-                _idx = np.where(np.diff(t) <= 0)[0]
-                t = np.delete(t, _idx)
-                pos = np.delete(pos, _idx)
-        return t, pos
-
-    @classmethod
-    def init_interpolator(cls, t: ArrayLike, pos: ArrayLike) -> None:
-        """Initialize the interpolator
-
-        Args:
-            t (np.ndarray): Time values of the wheel trace
-            pos (np.ndarray): Position values of the wheel trace
-
-        Raises:
-            ValueError: If lengths of t and pos are not equal
-        """
-        if len(t) != len(pos):
-            raise ValueError("Unequal wheel time and position!!")
-
-        if len(t) == 1:
-            # only single value, means no wheel movement
-            # add another point with same pos but incremented t
+    def _build_interp(self, t: np.ndarray, pos: np.ndarray) -> None:
+        """(Re)build the position interpolator. Robust to empty / single-sample traces."""
+        if t.size == 0:
+            self._interp = None
+            return
+        if t.size == 1:  # no movement: duplicate the point so Pchip has two
             t = np.append(t, t[0] + 10)
             pos = np.append(pos, pos[0])
+        self._interp = PchipInterpolator(t, pos, extrapolate=True)
 
-        cls._interpolator = PchipInterpolator(t, pos, extrapolate=True)
+    def interpolate_trace(self, t: np.ndarray, interp_freq: float = 5) -> tuple[np.ndarray, np.ndarray]:
+        """Evenly resample the built interpolator at ``interp_freq`` Hz over ``t``'s span."""
+        if self._interp is None:
+            raise ValueError("No interpolator; call reset_and_interpolate first.")
+        if t.size < 2:
+            return t, self._interp(t)
+        interp_t = np.arange(t[0], t[-1], 1.0 / interp_freq)
+        return interp_t, self._interp(interp_t)
 
-    @classmethod
-    def reset_time_frame(cls, t: np.ndarray, reset_time_point: float) -> np.ndarray:
-        """Resets the time ticks to be zero at reset_time_point
-
-        Args:
-            t (np.ndarray): Time values of the wheel trace
-            reset_time_point (float): Time value to reset the trace time values
-
-        Returns:
-            np.ndarray: reset time values
-        """
-        return t - reset_time_point
-
-    @classmethod
-    def reset_position(cls, pos: np.ndarray, reset_point: int) -> np.ndarray:
-        """Resets the positions to make position 0 at t=0
-        This method is used on the ticks so the values can (and should) be integers
-
-        Args:
-            pos (np.ndarray): Position values of the wheel trace
-            reset_point (int): Position point to reset the tick values of the trajectory
-
-        Returns:
-            np.ndarray: reset position values
-        """
-        if cls._interpolator is not None:
-            pos_at0 = round(cls._interpolator(reset_point).tolist())
-            _temp = pos - pos_at0
-            return _temp.astype(int)
-
-    @classmethod
     def reset_and_interpolate(
-        cls, t: np.ndarray, pos: np.ndarray, reset_time: float, interp_freq: float = 5
+        self, reset_time: float, interp_freq: float = 5
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Fundemental loop of resetting time, position and interpolating
+        """Zero time at ``reset_time`` and position at t=0, then evenly resample.
 
-        Args:
-            t (np.ndarray): Time values of the wheel trace
-            pos (np.ndarray): Position values of the wheel trace
-            reset_time (float): Time value to reset the trace time values
-            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
-
-        Returns:
-            tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Reset time and position, interpolated time and position
+        Returns ``(reset_t, reset_tick, t_interp, tick_interp)``. Empty trace -> four empty arrays.
         """
+        t, pos = self.t, self.pos
+        if t.size == 0:
+            empty = np.array([])
+            return empty, empty, empty, empty
+
         if not reset_time > t[0]:
-            # means that the first wheel movement was recorded after the given reset time point
-            # fill_in the time and pos until reaching the reset_time
+            # first movement logged after the reset point: pad backwards holding the first position
             add_t = np.arange(reset_time, t[0], 50)
-            add_pos = np.array([pos[0]] * len(add_t))
-
             t = np.append(add_t, t)
-            pos = np.append(add_pos, pos)
+            pos = np.append(np.full(add_t.size, pos[0]), pos)
 
-        reset_t = cls.reset_time_frame(t, reset_time)
+        reset_t = t - reset_time
+        # position at t=0 via a single linear lookup -> offset so position is 0 there (ticks are ints)
+        pos_at0 = np.interp(0.0, reset_t, pos)
+        reset_tick = np.round(pos - pos_at0).astype(int)
 
-        # init interpolator with ticks first
-        cls.init_interpolator(reset_t, pos)
-        # reset positions
-        reset_tick = cls.reset_position(pos, 0)
-        # reinit interpolator
-        cls.init_interpolator(reset_t, reset_tick)
-        # interpolate the whole trace
-        t_interp, tick_interp = cls.interpolate_trace(reset_t, reset_tick, interp_freq)
-
+        self._build_interp(reset_t, reset_tick)
+        t_interp, tick_interp = self.interpolate_trace(reset_t, interp_freq)
         return reset_t, reset_tick, t_interp, tick_interp
 
-    @classmethod
-    def interpolate_trace(
-        cls, t: np.ndarray, pos: np.ndarray, interp_freq: float = 5
-    ) -> np.ndarray:
-        """Interpolate wheel positions
+    @staticmethod
+    def velocity(pos: ArrayLike, freq: float, *, window_s: float = 0.05, polyorder: int = 3) -> np.ndarray:
+        """Velocity (pos-units per second) of an evenly-sampled position trace.
 
-        Args:
-            t (np.ndarray): Time values of the wheel trace
-            pos (np.ndarray): Position values of the wheel trace
-            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
-
-        Returns:
-            np.ndarray: Interpolated tick values from interpolated time values
+        Savitzky-Golay derivative: fits a local polynomial of ``polyorder`` over a ``window_s``-second
+        window and returns its first derivative. No temporal averaging, zero phase lag. ``window_s``
+        is in seconds so it is independent of ``freq``. Falls back to a finite difference when the
+        trace is too short for the fit.
         """
-        if cls._interpolator is not None:
-            if len(t) == 1:
-                # only single value, means no wheel movement
-                # add another point with same pos but incremented t
-                t = np.append(t, t[0] + 10)
-
-            interp_t = np.arange(
-                t[0], t[-1], 1 / interp_freq
-            )  # Evenly resample at frequency
-            if t[-1] > t[-1]:
-                # Occasionally due to precision errors the last sample may be outside of range.
-                t = t[:-1]
-
-            # if fill_gaps:
-            #     #  Find large gaps and forward fill @fixme This is inefficient
-            #     (gaps,) = np.where(np.diff(self.tick_t) >= fill_gaps)
-            #     for i in gaps:
-            #         self.interpolator[(t >= self.tick_t[i]) & (t < self.tick_t[i + 1])] = (
-            #             self.tick_pos[i]
-            #         )
-
-            interp_pos = cls._interpolator(interp_t)
-            return interp_t, interp_pos
-        else:
-            print(
-                "No interpolator set, do that first by calling the init_interpolator function"
-            )
+        pos = np.asarray(pos, dtype=float)
+        n = pos.size
+        if n < 2:
+            return np.zeros(n)
+        win = int(round(window_s * freq)) | 1  # odd
+        win = min(win, n if n % 2 else n - 1)  # <= n, keep odd
+        if win <= polyorder:  # too short to fit the polynomial -> plain finite difference
+            return np.gradient(pos, 1.0 / freq)
+        return scipy.signal.savgol_filter(pos, win, polyorder, deriv=1, delta=1.0 / freq)
 
     @classmethod
     def get_movements(
@@ -217,15 +203,20 @@ class WheelTrace:
                 speed_peaks(np.ndarray): (N,2) array that has peak speeds' indeces, and their values
         """
         # Wheel position must be evenly sampled
-        movement_dict = {}
+        movement_dict = {k: np.empty((0, 2)) for k in _MOVEMENTS}
+        t = np.asarray(t, dtype=float)
+        pos = np.asarray(pos, dtype=float)
+        if t.size < 2:
+            return movement_dict
         dt = np.diff(t)
         assert np.all(np.abs(dt - dt.mean()) < 1e-10), "Values not evenly sampled"
 
         # Convert the time threshold into number of samples given the sampling frequency
         t_thresh_samps = int(np.round(t_thresh * freq))
-        max_disp = np.empty(
-            t.size, dtype=float
-        )  # initialize array of total wheel displacement
+        if t.size <= t_thresh_samps or np.ptp(pos) == 0:  # too short / no movement
+            return movement_dict
+
+        max_disp = np.empty(t.size, dtype=float)  # initialize array of total wheel displacement
 
         # Calculate a Hankel matrix of size t_thresh_samps in batches.  This is effectively a
         # sliding window within which we look for changes in position greater than pos_thresh
@@ -241,12 +232,8 @@ class WheelTrace:
             if i2proc[-1] == t.size - 1:
                 break
 
-        moving = (
-            max_disp > pos_thresh
-        )  # for each window is the change in position greater than our threshold?
-        moving = np.insert(
-            moving, 0, False
-        )  # First sample should always be not moving to ensure we have an onset
+        moving = max_disp > pos_thresh  # for each window is the change in position greater than our threshold?
+        moving = np.insert(moving, 0, False)  # First sample should always be not moving to ensure we have an onset
         moving[-1] = False  # Likewise, ensure we always end on an offset
 
         onset_samps = np.where(~moving[:-1] & moving[1:])[0]
@@ -261,9 +248,7 @@ class WheelTrace:
         cwt = 0
         while onset_samps.size != 0:
             i2proc = np.arange(BATCH_SIZE) + c
-            icomm = np.intersect1d(
-                i2proc[: -t_thresh_samps - 1], onset_samps, assume_unique=True
-            )
+            icomm = np.intersect1d(i2proc[: -t_thresh_samps - 1], onset_samps, assume_unique=True)
             itpltz = np.intersect1d(
                 i2proc[: -t_thresh_samps - 1],
                 onset_samps,
@@ -303,119 +288,33 @@ class WheelTrace:
             offsets = offsets[np.append(~gap_too_small, True)]  # always keep last offset
             offset_samps = offset_samps[np.append(~gap_too_small, True)]
 
-        movement_dict["onsets"] = np.hstack(
-            (onset_samps.reshape(-1, 1), onsets.reshape(-1, 1))
-        )
-        movement_dict["offsets"] = np.hstack(
-            (offset_samps.reshape(-1, 1), offsets.reshape(-1, 1))
-        )
+        if onset_samps.size == 0:  # filtering removed every candidate -> no movements
+            return movement_dict
+
+        movement_dict["onsets"] = np.hstack((onset_samps.reshape(-1, 1), onsets.reshape(-1, 1)))
+        movement_dict["offsets"] = np.hstack((offset_samps.reshape(-1, 1), offsets.reshape(-1, 1)))
 
         # Calculate the peak amplitudes -
         # the maximum absolute value of the difference from the onset position
         peaks = np.array(
-            [
-                pos[m + np.abs(pos[m:n] - pos[m]).argmax()] - pos[m]
-                for m, n in zip(onset_samps, offset_samps)
-            ]
+            [pos[m + np.abs(pos[m:n] - pos[m]).argmax()] - pos[m] for m, n in zip(onset_samps, offset_samps)]
         )
-        peak_samps = np.array(
-            [
-                m + np.abs(pos[m:n] - pos[m]).argmax()
-                for m, n in zip(onset_samps, offset_samps)
-            ]
-        )
+        peak_samps = np.array([m + np.abs(pos[m:n] - pos[m]).argmax() for m, n in zip(onset_samps, offset_samps)])
         peaks = np.array([pos[_i] - pos[_o] for _i, _o in zip(peak_samps, onset_samps)])
         # peak_amps = np.fromiter(peaks, dtype=float, count=onsets.size)
 
-        movement_dict["peaks"] = np.hstack(
-            (peak_samps.reshape(-1, 1), peaks.reshape(-1, 1))
-        )
+        movement_dict["peaks"] = np.hstack((peak_samps.reshape(-1, 1), peaks.reshape(-1, 1)))
 
         N = 10  # Number of points in the Gaussian
         STDEV = 1.8  # Equivalent to a width factor (alpha value) of 2.5
-        gauss = scipy.signal.windows.gaussian(
-            N, STDEV
-        )  # A 10-point Gaussian window of a given s.d.
+        gauss = scipy.signal.windows.gaussian(N, STDEV)  # A 10-point Gaussian window of a given s.d.
         vel = scipy.signal.convolve(np.diff(np.insert(pos, 0, 0)), gauss, mode="same")
         vel = cls.get_filtered_velocity(pos, interp_freq=freq)
 
         # For each movement period, find the timestamp where the absolute velocity was greatest
-        speed_peak_samps = np.array(
-            [m + np.abs(vel[m:n]).argmax() for m, n in zip(onset_samps, offset_samps)]
-        )
+        speed_peak_samps = np.array([m + np.abs(vel[m:n]).argmax() for m, n in zip(onset_samps, offset_samps)])
         speed_peaks = np.array([np.abs(vel[_v]) for _v in speed_peak_samps])
         speed_peaks = np.fromiter(speed_peaks, dtype=float, count=onsets.size)
-        movement_dict["speed_peaks"] = np.hstack(
-            (speed_peak_samps.reshape(-1, 1), speed_peaks.reshape(-1, 1))
-        )
+        movement_dict["speed_peaks"] = np.hstack((speed_peak_samps.reshape(-1, 1), speed_peaks.reshape(-1, 1)))
 
         return movement_dict
-
-    @classmethod
-    def get_filtered_velocity(
-        cls,
-        pos: np.ndarray,
-        interp_freq: float = 5,
-        corner_frequency: float = 2,
-        order: int = 8,
-    ) -> np.ndarray:
-        """Compute wheel velocity from uniformly sampled wheel data.
-
-        Args:
-            pos (np.ndarray): Position values of the wheel trace
-            interp_freq (float, optional): Interpolation frequency. Defaults to 5.
-            corner_frequency (float, optional): Corner frequency of the filter. Defaults to 2.
-            order (int, optional): Order of the filter. Defaults to 8.
-
-        Returns:
-            np.ndarray: Filtered velocity values
-        """
-        _wn = corner_frequency / interp_freq * 2
-        sos = scipy.signal.butter(N=order, Wn=_wn, btype="lowpass", output="sos")
-
-        velo = (
-            np.insert(
-                np.diff(scipy.signal.sosfiltfilt(sos, pos, padlen=len(pos) - 1)),
-                0,
-                0,
-            )
-            * interp_freq
-        )
-        return velo
-
-    @classmethod
-    def ticks_to_cm(cls, positions: np.ndarray) -> np.ndarray:
-        """Convert wheel position samples to cm linear displacement
-
-        Args:
-            positions (np.ndarray): Position values of the wheel trace
-
-        Returns:
-            np.ndarray: Array with ticks converted to cm values
-        """
-        return positions / WHEEL_TICKS_PER_REV * np.pi * WHEEL_DIAMETER
-
-    @classmethod
-    def cm_to_rad(cls, positions: np.ndarray) -> np.ndarray:
-        """Convert wheel position to radians.  This may be useful for e.g. calculating angular velocity
-
-        Args:
-            positions (np.ndarray): Position values of the wheel trace
-
-        Returns:
-            np.ndarray:  Array with cm values converted to radian values
-        """
-        return positions * (2 / WHEEL_DIAMETER)
-
-    @classmethod
-    def cm_to_deg(cls, positions: np.ndarray) -> np.ndarray:
-        """Convert wheel position to degrees turned.  This may be useful for e.g. calculating velocity
-        in revolutions per second
-
-        Args:
-            positions (np.ndarray): Position values of the wheel trace
-
-        Returns:
-            np.ndarray: Array with cm values converted to degree values
-        """
-        return positions / (WHEEL_DIAMETER * np.pi) * 360
