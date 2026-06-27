@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from dataclasses import dataclass
 import numpy as np
 from numpy.typing import ArrayLike
 import scipy.signal
@@ -305,11 +305,8 @@ class WheelTrace:
 
         movement_dict["peaks"] = np.hstack((peak_samps.reshape(-1, 1), peaks.reshape(-1, 1)))
 
-        N = 10  # Number of points in the Gaussian
-        STDEV = 1.8  # Equivalent to a width factor (alpha value) of 2.5
-        gauss = scipy.signal.windows.gaussian(N, STDEV)  # A 10-point Gaussian window of a given s.d.
-        vel = scipy.signal.convolve(np.diff(np.insert(pos, 0, 0)), gauss, mode="same")
-        vel = cls.get_filtered_velocity(pos, interp_freq=freq)
+        # peak speed within each movement (SavGol velocity -- no temporal averaging)
+        vel = WheelTrace.velocity(pos, freq)
 
         # For each movement period, find the timestamp where the absolute velocity was greatest
         speed_peak_samps = np.array([m + np.abs(vel[m:n]).argmax() for m, n in zip(onset_samps, offset_samps)])
@@ -318,3 +315,62 @@ class WheelTrace:
         movement_dict["speed_peaks"] = np.hstack((speed_peak_samps.reshape(-1, 1), speed_peaks.reshape(-1, 1)))
 
         return movement_dict
+
+
+@dataclass
+class RTResult:
+    """The movement matched to a response time, and how it was matched.
+
+    ``source`` records provenance so downstream analyses can filter: ``"contain"`` (response fell
+    inside a movement -- the clean case), ``"gap"`` (response landed just after a movement's offset,
+    within ``gap_tol``), or ``"none"`` (no match). ``anticipatory`` flags a too-early onset
+    (``< min_rt``, including pre-stimulus negative onsets) -- the RT is still returned, but tagged so
+    it can be excluded from reaction-time conclusions.
+    """
+
+    reaction_time: float | None
+    peak_speed: float | None
+    source: str
+    anticipatory: bool
+
+
+def match_response_movement(
+    movements: dict,
+    resp_time: float | None,
+    *,
+    gap_tol: float = 100.0,
+    min_rt: float = 150.0,
+) -> RTResult:
+    """Pick the movement that produced the response at ``resp_time`` -> its onset is the reaction time.
+
+    Two passes (the order matters -- a *containing* movement must win over an earlier movement that
+    merely ends just before ``resp_time``):
+
+    1. **contain**: the movement with ``onset <= resp_time < offset``.
+    2. **gap**: else the movement whose offset is *closest* to ``resp_time`` and within ``gap_tol``
+       before it (detection thresholds occasionally clip the answering movement short).
+
+    Returns the matched onset as ``reaction_time`` (with its ``peak_speed``), or a ``"none"`` result
+    when ``resp_time`` is None / there are no movements / nothing matches. Onsets below ``min_rt``
+    (or negative, i.e. pre-stimulus) are flagged ``anticipatory`` rather than dropped.
+    """
+    onsets = movements.get("onsets") if movements else None
+    if resp_time is None or onsets is None or len(onsets) == 0:
+        return RTResult(None, None, "none", False)
+
+    on = onsets[:, 1]
+    off = movements["offsets"][:, 1]
+    spd = movements["speed_peaks"][:, 1]
+
+    contain = np.where((on <= resp_time) & (resp_time < off))[0]
+    if contain.size:
+        i = int(contain[0])
+        return RTResult(float(on[i]), float(spd[i]), "contain", bool(on[i] < min_rt))
+
+    gaps = resp_time - off  # >=0 means resp is after this offset
+    eligible = np.where((gaps >= 0) & (gaps <= gap_tol))[0]
+    if eligible.size:
+        i = int(eligible[np.argmin(gaps[eligible])])  # the closest preceding offset
+        return RTResult(float(on[i]), float(spd[i]), "gap", bool(on[i] < min_rt))
+
+    return RTResult(None, None, "none", False)

@@ -75,7 +75,7 @@ def psychometric(
         },
     )
     # `spec` is the saved look (axes, limits, labels) for psychometric plots, loaded from ~/.behaviz.
-    spec = bv.load_preset("psychometric")
+    spec = bv.load_preset(style.pop("preset", "psychometric"))
 
     # resolve the input to a trial table and validate the columns we will touch
     # Run -> run.data.data, Session -> concatenate_runs(), Hub -> .data, df -> df
@@ -160,7 +160,7 @@ def reaction_time_cloud(
     """"""
     import behaviz as bv
 
-    spec = bv.load_preset("reaction_time_cloud")
+    spec = bv.load_preset(style.pop("preset", "reaction_time_cloud"))
 
     df = _resolve(data)
     spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
@@ -219,7 +219,7 @@ def reaction_time_dist(
 
     import behaviz as bv
 
-    spec = bv.load_preset("reaction_distribution")
+    spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
 
     df = _resolve(data)
 

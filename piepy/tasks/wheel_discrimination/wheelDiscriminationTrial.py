@@ -2,7 +2,7 @@ import polars as pl
 import patito as pt
 from typing import Literal
 
-from piepy.psychophysics.wheelTrace import WheelTrace
+from piepy.psychophysics.wheelTrace import WheelTrace, match_response_movement
 from piepy.tasks.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from piepy.psychophysics.psychophysicalTrial import (
     PsychophysicalTrial,
@@ -11,11 +11,18 @@ from piepy.psychophysics.psychophysicalTrial import (
 
 OUTCOMES = {0: "incorrect", 1: "correct"}
 
+_GAP_TOL_MS = 100.0
+_MIN_RT_MS = 150.0
+
 
 class WheelDiscriminationTrial(VisualTrial, PsychophysicalTrial):
     outcome: Literal["incorrect", "correct"]
     wheel_t: list[float] = pt.Field(default=[], dtype=pl.List(pl.Float64))
     wheel_pos: list[int] = pt.Field(default=[], dtype=pl.List(pl.Int64))
+    reaction_time: float | None = pt.Field(default=None, dtype=pl.Float64)
+    # provenance of reaction_time: "contain" | "gap" | "none" | None (not computed)
+    reaction_time_source: str | None = pt.Field(default=None, dtype=pl.Utf8)
+    anticipatory: bool | None = pt.Field(default=None, dtype=pl.Boolean)
 
 
 class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler):
@@ -115,45 +122,29 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
     def set_wheel_traces(self, reset_time_point: float) -> None:
         """Sets the wheel"""
         wheel_array = self._get_rig_event("position")
-        trace = WheelTrace()
-        if wheel_array is not None:
-            t = wheel_array[:, 0]
-            pos = wheel_array[:, 1]
+        if wheel_array is None or not len(wheel_array):
+            return
 
-            # check for timing recording errors, sometimes t is not monotonically increasing
-            t, pos = trace.fix_trace_timing(t, pos)
+        trace = WheelTrace(wheel_array[:, 0], wheel_array[:, 1])
+        self._trial["wheel_t"] = [trace.t.tolist()]
+        self._trial["wheel_pos"] = [trace.pos.tolist()]
 
-            self._trial["wheel_t"] = [t.tolist()]
-            self._trial["wheel_pos"] = [pos.tolist()]
+        res = trace.process(
+            reset_time_point,
+            freq=5,
+            units="rad",
+            pos_thresh=0.00015,  # rads, 0.02 for ticks
+            t_thresh=0.5,
+        )
 
-            _, _, t_interp, tick_interp = trace.reset_and_interpolate(t, pos, reset_time_point, 5)
-
-            pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
-
-            mov_dict = trace.get_movements(
-                t_interp,
-                pos_interp,
-                freq=5,
-                pos_thresh=0.00015,  # rads, 0.02 for ticks
-                t_thresh=0.5,
-            )
-
-            self._trial["reaction_time"] = None
-            if "_rig_response_time" in self._trial.keys():
-                _resp = self._trial["rig_response_time"]
-            else:
-                _resp = self._trial["state_response_time"]
-            for i in range(len(mov_dict["onsets"])):
-                _on = mov_dict["onsets"][i, 1]
-                _off = mov_dict["offsets"][i, 1]
-                if _resp < _off and _resp >= _on:
-                    # this is the movement that registered the animals answer
-                    self._trial["reaction_time"] = float(_on)
-                    break
-                # sometimes the response is in between two movements
-                if _resp >= _off and _resp <= _off + 100:
-                    self._trial["reaction_time"] = float(_on)
-                    break
+        # hardware response time preferred, else the state-machine time
+        resp = self._trial["rig_response_time"]
+        if resp is None:
+            resp = self._trial["state_response_time"]
+        rt = match_response_movement(res["movements"], resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS)
+        self._trial["reaction_time"] = rt.reaction_time
+        self._trial["reaction_time_source"] = rt.source
+        self._trial["anticipatory"] = rt.anticipatory
 
     def set_outcome(self) -> None:
         """Sets the trial outcome by using the integer state outcome value"""

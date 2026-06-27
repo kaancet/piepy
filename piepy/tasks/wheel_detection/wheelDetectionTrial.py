@@ -10,9 +10,14 @@ from piepy.psychophysics.psychophysicalTrial import (
     PsychophysicalTrial,
     PsychophysicalTrialHandler,
 )
-from piepy.psychophysics.wheelTrace import WheelTrace
+from piepy.psychophysics.wheelTrace import WheelTrace, match_response_movement
 
 OUTCOMES = {-1: "early", 1: "hit", 0: "miss"}
+
+# reaction-time matching tolerances (ms, in the stimulus-reset frame)
+_GAP_TOL_MS = 100.0  # response may land just after a (clipped) movement's offset
+_MIN_RT_MS = 150.0  # onsets earlier than this are anticipatory, not stimulus-driven
+_SPEED_SCALE = 1000.0  # peak_speed reporting scale (rad/s -> reported units)
 
 
 class WheelDetectionTrial(VisualTrial, PsychophysicalTrial):
@@ -21,6 +26,9 @@ class WheelDetectionTrial(VisualTrial, PsychophysicalTrial):
     wheel_pos: list[int] = pt.Field(default=[], dtype=pl.List(pl.Int64))
     reaction_time: float | None = pt.Field(default=None, dtype=pl.Float64)
     peak_speed: float | None = pt.Field(default=None, dtype=pl.Float64)
+    # provenance of reaction_time: "contain" | "gap" | "inferred" | "none" | None (not computed)
+    reaction_time_source: str | None = pt.Field(default=None, dtype=pl.Utf8)
+    anticipatory: bool | None = pt.Field(default=None, dtype=pl.Boolean)
 
 
 class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler):
@@ -273,65 +281,51 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         """
         wheel_array = self._get_rig_event("position")
         trace = WheelTrace()
-        if wheel_array is not None and len(wheel_array):
-            t = wheel_array[:, 0]
-            pos = wheel_array[:, 1]
+        if wheel_array is None or not len(wheel_array):
+            return
 
-            # check for timing recording errors, sometimes t is not monotonically increasing
-            t, pos = trace.fix_trace_timing(t, pos)
+        trace = WheelTrace(wheel_array[:, 0], wheel_array[:, 1])
+        self._trial["wheel_t"] = [trace.t.tolist()]
+        self._trial["wheel_pos"] = [trace.pos.tolist()]
 
-            self._trial["wheel_t"] = [t.tolist()]
-            self._trial["wheel_pos"] = [pos.tolist()]
+        res = trace.process(
+            reset_time_point,
+            freq=5,
+            units="rad",
+            pos_thresh=0.0003,  # rads, 0.02 for ticks
+            t_thresh=1,
+            min_dur=20,
+            min_gap=30,
+        )
+        t_interp = res["t"]
+        mov_dict = res["movements"]
 
-            _, _, t_interp, tick_interp = trace.reset_and_interpolate(t, pos, reset_time_point, 5)
+        # match the response to the movement that produced it (hardware time preferred, else the
+        # state-machine time). The matcher prefers the *containing* movement over an earlier one
+        # that merely ends just before the response, and flags anticipatory onsets.
+        resp = self._trial["rig_response_time"]
+        if resp is None:
+            resp = self._trial["state_response_time"]
+        rt = match_response_movement(mov_dict, resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS)
 
-            pos_interp = trace.cm_to_rad(trace.ticks_to_cm(tick_interp))
+        self._trial["reaction_time"] = rt.reaction_time
+        self._trial["peak_speed"] = None if rt.peak_speed is None else rt.peak_speed * _SPEED_SCALE
+        self._trial["reaction_time_source"] = rt.source
+        self._trial["anticipatory"] = rt.anticipatory
 
-            mov_dict = trace.get_movements(
-                t_interp,
-                pos_interp,
-                freq=5,
-                pos_thresh=0.0003,  # rads, 0.02 for ticks
-                t_thresh=1,
-                min_dur=20,
-                min_gap=30,
-            )
-
-            self._trial["reaction_time"] = None
-            self._trial["peak_speed"] = None
-            _resp = self._trial["state_response_time"]
-            for i in range(len(mov_dict["onsets"])):
-                _on = mov_dict["onsets"][i, 1]
-                _off = mov_dict["offsets"][i, 1]
-                if _resp < _off and _resp >= _on:
-                    # this is the movement that registered the animals answer
-                    self._trial["reaction_time"] = float(_on)
-                    self._trial["peak_speed"] = float(mov_dict["speed_peaks"][i, 1] * 1000)
-                    break
-                # sometimes the response is in between two movements
-                elif _resp >= _off and _resp <= _off + 100:
-                    self._trial["reaction_time"] = float(_on)
-                    self._trial["peak_speed"] = float(mov_dict["speed_peaks"][i, 1] * 1000)
-                    break
-
-            if self._trial["state_outcome"] == 1 and self._trial["reaction_time"] is None:
-                # sometimes the even the rig response time is not recorded on time, so
-                # we get the peak speed time as response
-                _temp = mov_dict["speed_peaks"][:, 0].astype(int)
-                velo_times = t_interp[_temp]  # time of highest speed
-                speed_after_150 = np.where(velo_times > 150)[0]
-                if not len(speed_after_150):
-                    # very rarely the reaction time is too early
-                    # don't do anything
-                    pass
-                else:
-                    idx_val = speed_after_150[0]
-                    self._trial["rig_response_time"] = float(velo_times[idx_val])
-                    self._trial["reaction_time"] = float(mov_dict["onsets"][:, 1][idx_val])
-                    self._trial["peak_speed"] = float(mov_dict["speed_peaks"][:, 1][idx_val] * 1000)
-                    print(self._trial["trial_no"])
-                    print(f"old:{_resp}")
-                    print(f"new:{float(velo_times[idx_val])}")
+        if self._trial["state_outcome"] == 1 and rt.reaction_time is None and len(mov_dict["onsets"]):
+            # hit, but the response time matched no movement (even the rig time can be logged late):
+            # last resort -- the first movement whose peak speed lands after the min-RT floor.
+            # Marked "inferred"; the measured rig_response_time is left untouched.
+            peak_times = t_interp[mov_dict["speed_peaks"][:, 0].astype(int)]
+            plausible = np.where(peak_times > _MIN_RT_MS)[0]
+            if plausible.size:
+                j = int(plausible[0])
+                onset = float(mov_dict["onsets"][j, 1])
+                self._trial["reaction_time"] = onset
+                self._trial["peak_speed"] = float(mov_dict["speed_peaks"][j, 1] * _SPEED_SCALE)
+                self._trial["reaction_time_source"] = "inferred"
+                self._trial["anticipatory"] = bool(onset < _MIN_RT_MS)
 
     def set_opto(self) -> None:
         """Failsafe"""

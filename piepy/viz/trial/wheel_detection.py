@@ -25,7 +25,7 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
             "lick": {
                 "marker": "|",
                 "s": 250,
-                "color": "#22FFFF",
+                "color": "#1EB9E4",
             },
         },
     )
@@ -99,9 +99,12 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
 
     # pre-stim phases as a stacked horizontal bar (state clock)
     t0 = row["t_trialstart"] - z_state
-    for label, col in [("quiescence", "duration_quiescence"), ("blank", "duration_blank")]:
+    for label, col, color in [("quiescence", "duration_quiescence", "#ACACAC"), ("blank", "duration_blank", "#343434")]:
         if row[col] is not None:
-            _, ax = bv.plot_hbar(8, t0 + row[col], left=t0, height=2, spec=spec, ax=ax, label=label)
+            _, ax = bv.plot_hbar(8, row[col], left=t0, height=2, spec=spec, ax=ax, color=color, alpha=0.3)
+            _, ax = bv.plot_text(
+                t0 + row[col] / 2, 8, label, spec=spec, ax=ax, ha="center", va="center", color="#000000"
+            )
             t0 += row[col]
 
     return PlotResult(data=row, figure=(fig, ax))
