@@ -16,9 +16,7 @@ class PsychophysicalTrialHandler(TrialHandler):
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(PsychophysicalTrial)
 
-    def get_trial(
-        self, trial_no: int, rawdata: dict, return_as: str = "dict"
-    ) -> pt.DataFrame | dict | list:
+    def get_trial(self, trial_no: int, rawdata: dict, return_as: str = "dict") -> pt.DataFrame | dict | list:
         """Main function that is called from outside, sets the trial, validates data type and returns it
 
         Args:

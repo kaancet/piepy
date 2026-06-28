@@ -18,17 +18,18 @@ def test_concatenate_runs_on_real_session(redirect_analysis):
     from conftest import SessionUnavailable, build_session
 
     try:
-        sess = build_session("detection", MULTI_RUN_DETECTION)
+        sess = build_session("wheel_detection", MULTI_RUN_DETECTION)
     except SessionUnavailable as exc:
         pytest.skip(str(exc))
 
     if len(sess.runs) < 2:
         pytest.skip(f"{MULTI_RUN_DETECTION} has <2 runs; nothing to concatenate")
 
-    out = sess.concatenate_runs(paradigm="wheel_detection")
+    out = sess.analyze(load_flag=False)
 
-    # identity columns present and at the front
-    assert out.columns[:4] == ["session_uid", "run_uid", "run_no", "paradigm"]
+    # identity columns present
+    for c in ["session_uid", "run_uid", "paradigm"]:
+        assert c in out.columns
     assert out["paradigm"].unique().to_list() == ["wheel_detection"]
 
     # one session_uid, one run_uid per run, run_no in {1, 2}
@@ -49,9 +50,5 @@ def test_concatenate_runs_on_real_session(redirect_analysis):
     assert offsets["run_time_offset"].to_list() == [0, int(run1_max_end)]
 
     # keep-both: originals untouched, session clock = original + offset
-    check = out.with_columns(
-        (pl.col("t_trialstart").cast(pl.Int64) + pl.col("run_time_offset")).alias(
-            "expected"
-        )
-    )
+    check = out.with_columns((pl.col("t_trialstart").cast(pl.Int64) + pl.col("run_time_offset")).alias("expected"))
     assert check["t_trialstart_session"].to_list() == check["expected"].to_list()

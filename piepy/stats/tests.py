@@ -126,74 +126,134 @@ def compare(
     return TestResult(stat, p, n1, n2, method, float(effect))
 
 
-def compare_by_x(
+def compare_groups(
     df: pl.DataFrame,
     *,
     comparing: str,
     value: str,
-    x: str | None = None,
     success: object | None = None,
     subject: str | None = None,
     method: str = "auto",
     alternative: str = "two-sided",
     correction: str | None = None,
 ) -> pl.DataFrame:
-    """Pairwise :func:`compare` of the ``comparing`` groups -- a tidy significance frame.
+    """Pairwise :func:`compare` of the ``comparing`` groups over the whole frame -- a tidy frame.
 
-    Splits rows by ``comparing`` and tests **every pair** of its levels. With ``x`` it does this
-    once per ``x`` level (a per-x frame, e.g. per contrast); without ``x`` it does it once over the
-    whole dataframe. Pass ``success`` to test a **proportion** (``value`` binarized to
-    ``value == success``); omit it for the raw continuous ``value``.
-
-    Pass ``subject`` for a **paired** test across subjects: each subject is summarized within each
-    group (its rate when ``success`` is set, else its mean ``value``), subjects are matched across
-    the pair, and a paired test runs on those matched per-subject values. ``method="auto"`` then
-    defaults to ``"wilcoxon"``.
+    Tests **every pair** of ``comparing`` levels (use this when the comparison does not need to be
+    done per stimulus level; for that, see :func:`compare_by_x`). Pass ``success`` to test a
+    **proportion** (``value`` binarized to ``value == success``); omit it for the raw continuous
+    ``value``. Pass ``subject`` for a **paired** test across subjects: each subject is summarized
+    within each group (its rate when ``success`` is set, else its mean ``value``), subjects are
+    matched across the pair, and a paired test runs on those matched values (``method="auto"`` then
+    defaults to ``"wilcoxon"``).
 
     Args:
         comparing: the grouping column to compare (e.g. ``opto``); every pair of its levels is tested.
         value: the per-trial column being compared (``outcome`` for a rate, ``reaction_time`` ...).
-        x: optional level column -> one block of pairwise tests per level. ``None`` -> one block over
-            the whole frame (no ``x`` column in the result).
         success: if given, ``value`` is binarized to ``value == success`` (a proportion).
-        subject: a subject column (e.g. ``animalid``) -> compare matched per-subject summaries with a
-            paired test (no pseudoreplication). Required for ``"wilcoxon"``/``"ttest_paired"``.
+        subject: a subject column (e.g. ``animalid``) -> matched per-subject paired test (no
+            pseudoreplication). Required for ``"wilcoxon"``/``"ttest_paired"``.
         method: ``"auto"`` picks ``"wilcoxon"`` when ``subject`` is set, else ``"fisher"`` (with
             ``success``) or ``"mannu"``; or name any :func:`compare` method.
         alternative: passed through to :func:`compare`.
-        correction: multiple-comparison adjustment applied across **all** returned tests:
-            ``"bonferroni"`` / ``"holm"`` / ``"bh"`` (Benjamini-Hochberg FDR). ``None`` -> none.
+        correction: multiple-comparison adjustment across the returned pairs
+            (``"bonferroni"`` / ``"holm"`` / ``"bh"``); ``None`` -> none.
 
     Returns:
-        pl.DataFrame, one row per ``([x level,] group pair)`` with columns
-        ``[[x,] "group_a", "group_b", "statistic", "pvalue", "pvalue_corrected", "effect_size",
-        "n_a", "n_b", "significant", "method", "correction"]``. ``significant`` uses
-        ``pvalue_corrected`` (== ``pvalue`` when ``correction`` is None).
+        pl.DataFrame, one row per group pair: ``["group_a", "group_b", "statistic", "pvalue",
+        "pvalue_corrected", "effect_size", "n_a", "n_b", "significant", "method", "correction"]``.
+        ``significant`` uses ``pvalue_corrected`` (== ``pvalue`` when ``correction`` is None).
     """
-    for col in (comparing, value, *((x,) if x else ()), *((subject,) if subject else ())):
+    for col in (comparing, value, *((subject,) if subject else ())):
         if col not in df.columns:
-            raise ValueError(f"compare_by_x: column {col!r} not in the dataframe.")
-    if method == "auto":
+            raise ValueError(f"compare_groups: column {col!r} not in the dataframe.")
+    m = _resolve_method(method, subject, success)
+    rows = _pairwise(df, comparing, value, success, subject, m, alternative)
+    if not rows:
+        return pl.DataFrame()
+    return _finalize(pl.DataFrame(rows), correction).sort(["group_a", "group_b"])
+
+
+def compare_by_x(
+    df: pl.DataFrame,
+    *,
+    x: str | None = None,
+    comparing: str,
+    value: str,
+    success: object | None = None,
+    subject: str | None = None,
+    method: str = "auto",
+    alternative: str = "two-sided",
+    correction: str | None = None,
+) -> pl.DataFrame:
+    """:func:`compare_groups` repeated once per level of ``x`` (e.g. per contrast).
+
+    Same arguments as :func:`compare_groups` plus ``x`` (the level column); the result gains a
+    leading ``x`` column. ``correction`` is applied **across all** tests from all ``x`` levels (not
+    per level), so the per-level blocks are computed uncorrected and adjusted together at the end.
+
+    Returns:
+        pl.DataFrame, one row per ``(x level, group pair)`` with the same columns as
+        :func:`compare_groups` plus ``x``.
+    """
+    if x is None:
+        return compare_groups(
+            df,
+            comparing=comparing,
+            value=value,
+            success=success,
+            subject=subject,
+            method=method,
+            alternative=alternative,
+            correction=correction,
+        )
+
+    if x not in df.columns:
+        raise ValueError(f"compare_by_x: column {x!r} not in the dataframe.")
+    parts = []
+    for xkey, xsub in df.group_by(x, maintain_order=True):
+        xval = xkey[0] if isinstance(xkey, tuple) else xkey
+        block = compare_groups(
+            xsub,
+            comparing=comparing,
+            value=value,
+            success=success,
+            subject=subject,
+            method=method,
+            alternative=alternative,
+            correction=None,  # correct once, globally, after stacking all x-levels
+        )
+        if not block.is_empty():
+            parts.append(block.with_columns(pl.lit(xval).alias(x)))
+    if not parts:
+        return pl.DataFrame()
+    out = _finalize(pl.concat(parts), correction)
+    return out.select([x, *[c for c in out.columns if c != x]]).sort([x, "group_a", "group_b"])
+
+
+def _resolve_method(method: str, subject: str | None, success: object | None) -> str:
+    """Resolve ``method="auto"`` and reject paired methods that lack a ``subject`` to match on."""
+    m = method
+    if m == "auto":
         m = "wilcoxon" if subject else ("fisher" if success is not None else "mannu")
-    else:
-        m = method
     if m in _PAIRED and subject is None:
         raise ValueError(f"method={m!r} is paired; pass subject=... to match samples across groups.")
+    return m
 
-    # one block per x-level, or a single block over the whole frame when x is None.
-    blocks = df.group_by(x, maintain_order=True) if x else [((None,), df)]
+
+def _pairwise(df, comparing, value, success, subject, method, alternative) -> list[dict]:
+    """Run :func:`compare` on every pair of ``comparing`` levels; one row dict per pair."""
+    groups = sorted(df[comparing].unique().drop_nulls().to_list())
     rows = []
-    for xkey, xsub in blocks:
-        xval = xkey[0] if isinstance(xkey, tuple) else xkey
-        groups = sorted(xsub[comparing].unique().drop_nulls().to_list())
-        for a_lvl, b_lvl in combinations(groups, 2):
-            if subject is not None:
-                a_arr, b_arr = _paired_subject_arrays(xsub, comparing, subject, value, success, a_lvl, b_lvl)
-            else:
-                a_arr = _level_array(xsub, comparing, value, success, a_lvl)
-                b_arr = _level_array(xsub, comparing, value, success, b_lvl)
-            res = compare(a_arr, b_arr, method=m, alternative=alternative)
-            row = {
+    for a_lvl, b_lvl in combinations(groups, 2):
+        if subject is not None:
+            a_arr, b_arr = _paired_subject_arrays(df, comparing, subject, value, success, a_lvl, b_lvl)
+        else:
+            a_arr = _level_array(df, comparing, value, success, a_lvl)
+            b_arr = _level_array(df, comparing, value, success, b_lvl)
+        res = compare(a_arr, b_arr, method=method, alternative=alternative)
+        rows.append(
+            {
                 "group_a": a_lvl,
                 "group_b": b_lvl,
                 "statistic": res.statistic,
@@ -201,22 +261,22 @@ def compare_by_x(
                 "effect_size": res.effect_size,
                 "n_a": res.n1,
                 "n_b": res.n2,
-                "method": m,
+                "method": method,
             }
-            rows.append({x: xval, **row} if x else row)
+        )
+    return rows
 
-    out = pl.DataFrame(rows)
-    if out.is_empty():
-        return out
 
+def _finalize(out: pl.DataFrame, correction: str | None) -> pl.DataFrame:
+    """Add ``pvalue_corrected`` / ``significant`` / ``correction`` columns (significant uses the
+    corrected p; == raw p when ``correction`` is None)."""
     pvals = out["pvalue"].to_numpy()
     corrected = _correct(pvals, correction) if correction else pvals
-    out = out.with_columns(
+    return out.with_columns(
         pl.Series("pvalue_corrected", corrected),
         pl.Series("significant", corrected < 0.05),
         pl.lit(correction).alias("correction"),
     )
-    return out.sort(([x] if x else []) + ["group_a", "group_b"])
 
 
 def _correct(pvals: np.ndarray, method: str) -> np.ndarray:

@@ -8,7 +8,7 @@ it's a controllable stand-in for trying modelling approaches and testing the ana
 
 You drive it with the knobs you'd actually want to vary::
 
-    simulate_session(paradigm="detection", n_trials=600, opto_ratio=0.3,
+    simulate_session(paradigm="wheel_detection", n_trials=600, opto_ratio=0.3,
                      rt_mean=320, rt_std=130, seed=0)
 
 The hit/choice rate can be a constant, a per-contrast mapping, a callable, or (default) a
@@ -91,7 +91,7 @@ def _event_lists(responded: np.ndarray, t_resp_abs: np.ndarray, reward_size: flo
 
 def simulate_session(
     *,
-    paradigm: str = "detection",
+    paradigm: str = "wheel_detection",
     n_trials: int = 500,
     contrasts: tuple[float, ...] | list[float] | None = None,
     hit_rate: float | Mapping | Callable | None = None,
@@ -136,7 +136,7 @@ def simulate_session(
     contrasts = tuple(_DEFAULT_CONTRASTS if contrasts is None else contrasts)
     prob = _resolve_rate(hit_rate, lapse=lapse, slope=slope, threshold=threshold)
 
-    if paradigm == "detection":
+    if paradigm == "wheel_detection":
         df = _simulate_detection(
             n_trials,
             contrasts,
@@ -153,7 +153,7 @@ def simulate_session(
             reward_size,
             rng,
         )
-    elif paradigm == "discrimination":
+    elif paradigm == "wheel_discrimination":
         df = _simulate_discrimination(
             n_trials,
             contrasts,
@@ -170,9 +170,7 @@ def simulate_session(
             rng,
         )
     else:
-        raise ValueError(
-            f"Unknown paradigm {paradigm!r}; use 'detection' or 'discrimination'."
-        )
+        raise ValueError(f"Unknown paradigm {paradigm!r}; use 'detection' or 'discrimination'.")
 
     sessiondir = f"{baredate}_{animalid}_{paradigm}__no_cam_SIM"
     return attach_run_identity(
@@ -214,9 +212,7 @@ def _simulate_detection(
     p = prob(contrast) * np.where(opto, opto_rate_factor, 1.0)
     hit = is_stim & (rng.random(n) < p)
 
-    outcome = np.where(
-        is_early, "early", np.where(is_catch, "catch", np.where(hit, "hit", "miss"))
-    )
+    outcome = np.where(is_early, "early", np.where(is_catch, "catch", np.where(hit, "hit", "miss")))
     state_outcome = np.where(is_early, -1, np.where(hit, 1, 0)).astype(np.int64)
 
     # times
@@ -230,9 +226,7 @@ def _simulate_detection(
     reward, lick = _event_lists(hit, t_resp_abs, reward_size)
     signed = contrast * side
     stim_side = np.where(is_stim, np.where(side > 0, "contra", "ipsi"), "catch")
-    contrast_type = np.where(
-        contrast == 0, "catch", np.where(contrast >= 0.25, "easy", "hard")
-    )
+    contrast_type = np.where(contrast == 0, "catch", np.where(contrast >= 0.25, "easy", "hard"))
     stim_type = f"{round(sf, 2)}cpd_{tf}Hz"
 
     df = pl.DataFrame(
@@ -255,9 +249,7 @@ def _simulate_detection(
             "contrast_type": contrast_type,
             "opto": opto,
             "opto_pattern": np.where(opto, 0, -1).astype(np.int64),
-            "opto_region": pl.Series(
-                ["sim_region" if o else None for o in opto], dtype=pl.Utf8
-            ),
+            "opto_region": pl.Series(["sim_region" if o else None for o in opto], dtype=pl.Utf8),
             "reaction_time": reaction,
             "response_time": state_rt.astype(np.float64),
             "state_response_time": state_rt.astype(np.float64),
@@ -333,9 +325,7 @@ def _simulate_discrimination(
             "stim_type": np.full(n, stim_type),
             "opto": opto,
             "opto_pattern": np.where(opto, 0, -1).astype(np.int64),
-            "opto_region": pl.Series(
-                ["sim_region" if o else None for o in opto], dtype=pl.Utf8
-            ),
+            "opto_region": pl.Series(["sim_region" if o else None for o in opto], dtype=pl.Utf8),
             "reaction_time": reaction,
             "response_time": state_rt.astype(np.float64),
             "state_response_time": state_rt.astype(np.float64),

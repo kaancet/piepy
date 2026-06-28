@@ -12,7 +12,7 @@ import numpy as np
 import polars as pl
 
 
-from piepy.stats import aggregate, compare_by_x, subject_average
+from piepy.stats import aggregate, compare_groups, compare_by_x, subject_average
 from piepy.fitting import fit
 from .base import PlotResult, _need, _resolve
 
@@ -111,15 +111,18 @@ def psychometric(
     # (only when comparing) a significance test at each x-level, drawn as p-value stars
     test_res = None
     if compare is not None:
-        test_res = compare_by_x(df, x=x, subject=average_over, comparing=compare, value=outcome, success=success)
-        for xc, p in test_res.select([x, "pvalue"]).to_numpy():
-            _, ax = bv.plot_pval(
-                p,
-                [xc, xc],
-                spec.y.lim[1],  # y-loc
-                spec=spec,
-                ax=ax,
-            )
+        if df[compare].n_unique() < 2:
+            raise ValueError(f"{compare} column has less than 2 values")
+        else:
+            test_res = compare_by_x(df, x=x, subject=average_over, comparing=compare, value=outcome, success=success)
+            for xc, p in test_res.select([x, "pvalue"]).to_numpy():
+                _, ax = bv.plot_pval(
+                    p,
+                    [xc, xc],
+                    spec.y.lim[1],  # y-loc
+                    spec=spec,
+                    ax=ax,
+                )
 
     # fit a curve and draw it.
     if fit_curve:
@@ -215,8 +218,8 @@ def reaction_time_dist(
     ax=None,
     **style,
 ) -> PlotResult:
-    """"""
-
+    """Reaction-time distribution: a histogram + median line(s). With ``comparing`` it overlays one
+    histogram per group and tests the groups pairwise; without it, a single distribution (no test)."""
     import behaviz as bv
 
     spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
@@ -229,46 +232,40 @@ def reaction_time_dist(
         plot="reaction time distribution",
     )  # structured error naming any missing column
 
+    # one row per group (or a single row when there is no `comparing`), each carrying the median
+    # `value` plus the raw `points` the histogram is drawn from.
     if average_over:
-        # Two-stage / hierarchical: each subject's rate, then the mean across subjects (t-CI).
-        # This weights subjects equally.
+        # Two-stage / hierarchical: per-subject median, then averaged across subjects.
         agg = subject_average(df, subject=average_over, value=value, stat="median", compare=comparing, points=True)
-    else:
-        # Single-stage: pool all trials at each level, Wilson CI on the counts.
+    elif comparing:
         agg = aggregate(df, group=comparing, value=value, stat="median", points=True).sort(comparing)
+    else:
+        # single distribution over the whole frame (group by a constant, then drop it)
+        agg = aggregate(
+            df.with_columns(pl.lit("all").alias("_grp")),
+            group="_grp",
+            value=value,
+            stat="median",
+            points=True,
+        ).drop("_grp")
 
     grp = {"hue": comparing, "palette": palette} if comparing else {"color": color}
-
     fig, ax = bv.plot_hist1d(data=agg, values="points", bin_width=bin_width, spec=spec, ax=ax, **grp, **style)
 
-    # draw median lines
-    for comp_val, v in agg.select([comparing, "value"]).to_numpy():
+    # median line(s) + label -- the group value when comparing, else the median itself
+    for row in agg.iter_rows(named=True):
+        v = row["value"]
         fig, ax = bv.plot_vertical(x=v, spec=spec, ax=ax, color="#990000")
-        _, ax = bv.plot_text(
-            v + 3,
-            5,
-            comp_val,
-            ax=ax,
-            spec=spec,
-            rotation=90,
-            ha="left",
-            va="bottom",
-            color="#000000",
-        )
+        label = row[comparing] if comparing else f"{v:.0f}"
+        _, ax = bv.plot_text(v + 3, 5, label, ax=ax, spec=spec, rotation=90, ha="left", va="bottom", color="#000000")
 
-    # compare medians
+    # pairwise comparison only makes sense with >= 2 groups
     test_res = None
     if comparing is not None:
-        test_res = compare_by_x(df, comparing=comparing, value=value, subject=average_over)
+        test_res = compare_groups(df, comparing=comparing, value=value, subject=average_over)
         for ii, (xc1, xc2, p) in enumerate(test_res.select(["group_a", "group_b", "pvalue"]).to_numpy()):
             xi1 = agg.filter(pl.col(comparing) == xc1)[0, "value"]
             xi2 = agg.filter(pl.col(comparing) == xc2)[0, "value"]
-            _, ax = bv.plot_pval(
-                p,
-                [xi1, xi2],
-                10 + (ii * 2),
-                spec=spec,
-                ax=ax,
-            )
+            _, ax = bv.plot_pval(p, [xi1, xi2], 10 + (ii * 2), spec=spec, ax=ax)
 
     return PlotResult(data=agg, stats=test_res, figure=(fig, ax))

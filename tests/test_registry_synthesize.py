@@ -54,9 +54,9 @@ def test_wiring_only_registration_synthesizes_session():
     assert run_cls.rundata_cls is _ToyRunData
     assert run_cls.state_transitions == TRANSITIONS
 
-    # registry sees it; the stored spec has no per-paradigm enrich hook
+    # registry sees it; the synthesized Session uses the base (no-op) enrich
     assert "toytask" in registered_paradigms()
-    assert get_paradigm("toytask").enrich is None
+    assert get_paradigm("toytask").session_cls.paradigm == "toytask"
 
 
 def test_rundata_defaults_to_base_when_omitted():
@@ -144,15 +144,15 @@ def test_naming_template_registers_a_session_name_scheme(tmp_path, monkeypatch):
     register_paradigm("mytaskparse", trial_handler_cls=_ToyHandler)
 
     # the previously-unparseable name now resolves, paradigm inferred from the scheme owner
-    parsed = parse_session_name("250618_M001_mytaskparse__bob")
+    parsed = parse_session_name("250618_M001_mytaskparse__DW")
     assert parsed.paradigm == "mytaskparse"
     assert parsed.animalid == "M001"
     assert parsed.baredate == "250618"
-    assert parsed.extra["user"] == "bob"
+    assert parsed.extra["user"] == "DW"
 
     # a name that doesn't match still falls back to the in-house default scheme
     default = parse_session_name("240810_KC150_detect__no_cam_KC")
-    assert default.paradigm == "detection"
+    assert default.paradigm == "wheel_detection"
 
 
 class _StrictHandler(TrialHandler):

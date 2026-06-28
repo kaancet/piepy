@@ -8,11 +8,11 @@
 # Add a session by appending another [[<paradigm>]] table. Supported paradigms
 # are the keys in PARADIGMS in tests/conftest.py.
 
-[[detection]]
+[[wheel_detection]]
 session = "230106_KC144_detect__no_cam_KC"          # simple: single run, no camera
 
-[[detection]]
+[[wheel_detection]]
 session = "240312_KC147_detect_opto120_V1__1P_KC"   # opto + 1P imaging path
 
-[[discrimination]]
+[[wheel_discrimination]]
 session = "250217_VB101_discrim_opto120_V1__no_cam_VO"

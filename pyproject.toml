@@ -41,6 +41,7 @@ dependencies = [
     "natsort",
     "scikit-learn",
     "scikit-image",
+    "temporaldata>=0.1.6",
 ]
 
 [project.optional-dependencies]

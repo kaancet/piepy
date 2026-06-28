@@ -138,7 +138,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         )
 
         # hardware response time preferred, else the state-machine time
-        resp = self._trial["rig_response_time"]
+        resp = self._trial.get("rig_response_time")
         if resp is None:
             resp = self._trial["state_response_time"]
         rt = match_response_movement(res["movements"], resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS)

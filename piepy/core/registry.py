@@ -1,14 +1,14 @@
 """Paradigm registry: the single source of truth mapping a paradigm to its analysis code.
 
-A paradigm registers its Session class (and an optional ``enrich`` hook that turns a parsed
-session into the cohort-ready trial table) with :func:`register_paradigm`, used as a decorator
-or a direct call::
+A paradigm registers its Session class with :func:`register_paradigm`, used as a decorator or a
+direct call. The Session's ``analyze()`` (``concatenate_runs`` + ``enrich``) produces the
+cohort-ready table; a paradigm overrides ``Session.enrich`` to add per-run/cohort columns::
 
-    @register_paradigm("detection", enrich=_enrich_detection)
+    @register_paradigm("wheel_detection")
     class WheelDetectionSession(Session): ...
 
     # or
-    register_paradigm("detection", WheelDetectionSession, enrich=_enrich_detection)
+    register_paradigm("wheel_detection", WheelDetectionSession)
 
 A paradigm that needs no custom per-run flow can skip the Session/Run entirely and register the
 *parts* -- a TrialHandler, a state-transition map, and (optionally) a RunData -- letting the
@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import importlib
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass
 
 __all__ = [
@@ -47,16 +46,15 @@ class ParadigmSpec:
     """What the analysis pipeline needs to know about a paradigm."""
 
     paradigm: str
-    session_cls: type
-    enrich: Callable | None = None  # enrich(session) -> pl.DataFrame (cohort-ready table)
+    session_cls: type  # its .analyze() returns the cohort-ready table (concatenate_runs + enrich)
 
 
 _REGISTRY: dict[str, ParadigmSpec] = {}
 
 # builtin paradigms, imported lazily so their @register_paradigm decorators run on first lookup
 _BUILTIN_MODULES: dict[str, str] = {
-    "detection": "piepy.tasks.wheel_detection.wheelDetectionSession",
-    "discrimination": "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
+    "wheel_detection": "piepy.tasks.wheel_detection.wheelDetectionSession",
+    "wheel_discrimination": "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
 }
 
 
@@ -67,12 +65,11 @@ def register_paradigm(
     trial_handler_cls: type | None = None,
     rundata_cls: type | None = None,
     state_transitions: dict | None = None,
-    enrich=None,
 ):
     """Register a paradigm. Three call styles:
 
-    * decorator on a Session subclass:  ``@register_paradigm("x", enrich=...)``
-    * direct with a Session subclass:   ``register_paradigm("x", XSession, enrich=...)``
+    * decorator on a Session subclass:  ``@register_paradigm("x")``
+    * direct with a Session subclass:   ``register_paradigm("x", XSession)``
     * wiring-only (no Run/Session needed)::
 
         register_paradigm("x", trial_handler_cls=XHandler,
@@ -81,11 +78,12 @@ def register_paradigm(
     The wiring-only form synthesizes a generic Run + Session from the parts, so a new paradigm
     needs only a ``Trial`` schema, a ``TrialHandler``, and a state-transition map -- no
     Run/Session boilerplate. An explicit ``session_cls`` always wins (for paradigms that need
-    custom per-run hooks).
+    custom per-run hooks, e.g. a custom ``Session.enrich`` for cohort columns).
     """
 
     def _store(cls: type) -> type:
-        _REGISTRY[paradigm] = ParadigmSpec(paradigm, cls, enrich)
+        cls.paradigm = paradigm  # so Session.analyze()/concatenate_runs() know their own name
+        _REGISTRY[paradigm] = ParadigmSpec(paradigm, cls)
         return cls
 
     if session_cls is not None:

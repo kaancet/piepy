@@ -26,7 +26,7 @@ def test_provenance_hash_is_deterministic_and_order_independent():
     assert p1["state_transitions"] == {"0->1": "trialstart", "1->2": "stimstart"}
     assert p1["piepy_version"]  # non-empty
     assert "parsed_at" in p1
-    assert p1["paradigm"] == "detection"  # parsed from the session dir
+    assert p1["paradigm"] == "wheel_detection"  # parsed from the session dir
 
 
 def test_different_map_gives_different_hash():

@@ -43,13 +43,14 @@ class SessionStreams(ABC):
     def build(self) -> Data:
         """The session's ``Data``: the ``trials`` domain + the declared ``series`` + task extras."""
         trials = self._trials()
+        domain = trials.coalesce()
         streams: dict = {"trials": trials}
         for name, kind in self.series.items():
-            s = self._regular(name) if kind == "regular" else self._irregular(name, trials)
+            s = self._regular(name) if kind == "regular" else self._irregular(name, domain)
             if s is not None:
                 streams[name] = s
-        streams.update(self.extra_streams(trials))
-        return Data(domain=trials, **streams)
+        streams.update(self.extra_streams(domain))
+        return Data(domain=domain, **streams)
 
     # -- universal commonality ------------------------------------------------------------------ #
     def _trials(self) -> Interval:
@@ -80,8 +81,9 @@ class SessionStreams(ABC):
         return RegularTimeSeries(sampling_rate=self.sampling_rate, **{name: vals})
 
     # -- task hook ------------------------------------------------------------------------------ #
-    def extra_streams(self, trials: Interval) -> dict:
-        """Override to add streams that need pairing / clock alignment. Default: none."""
+    def extra_streams(self, domain: Interval) -> dict:
+        """Override to add streams that need pairing / clock alignment (``domain`` for the streams).
+        Default: none."""
         return {}
 
 

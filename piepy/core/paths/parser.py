@@ -59,10 +59,11 @@ class DefaultSessionNameParser:
 
     _DATE = re.compile(r"^\d{6}$")
     _PARADIGMS = {
-        "detect": "detection",
-        "detection": "detection",
-        "discrim": "discrimination",
-        "discrimination": "discrimination",
+        "detect": "wheel_detection",
+        "detection": "wheel_detection",
+        "discrim": "wheel_discrimination",
+        "discrimination": "wheel_discrimination",
+        "1stim": "wheel_discrimination",
     }
 
     def __call__(self, sessiondir: str) -> SessionName:
@@ -159,16 +160,13 @@ class SchemeNameParser:
             raise MalformedSessionError(
                 f"No registered paradigm scheme matched {name!r}.",
                 where=sessiondir,
-                fix="Add/repair naming_template in the paradigm's scheme.json, or rely on the "
-                "default scheme.",
+                fix="Add/repair naming_template in the paradigm's scheme.json, or rely on the default scheme.",
             )
         if len(matches) > 1:
             raise MalformedSessionError(
-                f"Session name {name!r} matched multiple paradigm schemes: "
-                f"{sorted(p for p, _ in matches)}.",
+                f"Session name {name!r} matched multiple paradigm schemes: {sorted(p for p, _ in matches)}.",
                 where=sessiondir,
-                fix="Make the naming_template regexes mutually exclusive (e.g. pin the paradigm "
-                "token literally).",
+                fix="Make the naming_template regexes mutually exclusive (e.g. pin the paradigm token literally).",
             )
         paradigm, m = matches[0]
         gd = m.groupdict()

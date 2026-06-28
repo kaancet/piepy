@@ -18,7 +18,7 @@ DATE_RANGE = ["240810", "240810"]  # a single, clean 2-run detection session
 def test_mouse_gather_data_real_animal(redirect_analysis):
     from piepy.core.mouse import Mouse
 
-    m = Mouse(ANIMAL, paradigm="detection", dateinterval=DATE_RANGE)
+    m = Mouse(ANIMAL, paradigm="wheel_detection", dateinterval=DATE_RANGE)
     if m.session_list.is_empty():
         pytest.skip(f"no {ANIMAL} detection sessions in {DATE_RANGE}")
 

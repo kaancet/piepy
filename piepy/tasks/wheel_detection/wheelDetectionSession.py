@@ -3,12 +3,16 @@ import scipy.stats as st
 
 from piepy.core.run import Run
 from piepy.core.session import Session
-from piepy.core.enrich import build_enrich
-from piepy.core.paths import parse_session_name
 from piepy.core.registry import register_paradigm
 from piepy.core.hub import generate_unique_session_id
 from piepy.psychophysics.opto import add_opto_pattern_columns
-from piepy.psychophysics.transforms import set_outcome, add_rig_response_time, add_stim_side, add_sftf_descriptor
+from piepy.psychophysics.transforms import (
+    add_runno,
+    set_outcome,
+    add_rig_response_time,
+    add_stim_side,
+    add_sftf_descriptor,
+)
 from .wheelDetectionTrial import WheelDetectionTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -61,6 +65,7 @@ class WheelDetectionRun(Run):
         # all detection column derivation, in order (contrast needs stim_side; opto needs the
         # per-run pattern path on self) -- composed from pure transforms.
         d = self.data.data
+        d = add_runno(d, self.run_no)
         d = set_outcome(d)
         d = add_stim_side(d)
         d = add_contrast_descriptors(d)
@@ -68,6 +73,34 @@ class WheelDetectionRun(Run):
         d = add_rig_response_time(d)
         d = add_opto_pattern_columns(d, self.paths.opto_pattern)
         self.data.data = d
+
+    def enrich_data(self) -> pl.DataFrame:
+        """Join per-run detection stats + session metadata onto the concatenated table.
+
+        One row per run: ``stat_*`` from ``get_run_stats``, a few meta/opts fields, and the derived
+        columns from ``_detection_per_run`` -- left-joined on ``run_no``. (``df`` is already
+        concatenated by :meth:`Session.analyze`; this never concatenates.)
+        """
+        d = self.data.data
+
+        if d is not None and d is not d.is_empty():
+            meta = self.meta or {}
+            opts = meta.get("opts") or {}
+
+            _enrich = {
+                "run_no": self.run_no,
+                **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
+                "level": meta.get("level"),
+                "run_start_time": meta.get("run_start_time"),
+                "task": opts.get("controller"),
+                "opto_ratio": opts.get("optoRatio"),
+                "wait_window": opts.get("openStimDuration"),
+                "response_window": opts.get("closedStimDuration"),
+                **_detection_per_run(self, d, self),
+            }
+
+        add = pl.DataFrame([_enrich]).with_columns(pl.col("run_no").cast(pl.UInt32))
+        self.data.data = d.join(add, on="run_no", how="left")
 
     def compute_stats(self) -> dict:
         return get_run_stats(self.data.data)
@@ -78,6 +111,21 @@ class WheelDetectionSession(Session):
 
     def __repr__(self):
         return f"Detection Session {self.sessiondir}"
+
+    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+        """The analysis-ready trial table for this session, paradigm is already set for detection
+
+        This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
+        runs on one clock)
+
+        Args:
+            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
+            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
+
+        Returns:
+            pl.DataFrame: Concatenated session data
+        """
+        return super().analyze("wheel_detection", load_flag=load_flag, save_mat=save_mat)
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
@@ -160,7 +208,6 @@ def _detection_per_run(run, d, session) -> dict:
     opts = meta.get("opts") or {}
     params = meta.get("params")  # a pandas DataFrame (from parse_protocol); not a dict
     rig = meta.get("rig")
-    info = parse_session_name(session.sessiondir)
     contrast_vector = opts.get("contrastVector", []) or []
     n_uniq_contrast = d["contrast"].drop_nulls().unique().len()
     try:
@@ -174,12 +221,11 @@ def _detection_per_run(run, d, session) -> dict:
         "isTitrated": n_uniq_contrast > len(contrast_vector),
         "rig": rig.get("name") if isinstance(rig, dict) else rig,
         "session_id": generate_unique_session_id(meta.get("baredate", ""), meta.get("animalid", "")),
-        "session_path": session.manifest.session_path,
-        "area": info.extra.get("area"),
-        "opto_power": info.extra.get("opto_power"),
-        "imaging": info.extra.get("imaging"),
-        "user": info.extra.get("user"),
-        "isCNO": info.extra.get("isCNO"),
+        "area": meta.get("area"),
+        "opto_power": meta.get("opto_power"),
+        "imaging": meta.get("imaging"),
+        "user": meta.get("user"),
+        "isCNO": meta.get("isCNO"),
         "contrast_vector": list(contrast_vector),
         "stim_size": stim_size,
         "sf_values": (d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []),
@@ -187,20 +233,4 @@ def _detection_per_run(run, d, session) -> dict:
     }
 
 
-# Cohort-ready detection table: concatenated runs + per-run stats & session metadata. The
-# generic Hub calls this enrich hook (no per-experiment Hub). The skeleton (concat, loop,
-# stat_* prefixing, run_no join) is owned by build_enrich; only the derived columns are bespoke.
-_enrich_detection = build_enrich(
-    "detection",
-    run_stats=get_run_stats,
-    meta_map={"level": "level", "run_start_time": "run_start_time"},
-    opts_map={
-        "task": "controller",
-        "opto_ratio": "optoRatio",
-        "wait_window": "openStimDuration",
-        "response_window": "closedStimDuration",
-    },
-    per_run=_detection_per_run,
-)
-
-register_paradigm("detection", WheelDetectionSession, enrich=_enrich_detection)
+register_paradigm("wheel_detection", WheelDetectionSession)

@@ -17,7 +17,7 @@ from piepy.core.paths import (
 
 def test_behaviour_no_camera():
     s = parse_session_name("240810_KC150_detect__no_cam_KC")
-    assert (s.baredate, s.animalid, s.paradigm) == ("240810", "KC150", "detection")
+    assert (s.baredate, s.animalid, s.paradigm) == ("240810", "KC150", "wheel_detection")
     assert s.date == datetime.date(2024, 8, 10)
     assert s.extra["imaging"] is None
     assert s.extra["user"] == "KC"
@@ -26,7 +26,7 @@ def test_behaviour_no_camera():
 
 def test_opto_imaging_area():
     s = parse_session_name("240312_KC147_detect_opto120_V1__1P_KC")
-    assert s.paradigm == "detection"
+    assert s.paradigm == "wheel_detection"
     assert s.extra["opto_power"] == 1.2
     assert s.extra["area"] == "V1"
     assert s.extra["imaging"] == "1P"
@@ -35,7 +35,7 @@ def test_opto_imaging_area():
 
 def test_discrimination():
     s = parse_session_name("250217_VB101_discrim_opto120_V1__no_cam_VO")
-    assert s.paradigm == "discrimination"
+    assert s.paradigm == "wheel_discrimination"
     assert s.extra == {
         "user": "VO",
         "imaging": None,

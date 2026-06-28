@@ -14,20 +14,15 @@ class Session:
     # paradigm wiring -- a subclass sets ``run_cls`` to its Run; the rest is generic.
     run_cls = Run
 
-    def __init__(self, sessiondir: str, load_flag: bool = False, save_mat: bool = False):
+    def __init__(self, sessiondir: str):
         """A base Session object, reads and aggregates the recorded data which can then be used in user specific
         analysis pipelines
 
         Args:
             sessiondir (str): directory of the session inside the presentation folder(e.g. 200619_KC033_wheel_KC)
-            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
-            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
-
         """
         start = time.time()
         self.sessiondir = sessiondir
-        self.load_flag = load_flag
-        self.save_mat = save_mat
         self.runs = []
 
         # resolve the session and its runs (raises a structured pathfinding error on failure)
@@ -52,18 +47,36 @@ class Session:
         parsing through hooks on its Run (``repair_rawdata`` / ``augment_data`` /
         ``compute_stats``), not by re-implementing this loop.
         """
-        for run_paths in self.manifest.runs:
-            run = self.run_cls(run_paths)
+        for i, run_paths in enumerate(self.manifest.runs, start=1):
+            run = self.run_cls(run_paths, run_no=i)
             run.set_meta()
             run.get_rawdata()
-            if run.is_run_saved() and self.load_flag:
-                display(f"Loading from {run.paths.save}")
-                run.load_run()
-            else:
-                run.analyze_run()
-                run.data.add_metadata_columns(run.meta)
-                run.save_run(self.save_mat)
             self.runs.append(run)
+
+    def analyze(self, paradigm: str | None = None, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+        """The analysis-ready trial table for this session
+
+        This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
+        runs on one clock)
+
+        Args:
+            paradigm (str | None, optional): _description_. Defaults to None.
+            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
+            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
+
+        Returns:
+            pl.DataFrame: Concatenated session data
+        """
+        for r in self.runs:
+            if r.is_run_saved() and load_flag:
+                display(f"Loading from {r.paths.save}")
+                r.load_run()
+            else:
+                r.analyze_run()
+                r.data.add_metadata_columns(r.meta)
+                r.save_run(save_mat)
+
+        return self.concatenate_runs(paradigm)
 
     def concatenate_runs(self, paradigm: str | None = None) -> pl.DataFrame:
         """Concatenate this session's runs into one trial table on a session-wide clock.

@@ -6,7 +6,7 @@ agnostic: it resolves the paradigm's Session class (and optional ``enrich`` hook
 :func:`piepy.core.schema.align_and_concat`. There are no more per-experiment Hub subclasses --
 experiment specifics live in the Session class + its registered enrich hook.
 
-    hub = Hub("detection")
+    hub = Hub("wheel_detection")
     hub.initialize(session_list, load_sessions=True)
     hub.data   # the cohort trial table
 """
@@ -52,13 +52,12 @@ def _analyze_one(args: tuple) -> pl.DataFrame:
     name = os.path.basename(str(sessiondir).rstrip("/\\"))
     try:
         spec = get_paradigm(paradigm)
-        session = spec.session_cls(name, load_flag=load_flag)
+        session = spec.session_cls(name)
+
     except Exception as exc:  # noqa: BLE001 - one bad session shouldn't sink the gather
         print(f" >> WARNING << {name} not analyzed ({exc}); skipping...", flush=True)
         return pl.DataFrame()
-    if spec.enrich is not None:
-        return spec.enrich(session)
-    return session.concatenate_runs(paradigm)
+    return session.analyze(load_flag=load_flag)
 
 
 def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
@@ -110,7 +109,7 @@ class Hub:
             id_col = "session_path" if "session_path" in self.data.columns else "session_uid"
             self.session_list = self.data[id_col].unique(maintain_order=True).to_list()
         else:
-            self.session_list = natsort.natsorted(self._filter_session_list(data))
+            self.session_list = natsort.natsorted(data)
             self.gather_sessions(self.session_list, load_sessions=load_sessions)
 
     def _filter_session_list(self, session_list: list) -> list:

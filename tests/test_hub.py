@@ -29,13 +29,9 @@ class _Dummy:
 def test_register_and_resolve():
     register_paradigm("dummy_reg", _Dummy)
     assert get_session_class("dummy_reg") is _Dummy
-    assert get_paradigm("dummy_reg").enrich is None
+    assert get_paradigm("dummy_reg").session_cls is _Dummy
+    assert _Dummy.paradigm == "dummy_reg"  # name stamped on the class
     assert "dummy_reg" in registered_paradigms()
-
-
-def test_register_with_enrich_as_direct_call():
-    register_paradigm("dummy_enrich", _Dummy, enrich=lambda s: s)
-    assert get_paradigm("dummy_enrich").enrich is not None
 
 
 def test_register_as_decorator():
@@ -44,13 +40,6 @@ def test_register_as_decorator():
         pass
 
     assert get_session_class("dummy_deco") is Sess
-
-
-def test_builtin_detection_lazy_loads_with_enrich():
-    # detection is a builtin: get_paradigm imports its module on demand, no manual import
-    spec = get_paradigm("detection")
-    assert spec.session_cls.__name__ == "WheelDetectionSession"
-    assert spec.enrich is not None  # detection registers an enrich hook
 
 
 def test_unknown_paradigm_raises():
@@ -64,12 +53,8 @@ def test_unknown_paradigm_raises():
 def test_combine_session_data_sorts_and_numbers():
     from piepy.core.hub import _combine_session_data
 
-    a = pl.DataFrame(
-        {"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]}
-    )
-    b = pl.DataFrame(
-        {"date": [datetime.date(2024, 1, 1)], "animalid": ["A"], "run_no": [1], "x": [2]}
-    )
+    a = pl.DataFrame({"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]})
+    b = pl.DataFrame({"date": [datetime.date(2024, 1, 1)], "animalid": ["A"], "run_no": [1], "x": [2]})
     out = _combine_session_data([a, pl.DataFrame(), b])
     assert out.columns[0] == "total_trial_no"
     assert out["total_trial_no"].to_list() == [1, 2]
@@ -79,7 +64,7 @@ def test_combine_session_data_sorts_and_numbers():
 def test_hub_filters_session_list_by_paradigm():
     from piepy.core.hub import Hub
 
-    hub = Hub("detection")
+    hub = Hub("wheel_detection")
     kept = hub._filter_session_list(
         [
             "240810_KC150_detect__no_cam_KC",
@@ -94,12 +79,10 @@ def test_hub_filters_session_list_by_paradigm():
 def test_hub_one_session_enriches_real_detection(redirect_analysis):
     from piepy.core.hub import Hub
 
-    out = Hub("detection")._one_session("230106_KC144_detect__no_cam_KC")
+    out = Hub("wheel_detection")._one_session("230106_KC144_detect__no_cam_KC")
     if out.is_empty():
         pytest.skip("230106 detection session not available locally")
     # enrich hook added the cohort columns on top of the canonical identity
     assert any(c.startswith("stat_") for c in out.columns)
-    assert {"session_id", "signed_contrast", "session_uid", "run_no", "paradigm"} <= set(
-        out.columns
-    )
-    assert out["paradigm"].unique().to_list() == ["detection"]
+    assert {"session_id", "signed_contrast", "session_uid", "run_no", "paradigm"} <= set(out.columns)
+    assert out["paradigm"].unique().to_list() == ["wheel_detection"]

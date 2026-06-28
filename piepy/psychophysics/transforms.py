@@ -48,6 +48,11 @@ def add_rig_response_time(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def add_runno(df: pl.DataFrame, runno: int) -> pl.DataFrame:
+    """Adds the tun no as a column"""
+    return df.with_columns(pl.lit(runno).cast(pl.UInt8).alias("run_no"))
+
+
 def set_outcome(df: pl.DataFrame, outcome_type: str = "state") -> pl.DataFrame:
     """Return ``df`` with ``outcome`` pointed at the ``<outcome_type>_outcome`` column."""
     col = f"{outcome_type}_outcome"

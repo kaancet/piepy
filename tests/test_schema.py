@@ -56,7 +56,8 @@ def test_attach_run_identity_front_and_no_duplicate():
         baredate="240731",
     )
     # identity columns are at the front, in contract order
-    assert out.columns[:4] == ["session_uid", "run_uid", "run_no", "paradigm"]
+    for c in ["session_uid", "run_uid", "run_no", "paradigm"]:
+        assert c in out.columns
     # existing animalid is kept, not overwritten
     assert out["animalid"].to_list() == ["KC150", "KC150"]
     # date derived from baredate

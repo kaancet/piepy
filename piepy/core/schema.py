@@ -46,10 +46,10 @@ UID_MODULUS = 10**18
 # Canonical identity columns, in the order they should appear at the front of a trial table.
 # (dtype is what we cast to when we create them; columns parsed elsewhere keep their dtype.)
 IDENTITY_COLUMNS: dict[str, pl.DataType] = {
-    "session_uid": pl.UInt64,
-    "run_uid": pl.UInt64,
-    "run_no": pl.UInt32,
-    "paradigm": pl.Utf8,
+    # "session_uid": pl.UInt64,
+    # "run_uid": pl.UInt64,
+    # "run_no": pl.UInt32,
+    # "paradigm": pl.Utf8,
     "animalid": pl.Utf8,
     "baredate": pl.Utf8,
     "date": pl.Date,

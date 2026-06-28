@@ -30,11 +30,11 @@ DEFAULT_SNAPSHOT_DIR = HERE / "_snapshots"
 
 # paradigm name -> (module path, Session class name)
 PARADIGMS: dict[str, tuple[str, str]] = {
-    "detection": (
+    "wheel_detection": (
         "piepy.tasks.wheel_detection.wheelDetectionSession",
         "WheelDetectionSession",
     ),
-    "discrimination": (
+    "wheel_discrimination": (
         "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
         "WheelDiscriminationSession",
     ),
@@ -67,7 +67,10 @@ def build_session(paradigm: str, session_dir: str):
     mod_name, cls_name = PARADIGMS[paradigm]
     session_cls = getattr(importlib.import_module(mod_name), cls_name)
     try:
-        return session_cls(session_dir, load_flag=False)
+        sess = session_cls(session_dir)
+        sess.analyze(load_flag=False)
+        return sess
+
     except (FileNotFoundError, PathfindingError) as exc:
         # not found locally, ambiguous, or malformed -> can't resolve here, so skip not fail.
         raise SessionUnavailable(f"{paradigm} session {session_dir!r} not resolvable locally: {exc}") from exc

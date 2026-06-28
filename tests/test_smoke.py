@@ -19,7 +19,6 @@ CORE_MODULES = [
     "piepy.core.trial",
     "piepy.core.schema",
     "piepy.core.registry",
-    "piepy.core.enrich",
     "piepy.core.errors",
     "piepy.core.paths",
     "piepy.stats",

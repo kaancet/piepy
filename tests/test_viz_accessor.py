@@ -47,14 +47,14 @@ def test_explicit_average_over_overrides_scope_default(monkeypatch):
 def test_filter_scalar_keeps_matching_rows(monkeypatch):
     calls = _capture(monkeypatch)
     df = pl.DataFrame({"opto": [0, 1, 1], "area": ["V1", "V1", "LM"], "x": [1, 2, 3]})
-    Viz(df).psychometric(filter={"opto": 1})
+    Viz(df).psychometric(filterer={"opto": 1})
     assert calls["data"]["x"].to_list() == [2, 3]  # only opto == 1
 
 
 def test_filter_list_and_multiple_keys_anded(monkeypatch):
     calls = _capture(monkeypatch)
     df = pl.DataFrame({"opto": [0, 1, 1], "area": ["V1", "V1", "LM"], "x": [1, 2, 3]})
-    Viz(df).psychometric(filter={"opto": [0, 1], "area": ["LM"]})
+    Viz(df).psychometric(filterer={"opto": [0, 1], "area": ["LM"]})
     assert calls["data"]["x"].to_list() == [3]  # opto in {0,1} AND area in {LM}
 
 
@@ -68,7 +68,7 @@ def test_property_attached_to_core_objects():
     # the property exists and binds the object (no parsing needed for this check)
     from piepy.core.hub import Hub
 
-    hub = Hub("detection")
+    hub = Hub("wheel_detection")
     hub.data = pl.DataFrame({"animalid": ["a"]})
     assert isinstance(hub.viz, Viz)
     assert hub.viz._subject == "animalid"  # Hub -> cohort scope

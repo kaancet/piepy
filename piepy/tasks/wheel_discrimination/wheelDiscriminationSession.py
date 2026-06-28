@@ -3,9 +3,10 @@ import polars as pl
 from piepy.core.run import Run
 from piepy.core.session import Session
 from piepy.core.registry import register_paradigm
+from piepy.core.hub import generate_unique_session_id
 from piepy.core.log_repair_functions import fix_first_line_state_logging
 from piepy.psychophysics.opto import add_opto_pattern_columns
-from piepy.psychophysics.transforms import add_rig_response_time, add_sftf_descriptor
+from piepy.psychophysics.transforms import add_runno
 from .wheelDiscriminationTrial import WheelDiscriminationTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -66,6 +67,13 @@ class WheelDiscriminationRun(Run):
     trial_handler_cls = WheelDiscriminationTrialHandler
     state_transitions = STATE_TRANSITION_KEYS
 
+    def __repr__(self):
+        _base = super().__repr__()
+        _stats = ""
+        if self.stats is not None:
+            _stats = f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
+        return _base + _stats
+
     def repair_rawdata(self) -> None:
         """Discrimination-specific rawdata fixes after the standard read."""
         self.rawdata = fix_first_line_state_logging(self.rawdata)
@@ -112,10 +120,39 @@ class WheelDiscriminationRun(Run):
         # all discrimination column derivation, in order; context (attended feature, opto path)
         discrim_of = self.meta["opts"]["AttendVectorName"]
         d = self.data.data
+        d = add_runno(d, self.run_no)
         d = add_choice_descriptors(d)
         d = add_stim_diff_and_type(d, discrim_of=discrim_of)
         d = add_opto_pattern_columns(d, self.paths.opto_pattern)
         self.data.data = d
+
+    def enrich_data(self) -> pl.DataFrame:
+        """Join per-run detection stats + session metadata onto the concatenated table.
+
+        One row per run: ``stat_*`` from ``get_run_stats``, a few meta/opts fields, and the derived
+        columns from ``_detection_per_run`` -- left-joined on ``run_no``. (``df`` is already
+        concatenated by :meth:`Session.analyze`; this never concatenates.)
+        """
+        d = self.data.data
+
+        if d is not None and d is not d.is_empty():
+            meta = self.meta or {}
+            opts = meta.get("opts") or {}
+
+            _enrich = {
+                "run_no": self.run_no,
+                **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
+                "level": meta.get("level"),
+                "run_start_time": meta.get("run_start_time"),
+                "task": opts.get("controller"),
+                "opto_ratio": opts.get("optoRatio"),
+                "wait_window": opts.get("openStimDuration"),
+                "response_window": opts.get("closedStimDuration"),
+                **_discrimination_per_run(self, d, self),
+            }
+
+        add = pl.DataFrame([_enrich]).with_columns(pl.col("run_no").cast(pl.UInt32))
+        self.data.data = d.join(add, on="run_no", how="left")
 
     def compute_stats(self) -> dict:
         return get_run_stats(self.data.data)
@@ -126,6 +163,21 @@ class WheelDiscriminationSession(Session):
 
     def __repr__(self):
         return f"Discrimination Session {self.sessiondir}"
+
+    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+        """The analysis-ready trial table for this session, paradigm is already set for discrimination
+
+        This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
+        runs on one clock)
+
+        Args:
+            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
+            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
+
+        Returns:
+            pl.DataFrame: Concatenated session data
+        """
+        return super().analyze("wheel_discrimination", load_flag=load_flag, save_mat=save_mat)
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
@@ -156,6 +208,28 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     )
 
     return stats_dict
+
+
+def _discrimination_per_run(run, d, session) -> dict:
+    """Derived/computed cohort columns for detection (the non-boilerplate part of enrich)."""
+    meta = run.meta or {}
+    opts = meta.get("opts") or {}  # a pandas DataFrame (from parse_protocol); not a dict
+    rig = meta.get("rig")
+    contrast_vector = opts.get("contrastVector", []) or []  # noqa: BLE001 - width may be absent / shaped differently
+
+    return {
+        "opto_targets": d["opto_pattern"].unique().len() - 1,
+        "stimulus_count": d["stim_type"].drop_nulls().unique().len(),
+        "stim_combination": "+".join(d["stim_type"].unique().sort().drop_nulls().to_list()),
+        "rig": rig.get("name") if isinstance(rig, dict) else rig,
+        "session_id": generate_unique_session_id(meta.get("baredate", ""), meta.get("animalid", "")),
+        "area": meta.get("area"),
+        "opto_power": meta.get("opto_power"),
+        "imaging": meta.get("imaging"),
+        "user": meta.get("user"),
+        "isCNO": meta.get("isCNO"),
+        "contrast_vector": list(contrast_vector),
+    }
 
 
 # default enrich (None) -> the generic Hub uses Session.concatenate_runs; a richer detection-style

@@ -91,6 +91,9 @@ class RunMeta:
             "animalid": parsed.animalid,
             "user_id": parsed.extra.get("user"),
             "imaging_mode": parsed.extra.get("imaging"),
+            "area": parsed.extra.get("area"),
+            "opto_power": parsed.extra.get("opto_power"),
+            "isCNO": parsed.extra.get("isCNO"),
         }
 
         _prot = cls.get_prot(path.prot)
@@ -150,7 +153,7 @@ class RunData:
     re-derives)"""
 
     def __init__(self) -> None:
-        pass
+        self.data = None
 
     def set_data(self, data: pl.DataFrame) -> None:
         """Set the trial table, running this RunData's ``augmenters`` pipeline over it.
@@ -223,13 +226,15 @@ class Run:
     rundata_cls = RunData
     trial_handler_cls = TrialHandler
     state_transitions: dict = {}
+    run_no: int = None
 
-    def __init__(self, paths: Paths) -> None:
+    def __init__(self, paths: Paths, run_no: int) -> None:
         self.meta = None
         self.stats = None
         self.comments = None
         self.provenance = None
         self.paths = paths
+        self.run_no = run_no
         # initialize the logger(only log at one analysis location, currently arbitrary)
         # self.logger = Logger(log_path=self.paths.save[0])
         self.data = self.rundata_cls()
@@ -296,10 +301,20 @@ class Run:
 
         self.augment_data()
         self.stats = self.compute_stats()
+        self.enrich_data()
         self._stamp_provenance()
 
     def augment_data(self) -> None:
         """Hook to add paradigm-specific derived columns after set_data. No-op by default."""
+        pass
+
+    def enrich_data(self) -> None:
+        """Add per-run / cohort columns (stats, metadata, derived) onto the concatenated table.
+
+        Base default: no extra columns. A paradigm's Session overrides this to join its own
+        columns (see ``WheelDetectionSession.enrich``). Never concatenates -- it receives the
+        already-concatenated frame from :meth:`analyze`.
+        """
         pass
 
     def _provenance(self) -> dict:
