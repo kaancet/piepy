@@ -234,4 +234,4 @@ def _discrimination_per_run(run, d, session) -> dict:
 
 # default enrich (None) -> the generic Hub uses Session.concatenate_runs; a richer detection-style
 # enrich hook can be added here later if discrimination needs cohort stat_* columns.
-register_paradigm("discrimination", WheelDiscriminationSession)
+register_paradigm("wheel_discrimination", WheelDiscriminationSession)
