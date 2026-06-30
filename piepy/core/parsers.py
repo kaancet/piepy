@@ -1,3 +1,4 @@
+import csv
 import json
 import pandas as pd
 import polars as pl
@@ -14,6 +15,13 @@ except:
 
 from .io import display
 from .config import config
+
+
+def _count_lines(fname):
+    with open(fname, "r") as file:
+        reader = csv.reader(file, delimiter=",")
+        max_row = max(reader, key=lambda row: len(row))
+        return len(max_row)
 
 
 def parse_preference(preffile: str) -> dict:
@@ -58,9 +66,7 @@ def parse_protocol(protfile: str):
                 opt_val = tmp[1].replace("\r", "")
                 if "[" in opt_val:
                     # parse list
-                    opt_val = [
-                        float(i) for i in opt_val.strip("] [").strip(" ").split(",")
-                    ]
+                    opt_val = [float(i) for i in opt_val.strip("] [").strip(" ").split(",")]
                 else:
                     try:
                         # try to parse as int
@@ -83,13 +89,9 @@ def parse_protocol(protfile: str):
                 break
         tmp = string[i::]
         tmp = [t.replace("\r", "").replace("\t", " ").strip().split() for t in tmp]
-        tmp = [
-            ";".join(t) for t in tmp
-        ]  # the delimiter is ";" becuase "," causes issue with evolveParams comma
+        tmp = [";".join(t) for t in tmp]  # the delimiter is ";" becuase "," causes issue with evolveParams comma
         try:
-            params = pd.read_csv(
-                StringIO("\n".join(tmp)), index_col=False, delimiter=";"
-            )
+            params = pd.read_csv(StringIO("\n".join(tmp)), index_col=False, delimiter=";")
         except pd.io.common.EmptyDataError:
             params = None
     return options, params, comments
@@ -115,9 +117,7 @@ def parse_labcams_log(fname: str):
         elif c.startswith("# Commit hash:"):
             commit = c.strip("# Commit hash:").strip(" ")
 
-    camdata = pl.read_csv(
-        fname, has_header=False, comment_prefix="#", new_columns=camlogheader
-    )
+    camdata = pl.read_csv(fname, has_header=False, comment_prefix="#", new_columns=camlogheader)
     return camdata, comments, commit
 
 
@@ -179,20 +179,10 @@ def parse_stimpy_log(fname: str):
 
         logdata = q.select(
             [
-                pl.col("code")
-                .str.strip_chars("[")
-                .str.strip_chars(" ")
-                .cast(pl.Int64, strict=False),
+                pl.col("code").str.strip_chars("[").str.strip_chars(" ").cast(pl.Int64, strict=False),
                 pl.col("timereceived").str.strip_chars(" ").cast(pl.Int64),
-                pl.col("duinotime")
-                .str.strip_chars(" ")
-                .cast(pl.Float32)
-                .cast(pl.Int64),
-                pl.col("value")
-                .str.strip_chars("]")
-                .str.strip_chars(" ")
-                .cast(pl.Float64)
-                .cast(pl.Int64, strict=False),
+                pl.col("duinotime").str.strip_chars(" ").cast(pl.Float32).cast(pl.Int64),
+                pl.col("value").str.strip_chars("]").str.strip_chars(" ").cast(pl.Float64).cast(pl.Int64, strict=False),
             ]
         ).collect()
 
@@ -208,16 +198,37 @@ def parse_stimpy_log(fname: str):
                 schema=_schema,
                 separator=",",
             )
-        except Exception:
-            _schema = {k: pl.Float64 for k in vlogheader}
-            logdata = pl.read_csv(
-                fname,
-                has_header=False,
-                comment_prefix="#",
-                schema=_schema,
-                separator=",",
-                ignore_errors=True,
-            )
+        except pl.exceptions.ComputeError as e:
+            if "found more fields than defined in 'Schema'" in e.args[0]:
+                _schema = {k: pl.Float64 for k in vlogheader}
+                max_row = _count_lines(fname)
+                # append unknowns to _schema until length is same as max_row len
+                n_append = max_row - len(_schema)
+                display(
+                    f" \n\n>> WARNING << \nStimlog log header({len(_schema)}) is shorter than row with maximum values({max_row}), adding {n_append} 'unknown' column headers.\n YOU NEED TO FIX THIS ON STIMPY\n\n",
+                    color="yellow",
+                )
+                for i in range(n_append):
+                    _schema[f"unknown_{i + 1}"] = pl.Float64
+
+                logdata = pl.read_csv(
+                    fname,
+                    has_header=False,
+                    comment_prefix="#",
+                    schema=_schema,
+                    separator=",",
+                    ignore_errors=True,
+                )
+            else:
+                _schema = {k: pl.Float64 for k in vlogheader}
+                logdata = pl.read_csv(
+                    fname,
+                    has_header=False,
+                    comment_prefix="#",
+                    schema=_schema,
+                    separator=",",
+                    ignore_errors=True,
+                )
 
     data = {}
     not_found = []
@@ -240,9 +251,7 @@ def parse_stimpy_log(fname: str):
             """
             if code_nr == 20:
                 state_data = data[code_key][:, 0 : len(stateheader)]
-                col_names = {
-                    data[code_key].columns[i]: k for i, k in enumerate(stateheader)
-                }
+                col_names = {data[code_key].columns[i]: k for i, k in enumerate(stateheader)}
                 data[code_key] = state_data.rename(col_names)
         else:
             not_found.append(code_key)
@@ -344,9 +353,7 @@ def parse_stimpygithub_log(fname: str) -> dict:
     for k in source_key_cols.keys():
         col_count = len(source_key_cols[k])
         type_count = len(source_key_type[k])
-        assert col_count == type_count, (
-            f"The number of column names({col_count}) =/= column types({type_count})"
-        )
+        assert col_count == type_count, f"The number of column names({col_count}) =/= column types({type_count})"
 
     logdata = pl.read_csv(fname, comment_prefix="#", separator=",", has_header=False)
 
@@ -369,16 +376,12 @@ def parse_stimpygithub_log(fname: str) -> dict:
 
         assert len(_list_starts) == len(_list_ends), "PROBLEMATIC LOGGING OF LISTS !!"
         for i, c_l in enumerate(_list_starts):
-            code_filt = code_filt.with_columns(
-                (pl.col(c_l) + "," + pl.col(_list_ends[i])).alias(c_l)
-            )
+            code_filt = code_filt.with_columns((pl.col(c_l) + "," + pl.col(_list_ends[i])).alias(c_l))
             code_filt = code_filt.with_columns((pl.col(c_l).str.json_decode()))
             code_filt = code_filt.drop(_list_ends[i])
 
         # rename the columns
-        code_filt = code_filt.rename(
-            {code_filt.columns[i]: c for i, c in enumerate(col_names)}
-        )
+        code_filt = code_filt.rename({code_filt.columns[i]: c for i, c in enumerate(col_names)})
 
         # drops the columns that are all null
         keeping = []
@@ -399,9 +402,7 @@ def parse_stimpygithub_log(fname: str) -> dict:
                 except pl.InvalidOperationError:
                     # for converting string boolean to boolean
                     code_filt = code_filt.with_columns(
-                        pl.col(c)
-                        .str.to_lowercase()
-                        .map_dict({"true": True, "false": False})
+                        pl.col(c).str.to_lowercase().map_dict({"true": True, "false": False})
                     )
         # drop the code column from all of the data
         code_filt = code_filt.drop("code")

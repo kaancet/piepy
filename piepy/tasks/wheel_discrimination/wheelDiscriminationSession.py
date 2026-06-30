@@ -89,30 +89,56 @@ class WheelDiscriminationRun(Run):
             pl.DataFrame: _description_
         """
         header = df.columns.copy()
+        attend_name = self.meta["opts"]["AttendVectorName"]
         distract_name = self.meta["opts"]["DistractVectorName"]
         if distract_name == "c":
-            distract_name = "contrast"
+            realtf_cols = [rc for rc in header if "realtf" in rc]
 
-        realtf_cols = [rc for rc in header if "realtf" in rc]
+            if len(realtf_cols) != 0:
+                # get all the columns with _r and _l
+                l_headers = [c for c in header if "_l" in c if "pos" not in c]
+                lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
 
-        if len(realtf_cols) != 0:
-            # get all the columns with _r and _l
-            l_headers = [c for c in header if "_l" in c if "pos" not in c]
-            lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
+                for j, head_tup in enumerate(lr_headers):
+                    h_pos, h_name = head_tup
+                    if h_name == "contrast":
+                        header[h_pos] = "width_l"
+                        header[h_pos + 1] = "width_r"
+                    elif h_name == "tf":
+                        header[h_pos] = "contrast_l"
+                        header[h_pos + 1] = "contrast_r"
+                    elif h_name == "realtf":
+                        header[h_pos] = "tf_l"
+                        header[h_pos + 1] = "tf_r"
 
-            for j, head_tup in enumerate(lr_headers):
-                h_pos, h_name = head_tup
-                if h_name == "contrast":
-                    header[h_pos] = "width_l"
-                    header[h_pos + 1] = "width_r"
-                elif h_name == "tf":
-                    header[h_pos] = "contrast_l"
-                    header[h_pos + 1] = "contrast_r"
-                elif h_name == "realtf":
-                    header[h_pos] = "tf_l"
-                    header[h_pos + 1] = "tf_r"
+                df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
+        elif distract_name == "ori":
+            # hardcoded column for ori
+            new_header = [
+                "code",
+                "presentTime",
+                "iTrial",
+                "photo",
+                "width_l",
+                "width_r",
+                "posx_l",
+                "posx_r",
+                "sf_l",
+                "sf_r",
+                "ori_l",
+                "ori_r",
+                "tf_l",
+                "tf_r",
+                "correct",
+                "reward",
+                "fraction_r",
+                "prob",
+            ]
 
-            df = df.rename({h: header[i] for i, h in enumerate(df.columns)})
+            # later added columns
+            _extra_cols = header[len(new_header) :]
+            new_header = new_header + _extra_cols
+            df = df.rename({h: new_header[i] for i, h in enumerate(df.columns)})
 
         return df
 

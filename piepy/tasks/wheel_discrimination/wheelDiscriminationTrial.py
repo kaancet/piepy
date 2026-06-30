@@ -55,7 +55,11 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             self.set_licks()
             self.set_reward()
             self.set_opto()
-            self.set_wheel_traces(self._trial["t_vstimstart_rig"])
+            # start with rig time, if not use state time
+            wheel_reset = (
+                self._trial["t_vstimstart_rig"] if self._trial["t_vstimstart_rig"] else self._trial["t_vstimstart"]
+            )
+            self.set_wheel_traces(wheel_reset)
 
             return self._update_and_return(return_as)
 
