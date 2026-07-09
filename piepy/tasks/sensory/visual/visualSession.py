@@ -1,9 +1,8 @@
 import polars as pl
-from ....core.io import display
-from ....core.run import Run, RunData, RunMeta
+
+from ....core.run import Run
 from ....core.session import Session
-from ....core.paths import RunArtifacts as Paths
-from ....core.log_repair_functions import extract_trial_count, add_total_iStim
+from ....core.registry import register_paradigm
 from .visualTrial import VisualTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -15,39 +14,25 @@ STATE_TRANSITION_KEYS = {
 }
 
 
-class VisualRunData(RunData):
-    def __init__(self, data: pl.DataFrame = None):
-        super().__init__(data)
-
-
 class VisualRun(Run):
-    def __init__(self, paths: Paths):
-        super().__init__(paths)
-        self.data = VisualRunData()
-        self.trial_handler = VisualTrialHandler()
+    # Paradigm wiring: the base Run builds the handler, reads the rawdata, and runs the parse loop;
+    # this subclass only supplies the two visual-specific fixes below.
+    trial_handler_cls = VisualTrialHandler
+    state_transitions = STATE_TRANSITION_KEYS
 
     def read_run_data(self) -> None:
-        """Add experiment specific modifiactins to read data in this method"""
+        """Standard read, plus a visual-specific fix: some logs number trials from 0, not 1."""
         super().read_run_data()
-
-        # sometimes iTrial starts from 0, shift all to start from 1
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
             self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
 
-    def analyze_run(self, transform_dict: dict) -> None:
-        """Main loop to extract data from rawdata
+    def repair_rawdata(self) -> None:
+        """Shift the trial start/end times by fixed offsets so the downstream timing lines up.
 
-        Args:
-            transform_dict (dict): Dictionary that has state transition and state name dictionary (like the one defined above)
+        This runs after the state transitions have been named, so it can match "trialstart" and
+        "trialend". The offsets are a quirk of the visual rig's logging, kept from the original
+        pipeline.
         """
-        self.read_run_data()
-        self.translate_state_changes(transform_dict)
-
-        self.rawdata = extract_trial_count(self.rawdata)
-        # add total iStim just in case
-        self.rawdata = add_total_iStim(self.rawdata)
-
-        ## adding fake timing differences to trialstart and end, because the previous way of doing things are fucked
         self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
             pl.when(pl.col("transition") == "trialstart")
             .then(pl.col("elapsed") + 300)
@@ -57,31 +42,18 @@ class VisualRun(Run):
             .alias("elapsed")
         )
 
-        run_data = self.get_trials()
-
-        # set the data object
-        self.data.set_data(run_data)
-
 
 class VisualSession(Session):
-    # visual keeps a bespoke per-run pipeline (analyze_run takes the transition map and injects
-    # fake timings), so it overrides init_session_runs; the base __init__ drives it.
-    def init_session_runs(self):
-        """Initializes runs in a session"""
-        for r in range(self.run_count):
-            _path = self.manifest.runs[r]
-            # meta data
-            _meta = RunMeta.get_meta(_path)
+    run_cls = VisualRun
 
-            # the run itself
-            _run = VisualRun(_path)
-            _run.set_meta()
-            if _run.is_run_saved() and self.load_flag:
-                display(f"Loading from {_run.paths.save}")
-                _run.load_run()
-            else:
-                _run.analyze_run(STATE_TRANSITION_KEYS)
-                _run.data.add_metadata_columns(_meta)
-                _run.save_run()
+    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+        """Parse (or load) every run and return the concatenated visual trial table.
 
-            self.runs.append(_run)
+        Args:
+            load_flag: reuse a previous parse if one is saved, instead of parsing again.
+            save_mat: also write a MATLAB ``.mat`` copy.
+        """
+        return super().analyze("visual", load_flag=load_flag, save_mat=save_mat)
+
+
+register_paradigm("visual", VisualSession)
