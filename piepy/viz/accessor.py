@@ -52,14 +52,14 @@ class Viz:
         kwargs.setdefault("average_over", self._subject)
         return plots.psychometric(self._data(filterer), **kwargs)
 
-    def reaction_time_cloud(self, filterer: dict | None = None, **kwargs):
+    def reaction_time_cloud(self, *, filterer: dict | None = None, **kwargs):
         """See :func:`piepy.viz.plots.reaction_time_cloud`. Defaults ``average_over`` to this scope's
         subject column (so a Hub subject-averages, a Session pools)."""
         kwargs.setdefault("average_over", self._subject)
         return plots.reaction_time_cloud(self._data(filterer), **kwargs)
 
-    def reaction_time_dist(self, filterer: dict | None = None, **kwargs):
-        """See :func:`piepy.viz.plots.reaction_time_cloud`. Defaults ``average_over`` to this scope's
+    def reaction_time_dist(self, *, filterer: dict | None = None, **kwargs):
+        """See :func:`piepy.viz.plots.reaction_time_dist`. Defaults ``average_over`` to this scope's
         subject column (so a Hub subject-averages, a Session pools)."""
         kwargs.setdefault("average_over", self._subject)
         return plots.reaction_time_dist(self._data(filterer), **kwargs)

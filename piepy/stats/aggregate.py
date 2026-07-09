@@ -32,7 +32,7 @@ from scipy import stats as sps
 
 from .estimators import bootstrap_ci
 
-__all__ = ["Rate", "Mean", "Median", "Count", "aggregate", "subject_rate", "group_arrays"]
+__all__ = ["Rate", "Mean", "Median", "Count", "aggregate", "subject_average", "group_arrays"]
 
 _TIDY_COLS = ("metric", "value", "ci_low", "ci_high", "n")
 
