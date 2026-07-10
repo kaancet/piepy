@@ -1,6 +1,6 @@
 [project]
 name = "piepy-neuro"
-version = "0.1.1"
+version = "0.3.0"
 description = "Code for Behavioral, Imaging Analysis"
 authors = [{name = "Sakir Kaan Cetindag", email = "cetindag.kaan@gmail.com" }]
 readme = "README.md"
@@ -30,11 +30,11 @@ dependencies = [
     "tqdm == 4.65.1",
     "bokeh",
     "scipy",
-    "pandas <3",
+    "pandas < 3",
     "colorama",
     "pillow",
     "opencv-python",
-    "ipykernel",
+    "ipykernel < 7",
     "pystackreg",
     "tabulate",
     "tifffile",
@@ -77,10 +77,8 @@ target-version = "py312"
 line-length = 90  # match black
 
 [tool.ruff.lint]
-# Lenient on purpose for now; full-repo lint cleanup is a separate task.
-# black owns line length, so E501 is ignored here.
 select = ["E", "F", "W"]
-ignore = ["E501"]
+ignore = ["E501", "W293"]
 
 [tool.black]
 line-length = 90

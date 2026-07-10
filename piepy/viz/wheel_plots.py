@@ -10,7 +10,9 @@ from piepy.psychophysics.wheelTrace import WheelTrace
 from .base import PlotResult, _need, _resolve
 
 
-def _aligned_trial_traces(trace, wheel_t, wheel_pos, reset_times, *, time_range, common_t, plot_speed, interp_freq):
+def _aligned_trial_traces(
+    trace, wheel_t, wheel_pos, reset_times, *, time_range, common_t, plot_speed, interp_freq
+) -> list:
     """Each trial's speed (or position) resampled onto ``common_t``; out-of-range -> NaN, empties skipped."""
     out = []
     for t, pos, reset_t in zip(wheel_t, wheel_pos, reset_times):
@@ -25,7 +27,7 @@ def _aligned_trial_traces(trace, wheel_t, wheel_pos, reset_times, *, time_range,
     return out
 
 
-def _mean_trace(traces):
+def _mean_trace(traces) -> np.ndarray:
     """NaN-ignoring mean over a list of aligned traces; None if the list is empty."""
     return np.nanmean(np.vstack(traces), axis=0) if traces else None
 
@@ -168,5 +170,117 @@ def wheel_profile(
     return PlotResult(data=plot_df, figure=(fig, ax))
 
 
-def wheel_heatmap():
-    pass
+def wheel_heatmap(
+    data,
+    sort_by: list[str],
+    *,
+    time_reset: str = "t_vstimstart_rig",
+    time_range: list[float] | None = None,
+    plot_speed: bool = True,
+    normalise: bool = True,
+    interp_freq: int = 5,
+    ax=None,
+    **style,
+) -> PlotResult:
+    """_summary_
+
+    Args:
+        data (_type_): _description_
+        sort_by (list[str]):
+        time_reset (str, optional): _description_. Defaults to "t_vstimstart_rig".
+        time_range (list[float] | None, optional): _description_. Defaults to None.
+        plot_speed (bool, optional): _description_. Defaults to True.
+        interp_freq (int, optional): _description_. Defaults to 5.
+        ax (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        PlotResult: _description_
+    """
+
+    import behaviz as bv
+
+    spec = bv.load_preset(style.pop("preset", "wheel_heatmap"))
+
+    style_overrides = bv.split_styles(
+        style,
+        components=("image", "bar"),
+        defaults={
+            "image": {
+                "cmap": "inferno",
+            },
+            "bar": {
+                "color": "#090909",
+            },
+        },
+    )
+
+    df = _resolve(data)
+
+    _need(
+        df,
+        ["wheel_t", "wheel_pos", *sort_by, time_reset],
+        plot="wheel heat-map plot",
+    )  # structured error naming any missing column
+
+    if time_range is None:
+        time_range = [-200, 1500]
+
+    # check if time reset has non null
+    if not df[time_reset].drop_nulls().len():
+        raise ValueError(f"The column {time_reset} used for time_reset has only null values!")
+
+    trace = WheelTrace()
+    common_t = np.arange(time_range[0], time_range[1], 1 / interp_freq)
+
+    # to pass to mean func
+    kw = dict(time_range=time_range, common_t=common_t, plot_speed=plot_speed, interp_freq=interp_freq)
+
+    # order by sort_by
+    ordered_df = df.sort(sort_by, descending=[True, False]).drop_nulls(sort_by[0])
+    # create the
+    trials = np.array(
+        _aligned_trial_traces(trace, ordered_df["wheel_t"], ordered_df["wheel_pos"], ordered_df[time_reset], **kw)
+    )
+
+    label_suffix = ""
+    if normalise:
+        trials_max = np.nanmax(trials)
+        trials = trials / trials_max
+        label_suffix = "normalised"
+
+    f, ax = bv.plot_image(
+        trials,
+        origin="upper",
+        extent=[
+            common_t[0],
+            common_t[-1],
+            0,
+            len(ordered_df),
+        ],
+        colorbar=f"{label_suffix} speed (rad/s)" if plot_speed else f"{label_suffix} pos (rad)",
+        ax=ax,
+        spec=spec,
+        **style_overrides["image"],
+    )
+
+    bottom = 0
+    uniques = ordered_df[sort_by[0]].unique(maintain_order=True).to_list()[::-1]
+    unique_counts = ordered_df[sort_by[0]].unique_counts().to_list()[::-1]
+    for u_n, u_s in zip(uniques, unique_counts):
+        f, ax = bv.plot_bar(
+            time_range[-1], u_s - 1, bottom=bottom + 1, width=10, ax=ax, spec=spec, **style_overrides["bar"]
+        )
+
+        f, ax = bv.plot_text(
+            time_range[-1] + 10,
+            bottom + u_s // 2,
+            f"{u_n}",
+            ha="left",
+            va="center",
+            color="#010101",
+            ax=ax,
+            spec=spec,
+        )
+        bottom += u_s
+
+    return PlotResult(data=ordered_df, figure=(f, ax))
