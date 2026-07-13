@@ -21,7 +21,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "behaviz >= 0.5.10",
+    "behaviz >= 0.5.13",
     "numpy == 2.2.6",
     "matplotlib >= 3.10.0",
     "patito ~= 0.8.3",
@@ -45,8 +45,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest >=8", "ruff >=0.6", "black >=24"]
-dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6", "black >=24"]
+test = ["pytest >=8", "ruff >=0.6", "black ==26.5.1"]
+dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6", "black ==26.5.1"]
 
 
 [project.scripts]

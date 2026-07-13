@@ -130,7 +130,9 @@ def test_explicit_transitions_win_over_json(tmp_path, monkeypatch):
     _write_scheme(tmp_path, "bothwire", transitions={"0->1": "from_json"})
 
     inline = {"0->1": "trialstart"}
-    cls = register_paradigm("bothwire", trial_handler_cls=_ToyHandler, state_transitions=inline)
+    cls = register_paradigm(
+        "bothwire", trial_handler_cls=_ToyHandler, state_transitions=inline
+    )
     assert cls.run_cls.state_transitions == inline
 
 
