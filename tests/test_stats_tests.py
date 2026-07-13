@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from piepy.stats import compare, compare_by_x, energy_2d, ks_2d
+from piepy.stats import compare, energy_2d, ks_2d
 
 
 def test_compare_mannu_detects_shift():
