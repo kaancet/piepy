@@ -41,7 +41,9 @@ def test_hub_scope_subject_averages(monkeypatch):
 def test_explicit_average_over_overrides_scope_default(monkeypatch):
     calls = _capture(monkeypatch)
     Viz("HUB_OBJ", subject="animalid").psychometric(average_over="mouse")
-    assert calls["kwargs"]["average_over"] == "mouse"  # caller wins over the scope default
+    assert (
+        calls["kwargs"]["average_over"] == "mouse"
+    )  # caller wins over the scope default
 
 
 def test_filter_scalar_keeps_matching_rows(monkeypatch):

@@ -23,7 +23,10 @@ def _session_df() -> pl.DataFrame:
             "t_trialstart_session": [0.0, 1000.0],
             "t_trialend_session": [800.0, 1800.0],
             "t_vstimstart_session": [300.0, 1300.0],  # state clock
-            "t_vstimstart_rig_session": [295.0, 1295.0],  # rig clock (5 ms behind) -> offset = +5
+            "t_vstimstart_rig_session": [
+                295.0,
+                1295.0,
+            ],  # rig clock (5 ms behind) -> offset = +5
             "t_vstimend_session": [600.0, 1600.0],
             "wheel_t_session": [[295.0, 345.0], [1295.0, 1345.0]],  # rig clock
             "wheel_pos": [[0.0, 2.0], [0.0, -1.0]],
@@ -52,7 +55,9 @@ def test_wheel_subclass_builds_and_shifts_rig_to_state_clock():
 def test_trial_is_a_slice_relative_time():
     data = WheelDetectionStreams(_session_df()).build()
     t2 = trial_slice(data, 2)  # window 1000..1800 -> relative time
-    assert np.allclose(np.asarray(t2.wheel.timestamps), [300.0, 350.0])  # 1300,1350 -> rel start
+    assert np.allclose(
+        np.asarray(t2.wheel.timestamps), [300.0, 350.0]
+    )  # 1300,1350 -> rel start
 
 
 def test_base_declarative_series_builds_irregular_from_session_list():
@@ -60,14 +65,18 @@ def test_base_declarative_series_builds_irregular_from_session_list():
     class Toy(SessionStreams):
         series = {"pulse": "irregular"}
 
-    df = _session_df().with_columns(pl.Series("pulse_session", [[310.0, 320.0], [1310.0]]))
+    df = _session_df().with_columns(
+        pl.Series("pulse_session", [[310.0, 320.0], [1310.0]])
+    )
     data = Toy(df).build()
     assert "pulse" in data.keys()
     assert np.allclose(np.asarray(data.pulse.timestamps), [310.0, 320.0, 1310.0])
 
 
 def test_missing_session_columns_errors():
-    bare = pl.DataFrame({"trial_no": [1], "wheel_t_session": [[1.0]], "wheel_pos": [[0.0]]})
+    bare = pl.DataFrame(
+        {"trial_no": [1], "wheel_t_session": [[1.0]], "wheel_pos": [[0.0]]}
+    )
     try:
         WheelDetectionStreams(bare)
     except ValueError as e:

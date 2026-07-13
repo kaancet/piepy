@@ -53,8 +53,12 @@ def test_unknown_paradigm_raises():
 def test_combine_session_data_sorts_and_numbers():
     from piepy.core.hub import _combine_session_data
 
-    a = pl.DataFrame({"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]})
-    b = pl.DataFrame({"date": [datetime.date(2024, 1, 1)], "animalid": ["A"], "run_no": [1], "x": [2]})
+    a = pl.DataFrame(
+        {"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]}
+    )
+    b = pl.DataFrame(
+        {"date": [datetime.date(2024, 1, 1)], "animalid": ["A"], "run_no": [1], "x": [2]}
+    )
     out = _combine_session_data([a, pl.DataFrame(), b])
     assert out.columns[0] == "total_trial_no"
     assert out["total_trial_no"].to_list() == [1, 2]
@@ -84,5 +88,7 @@ def test_hub_one_session_enriches_real_detection(redirect_analysis):
         pytest.skip("230106 detection session not available locally")
     # enrich hook added the cohort columns on top of the canonical identity
     assert any(c.startswith("stat_") for c in out.columns)
-    assert {"session_id", "signed_contrast", "session_uid", "run_no", "paradigm"} <= set(out.columns)
+    assert {"session_id", "signed_contrast", "session_uid", "run_no", "paradigm"} <= set(
+        out.columns
+    )
     assert out["paradigm"].unique().to_list() == ["wheel_detection"]

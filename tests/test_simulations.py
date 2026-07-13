@@ -36,22 +36,32 @@ def test_detection_reaction_time_null_for_non_hits():
 
 
 def test_opto_ratio_is_respected():
-    df = simulate_session(paradigm="wheel_detection", n_trials=4000, opto_ratio=0.3, seed=2)
+    df = simulate_session(
+        paradigm="wheel_detection", n_trials=4000, opto_ratio=0.3, seed=2
+    )
     frac = df["opto"].mean()
     assert 0.26 < frac < 0.34  # ~0.3
 
 
 def test_default_psychometric_is_monotonic():
-    df = simulate_session(paradigm="wheel_detection", n_trials=6000, catch_ratio=0.0, early_rate=0.0, seed=3)
-    rate = aggregate(df, group="contrast", metrics=[Rate("outcome", rate_of="hit")]).sort("contrast")
+    df = simulate_session(
+        paradigm="wheel_detection", n_trials=6000, catch_ratio=0.0, early_rate=0.0, seed=3
+    )
+    rate = aggregate(df, group="contrast", metrics=[Rate("outcome", rate_of="hit")]).sort(
+        "contrast"
+    )
     vals = rate["value"].to_list()
     assert vals[0] < vals[-1]  # hit rate rises with contrast
 
 
 def test_is_a_drop_in_for_aggregate():
-    df = simulate_session(paradigm="wheel_detection", n_trials=600, opto_ratio=0.4, seed=4)
+    df = simulate_session(
+        paradigm="wheel_detection", n_trials=600, opto_ratio=0.4, seed=4
+    )
     # the exact psychometric-plot call from the notebook works unchanged
-    psych = aggregate(df, group="signed_contrast", metrics=[Rate("outcome", rate_of="hit")])
+    psych = aggregate(
+        df, group="signed_contrast", metrics=[Rate("outcome", rate_of="hit")]
+    )
     assert {"value", "ci_low", "ci_high", "n"} <= set(psych.columns)
     # and the compare bridge
     arrs = group_arrays(df, group="opto", value="reaction_time")
@@ -64,7 +74,9 @@ def test_determinism_with_seed():
     assert a.equals(b)
 
 
-@pytest.mark.parametrize("rate", [0.8, {0.25: 0.6, 0.5: 0.9}, lambda c: 0.5 + 0.4 * (c > 0.2)])
+@pytest.mark.parametrize(
+    "rate", [0.8, {0.25: 0.6, 0.5: 0.9}, lambda c: 0.5 + 0.4 * (c > 0.2)]
+)
 def test_hit_rate_accepts_scalar_mapping_callable(rate):
     df = simulate_session(paradigm="wheel_detection", n_trials=300, hit_rate=rate, seed=0)
     assert df.height == 300

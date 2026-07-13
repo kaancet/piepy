@@ -14,7 +14,9 @@ from piepy.psychophysics.opto import add_opto_pattern_columns
 def test_non_opto_session_gets_placeholder_columns():
     df = pl.DataFrame({"opto": [-1, -1], "stim_type": ["a", "a"]})
 
-    df = add_opto_pattern_columns(df, None)  # no pattern dir needed for a non-opto session
+    df = add_opto_pattern_columns(
+        df, None
+    )  # no pattern dir needed for a non-opto session
     assert df["opto_region"].to_list() == [None, None]
     assert df["stimkey"].to_list() == ["a_-1", "a_-1"]
     assert df["stim_label"].to_list() == ["a", "a"]

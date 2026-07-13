@@ -73,7 +73,9 @@ def build_session(paradigm: str, session_dir: str):
 
     except (FileNotFoundError, PathfindingError) as exc:
         # not found locally, ambiguous, or malformed -> can't resolve here, so skip not fail.
-        raise SessionUnavailable(f"{paradigm} session {session_dir!r} not resolvable locally: {exc}") from exc
+        raise SessionUnavailable(
+            f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
+        ) from exc
 
 
 # --------------------------------------------------------------------------- #
