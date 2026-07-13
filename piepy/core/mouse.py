@@ -1,7 +1,6 @@
 import os
 import glob
 import natsort
-import argparse
 import numpy as np
 import polars as pl
 from tqdm import tqdm
@@ -12,7 +11,55 @@ from datetime import datetime as dt
 from ..core.config import config as cfg
 from .utils import timeit
 from .io import display
+from .paths import parse_session_name
 from .schema import align_and_concat
+
+
+def list_animal_sessions(animalid: str) -> pl.DataFrame:
+    """Every presentation+training session dir for one animal, as a table.
+
+    Columns: ``animalid, sessiondir, date, exp_type, fullpath, paradigm``. The
+    ``paradigm`` label comes from the canonical session-name parser (``None`` when a
+    name doesn't parse), so it matches the registry names (``wheel_detection`` etc.).
+    Shared by :class:`Mouse` and the ``hub``/``training-report`` CLI commands.
+    """
+    presentation = cfg.paths["presentation"][0]
+    training = cfg.paths["training"][0]
+    experiment_sessions = glob.glob(f"{presentation}/*{animalid}*/")
+    training_sessions = glob.glob(f"{training}/*{animalid}*__no_cam_*/")
+    all_sessions = natsort.natsorted(experiment_sessions + training_sessions)
+    all_sessions = [s for s in all_sessions if not s.endswith(f"_skip{os.sep}")]
+
+    types, dates, sessions, paradigms = [], [], [], []
+    for sesh in all_sessions:
+        s = sesh.split(os.sep)[-2]
+        dates.append(dt.strptime(s.split("_")[0], "%y%m%d"))
+        if "training" in sesh:
+            types.append("training")
+        elif "1P" in s:
+            types.append("opto" if "opto" in s else "1P")
+        elif "2P" in s:
+            types.append("2P")
+        elif "opto" in sesh:
+            types.append("opto")
+        else:
+            types.append(None)
+        sessions.append(s)
+        try:
+            paradigms.append(parse_session_name(s).paradigm)
+        except Exception:  # noqa: BLE001 - an unparseable name just has no paradigm
+            paradigms.append(None)
+
+    return pl.DataFrame(
+        {
+            "animalid": [animalid] * len(all_sessions),
+            "sessiondir": sessions,
+            "date": dates,
+            "exp_type": types,
+            "fullpath": all_sessions,
+            "paradigm": paradigms,
+        }
+    ).sort("date")
 
 
 class MouseMeta:
@@ -185,58 +232,8 @@ class Mouse:
         self.paths = tmp_paths(**tmp_dict)
 
     def get_sessions(self) -> pl.DataFrame:
-        """Create a session list dataframe"""
-        experiment_sessions = glob.glob(f"{self.paths.presentation}/*{self.animalid}*/")
-        training_sessions = glob.glob(
-            f"{self.paths.training}/*{self.animalid}*__no_cam_*/"
-        )
-        tmp = experiment_sessions + training_sessions
-        all_sessions = natsort.natsorted(tmp, reverse=False)
-        all_sessions = [s for s in all_sessions if not s.endswith(f"_skip{os.sep}")]
-
-        types = []
-        dates = []
-        sessions = []
-        for sesh in all_sessions:
-            s = sesh.split(os.sep)[-2]
-            dates.append(dt.strptime(s.split("_")[0], "%y%m%d"))
-
-            if "training" in sesh:
-                types.append("training")
-            else:
-                if "1P" in s:
-                    if "opto" in s:
-                        types.append("opto")
-                    else:
-                        types.append("1P")
-                elif "2P" in s:
-                    types.append("2P")
-                elif "opto" in sesh:
-                    types.append("opto")
-                else:
-                    types.append(None)
-
-            sessions.append(s)
-
-        session_list = pl.DataFrame(
-            data={
-                "animalid": [self.animalid] * len(all_sessions),
-                "sessiondir": sessions,
-                "date": dates,
-                "exp_type": types,
-                "fullpath": all_sessions,
-            }
-        )
-
-        session_list = session_list.with_columns(
-            pl.when(pl.col("sessiondir").str.contains("detect"))
-            .then(pl.lit("detection"))
-            .otherwise(None)
-            .alias("paradigm")
-        )
-        session_list = session_list.sort("date")
-
-        return session_list
+        """Session-list table for this animal (see :func:`list_animal_sessions`)."""
+        return list_animal_sessions(self.animalid)
 
     @timeit("Gathering behavior data...")
     def gather_data(self, load_type: str = None) -> None:
@@ -279,11 +276,10 @@ class Mouse:
             )
 
             try:
-                _single_session = self.session_parser(
-                    sessiondir, load_flag=(load_type != "no_load")
-                )
-                # one tidy trial table per session: runs concatenated onto a session clock
-                session_data = _single_session.concatenate_runs(paradigm=self.paradigm)
+                _single_session = self.session_parser(sessiondir)
+                # analyze() parses each run then concatenates them onto one session clock
+                # (the Session already knows its own paradigm, set at registration)
+                session_data = _single_session.analyze(load_flag=(load_type != "no_load"))
             except Exception as exc:
                 display(
                     f" >>> WARNING <<< Could not analyze {sessiondir}: {exc}",
@@ -444,65 +440,7 @@ class Mouse:
 
     @staticmethod
     def get_session_class(session_type: str):
-        """Return the Session class for a paradigm (e.g. 'detection') via the shared registry."""
+        """Return the Session class for a paradigm (e.g. 'wheel_detection') via the registry."""
         from .registry import get_session_class
 
         return get_session_class(session_type)
-
-
-def main():
-    load_help_str = """ Gathers the data from all the sessions in the session list
-        load_type:    string to set how to load\n
-        \n'last_saved' = loads only the last analyzed data, doesn't analyze and add new sessions since last analysis\n
-        \n'load_and_add' = loads all the data and adds new sessions to the loaded data\n
-        \n'reanalyze' = loads the session data and reanalyzes the behavior data from that\n
-        \n'no_load' = doesn't load anything reanalyzes the sessions data from scratch\n
-    """
-    parser = argparse.ArgumentParser(description="Mouse Behavior Data Parsing Tool")
-
-    parser.add_argument("id", metavar="animalid", type=str, help="Animal ID (e.g. KC133)")
-    parser.add_argument(
-        "-p",
-        "--paradigm",
-        metavar="paradigm",
-        type=str,
-        help="Behavior paradigm(e.g. detection)",
-    )
-    parser.add_argument("-l", "--load", metavar="load_type", type=str, help=load_help_str)
-
-    def date_parser(arg) -> list:
-        return arg.split(",")
-
-    parser.add_argument(
-        "-d",
-        "--date",
-        metavar="dateinterval",
-        type=date_parser,
-        default=None,
-        help="Analysis start date (e.g. 231124)",
-    )
-    parser.add_argument(
-        "-s",
-        "--save",
-        metavar="save_behavior",
-        action=argparse.BooleanOptionalAction,
-        type=str,
-        default=True,
-        help="Save behavior data or not",
-    )
-
-    """
-    parsemouse -p detection -l no_load -d 231124 KC133
-    """
-
-    opts = parser.parse_args()
-
-    display(f"Reading {opts.paradigm} Behavior for {opts.id}")
-    m = Mouse(animalid=opts.id, paradigm=opts.paradigm, dateinterval=opts.date)
-    m.gather_data(load_type=opts.load)
-    if opts.save:
-        m.save()
-
-
-if __name__ == "__main__":
-    main()

@@ -129,6 +129,8 @@ class RunMeta:
             create_epoch = os_stat.st_birthtime
         elif sys.platform == "win32":
             create_epoch = os_stat.st_ctime
+        elif sys.platform.startswith("linux"):
+            create_epoch = getattr(os_stat, "st_birthtime", os_stat.st_mtime)
         prot_dict["run_start_time"] = dt.fromtimestamp(create_epoch).strftime("%H%M")
         prot_dict["opts"] = opts
         prot_dict["params"] = params
@@ -162,7 +164,9 @@ class RunData:
             data: The dataframe that has the trials
         """
         if not isinstance(data, pl.DataFrame):
-            raise DataMissingError(f"Need a DataFrame to set Run data, got {type(data)} instead")
+            raise DataMissingError(
+                f"Need a DataFrame to set Run data, got {type(data)} instead"
+            )
         self.data = data
 
     def add_metadata_columns(self, metadata: dict) -> None:
@@ -181,7 +185,10 @@ class RunData:
 
         # datetime date
         self.data = self.data.with_columns(
-            pl.col("baredate").str.strptime(pl.Date, format="%y%m%d").cast(pl.Date).alias("date")
+            pl.col("baredate")
+            .str.strptime(pl.Date, format="%y%m%d")
+            .cast(pl.Date)
+            .alias("date")
         )
 
     def save_data(self, save_path: str, save_mat: bool = False) -> None:
@@ -343,7 +350,9 @@ class Run:
         self.provenance = self._provenance()
         if self.data is not None and self.data.data is not None:
             self.data.data = self.data.data.with_columns(
-                pl.lit(self.provenance["state_transitions_hash"]).alias("state_transitions_hash")
+                pl.lit(self.provenance["state_transitions_hash"]).alias(
+                    "state_transitions_hash"
+                )
             )
 
     def compute_stats(self) -> dict | None:
@@ -382,7 +391,9 @@ class Run:
         return to_plain_polars(validated)
 
     @staticmethod
-    def read_combine_logs(stimlog_path: str | list[str], riglog_path: str | list[str]) -> tuple[dict, dict]:
+    def read_combine_logs(
+        stimlog_path: str | list[str], riglog_path: str | list[str]
+    ) -> tuple[dict, dict]:
         """Reads the logs and combines them if multiple logs of same type exist in the run directory
 
         Args:
@@ -393,9 +404,9 @@ class Run:
             tuple[dict, dict]: Rawdata dictionary and comments dictionary
         """
         if isinstance(stimlog_path, list) and isinstance(riglog_path, list):
-            assert len(stimlog_path) == len(riglog_path), (
-                f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
-            )
+            assert len(stimlog_path) == len(
+                riglog_path
+            ), f"The number stimlog files need to be equal to amount of riglog files {len(stimlog_path)}=/={len(riglog_path)}"
 
             stim_data_all = []
             rig_data_all = []
@@ -426,7 +437,9 @@ class Run:
     def read_run_data(self) -> None:
         """Reads the data from concatanated riglog and stimlog files, and if exists, from camlog files"""
         # stimlog and camlog
-        rawdata, self.comments = self.read_combine_logs(self.paths.stimlog, self.paths.riglog)
+        rawdata, self.comments = self.read_combine_logs(
+            self.paths.stimlog, self.paths.riglog
+        )
         self.rawdata = extrapolate_time(rawdata)
 
         # sometimes screen has an extra '0' cvalue entry in the beginning, omit that entry.
@@ -435,14 +448,20 @@ class Run:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
 
         if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
-            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(self.paths.onepcamlog)
+            self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
+                self.paths.onepcamlog
+            )
 
         # try eyecam and facecam either way
         if self.paths.eyecam is not None and pexists(self.paths.eyecamlog):
-            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(self.paths.eyecamlog)
+            self.rawdata["eyecam_log"], self.comments["eyecam"], _ = parse_labcams_log(
+                self.paths.eyecamlog
+            )
 
         if self.paths.facecam is not None and pexists(self.paths.facecamlog):
-            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(self.paths.facecamlog)
+            self.rawdata["facecam_log"], self.comments["facecam"], _ = parse_labcams_log(
+                self.paths.facecamlog
+            )
 
         display("Read rawdata")
 
@@ -491,7 +510,9 @@ class Run:
             )
 
         # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename({"cycle": "trialNo"})
+        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
+            {"cycle": "trialNo"}
+        )
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists

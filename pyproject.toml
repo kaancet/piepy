@@ -50,9 +50,7 @@ dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6", "black >=24"]
 
 
 [project.scripts]
-parsemouse = "piepy.core.mouse:main"
-session = "piepy.core.session_launcher:main"
-dashboard = "piepy.plotters.bokeh_plot.launcher:main"
+piepy = "piepy.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/kaancet/piepy"
