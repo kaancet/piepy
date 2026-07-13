@@ -57,13 +57,23 @@ def analyze_widefield(
         ``{condition: dff_movie}`` (``{None: movie}`` when ``conditions`` is ``None``).
     """
     windows = frame_windows(
-        trials_df, mode=mode, group=conditions, pre_t=pre_t, post_t=post_t, duration=duration, frame_t=frame_t
+        trials_df,
+        mode=mode,
+        group=conditions,
+        pre_t=pre_t,
+        post_t=post_t,
+        duration=duration,
+        frame_t=frame_t,
     )
-    means = trial_average(stack, windows, executor=executor, n_pieces=n_pieces, downsample=downsample)
+    means = trial_average(
+        stack, windows, executor=executor, n_pieces=n_pieces, downsample=downsample
+    )
     return {key: dff(mean, windows.pre, eps=eps) for key, mean in means.items()}
 
 
-def widefield_from_run(run, *, mode: str = "onepcam", **kwargs) -> dict:
+def widefield_from_run(
+    run, *, mode: str = "onepcam", timestamp_precision: float = 1, **kwargs
+) -> dict:
     """Open a run's frames and frame period, then average -- see :func:`analyze_widefield`.
 
     Reads the trial table from ``run.data.data`` and the image folder from ``run.paths.<mode>``.
@@ -74,22 +84,24 @@ def widefield_from_run(run, *, mode: str = "onepcam", **kwargs) -> dict:
     if folder is None:
         raise ValueError(f"This run has no {mode} image folder.")
     stack = load_stack(folder, nchannels=1)
-    frame_t = run_frame_period_ms(folder)
+    frame_t = run_frame_period_ms(folder, timestamp_precision=timestamp_precision)
     return analyze_widefield(run.data.data, stack, frame_t=frame_t, mode=mode, **kwargs)
 
 
-def run_frame_period_ms(folder: str) -> float:
-    """Read the camera log in ``folder`` and return the mean time between frames, in ms."""
+def run_frame_period_ms(folder: str, timestamp_precision: float) -> float:
+    """Read the camera log in ``folder`` and return the mean time between frames, in ms.
+    timestamp_precision controls the the timing precision of camlogs: 1 ms, 1000 s, 0.001 us and so on
+    """
     from ..core.parsers import parse_labcams_log
 
     logs = [f for f in os.listdir(folder) if f.endswith("log")]
     if len(logs) != 1:
         raise IOError(f"Expected exactly one camera log in {folder}, found {len(logs)}.")
     camlog, comments, _ = parse_labcams_log(pjoin(folder, logs[0]))
-    return frame_period_ms(camlog["timestamp"].to_numpy(), comments)
+    return frame_period_ms(camlog["timestamp"].to_numpy(), timestamp_precision, comments)
 
 
-def frame_period_ms(timestamps, comments) -> float:
+def frame_period_ms(timestamps, timestamp_precision, comments) -> float:
     """Mean time between camera frames, in milliseconds.
 
     Uses the gaps between frame timestamps. If those are all zero (some rigs don't log real times),
@@ -97,9 +109,12 @@ def frame_period_ms(timestamps, comments) -> float:
 
     Args:
         timestamps: one timestamp per frame.
+        timestamp_precision: the timing precision of timestamps in the camlog, to convert to ms here:
         comments: the camera log's comment lines (used only for the fallback).
     """
     ts = np.asarray(timestamps, dtype=float)
+    ts = ts * timestamp_precision
+    print(ts, flush=True)
     avg = float(np.nanmean(np.diff(ts))) if ts.size > 1 else 0.0
 
     if avg == 0.0:
@@ -107,11 +122,10 @@ def frame_period_ms(timestamps, comments) -> float:
         marks = [c for c in comments if "# [" in c]
         start = datetime.strptime(marks[0].split("]")[0][-8:], "%H:%M:%S")
         end = datetime.strptime(marks[-1].split("]")[0][-8:], "%H:%M:%S")
-        per_s = (end - start).seconds / len(timestamps)
+        per_ms = ((end - start).seconds / len(timestamps)) * 1000
     else:
-        # gaps under 1 are already seconds; larger values are 10-microsecond ticks on some rigs
-        per_s = avg if avg < 1 else avg / 10_000
-    return per_s * 1000.0
+        per_ms = avg
+    return per_ms
 
 
 def to_display_uint16(movie: np.ndarray) -> np.ndarray:

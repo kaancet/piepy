@@ -16,7 +16,9 @@ FRAME_T = 10.0  # ms/frame
 
 
 def _frames(n=200, h=4, w=5):
-    return (np.arange(n, dtype=np.uint16)[:, None, None] * np.ones((1, h, w), dtype=np.uint16))
+    return np.arange(n, dtype=np.uint16)[:, None, None] * np.ones(
+        (1, h, w), dtype=np.uint16
+    )
 
 
 def _trials(rows):
@@ -31,7 +33,9 @@ def test_analyze_widefield_single_condition():
             {"trial_no": 2, "onepcam_frame_ids": [30, 90]},
         ]
     )
-    out = analyze_widefield(df, frames, frame_t=FRAME_T, pre_t=100, post_t=0)  # pre = 10 frames
+    out = analyze_widefield(
+        df, frames, frame_t=FRAME_T, pre_t=100, post_t=0
+    )  # pre = 10 frames
     assert set(out) == {None}
     movie = out[None]
     assert movie.dtype == np.float32
@@ -49,27 +53,39 @@ def test_analyze_widefield_per_condition_and_pieces_agree():
             {"trial_no": 3, "onepcam_frame_ids": [130, 180], "contrast": 25},
         ]
     )
-    one = analyze_widefield(df, frames, frame_t=FRAME_T, conditions="contrast", pre_t=0, n_pieces=1)
-    many = analyze_widefield(df, frames, frame_t=FRAME_T, conditions="contrast", pre_t=0, n_pieces=3)
+    one = analyze_widefield(
+        df, frames, frame_t=FRAME_T, conditions="contrast", pre_t=0, n_pieces=1
+    )
+    many = analyze_widefield(
+        df, frames, frame_t=FRAME_T, conditions="contrast", pre_t=0, n_pieces=3
+    )
     assert set(one) == {50, 25}
     for key in one:
-        assert np.array_equal(one[key], many[key])  # splitting into pieces changes nothing
+        assert np.array_equal(
+            one[key], many[key]
+        )  # splitting into pieces changes nothing
 
 
 def test_frame_period_from_gaps_seconds():
     # gaps of 0.01 s -> 10 ms
-    assert frame_period_ms([0.0, 0.01, 0.02, 0.03], comments=[]) == pytest.approx(10.0)
+    assert frame_period_ms(
+        [0.0, 0.01, 0.02, 0.03], timestamp_precision=1000, comments=[]
+    ) == pytest.approx(10.0)
 
 
 def test_frame_period_from_tick_gaps():
     # gaps of 100 (>= 1) are 10-microsecond ticks -> 100/10000 s = 0.01 s -> 10 ms
-    assert frame_period_ms([0.0, 100.0, 200.0], comments=[]) == pytest.approx(10.0)
+    assert frame_period_ms(
+        [0.0, 10000.0, 20000.0], timestamp_precision=0.001, comments=[]
+    ) == pytest.approx(10.0)
 
 
 def test_frame_period_fallback_to_comments():
     # timestamps all zero -> use total time from comments / frame count: 10 s over 5 frames = 2000 ms
     comments = ["# [12:00:00] start of recording", "# [12:00:10] end of recording"]
-    assert frame_period_ms([0.0] * 5, comments) == pytest.approx(2000.0)
+    assert frame_period_ms(
+        [0.0] * 5, timestamp_precision=1, comments=comments
+    ) == pytest.approx(2000.0)
 
 
 def test_to_display_uint16_spans_full_range():
