@@ -81,7 +81,12 @@ def psychometric(
 
     _need(
         df,
-        [x, outcome, *([compare] if compare else []), *([average_over] if average_over else [])],
+        [
+            x,
+            outcome,
+            *([compare] if compare else []),
+            *([average_over] if average_over else []),
+        ],
         plot="psychometric",
     )  # structured error naming any missing column
 
@@ -92,7 +97,9 @@ def psychometric(
     if average_over:
         # Two-stage / hierarchical: each subject's rate, then the mean across subjects (t-CI).
         # This weights subjects equally.
-        agg = subject_average(df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare)
+        agg = subject_average(
+            df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare
+        )
     else:
         # Single-stage: pool all trials at each level, Wilson CI on the counts.
         agg = aggregate(df, group=group, rate=outcome, rate_of=success).sort(group)
@@ -104,7 +111,14 @@ def psychometric(
     # split a compare column onto behaviz's `hue`; colour (color=/palette=) rides in **style
     grp = {"hue": compare} if compare else {}
     fig, ax = bv.plot_errorbar(
-        data=agg, x=x, y="value", err=err, spec=spec, ax=ax, **grp, **style_overrides["errorbar"]
+        data=agg,
+        x=x,
+        y="value",
+        yerr=err,
+        spec=spec,
+        ax=ax,
+        **grp,
+        **style_overrides["errorbar"],
     )
 
     # (only when comparing) a significance test at each x-level, drawn as p-value stars
@@ -113,7 +127,14 @@ def psychometric(
         if df[compare].drop_nulls().n_unique() < 2:
             raise ValueError(f"{compare} column has less than 2 values")
         else:
-            test_res = compare_by_x(df, x=x, subject=average_over, comparing=compare, value=outcome, success=success)
+            test_res = compare_by_x(
+                df,
+                x=x,
+                subject=average_over,
+                comparing=compare,
+                value=outcome,
+                success=success,
+            )
             for xc, p in test_res.select([x, "pvalue"]).to_numpy():
                 _, ax = bv.plot_pval(
                     p,
@@ -141,7 +162,9 @@ def psychometric(
                 xx, yy = f.curve()
                 parts.append(pl.DataFrame({x: xx, "value": yy, compare: lvl}))
             curve = pl.concat(parts)
-        fig, ax = bv.plot_line(data=curve, x=x, y="value", spec=spec, ax=ax, **grp, **style_overrides["line"])
+        fig, ax = bv.plot_line(
+            data=curve, x=x, y="value", spec=spec, ax=ax, **grp, **style_overrides["line"]
+        )
 
     return PlotResult(data=agg, stats=test_res, figure=(fig, ax))
 
@@ -171,7 +194,12 @@ def reaction_time_cloud(
 
     _need(
         df,
-        [x, value, *([compare] if compare else []), *([average_over] if average_over else [])],
+        [
+            x,
+            value,
+            *([compare] if compare else []),
+            *([average_over] if average_over else []),
+        ],
         plot="reaction time cloud",
     )  # structured error naming any missing column
 
@@ -185,22 +213,42 @@ def reaction_time_cloud(
     if average_over:
         # Two-stage / hierarchical: each subject's rate, then the mean across subjects (t-CI).
         # This weights subjects equally.
-        agg = subject_average(df, x=x, subject=average_over, value=value, stat="median", compare=compare, points=True)
+        agg = subject_average(
+            df,
+            x=x,
+            subject=average_over,
+            value=value,
+            stat="median",
+            compare=compare,
+            points=True,
+        )
     else:
         # Single-stage: pool all trials at each level, Wilson CI on the counts.
-        agg = aggregate(df, group=group, value=value, stat="median", points=True).sort(group)
+        agg = aggregate(df, group=group, value=value, stat="median", points=True).sort(
+            group
+        )
 
     grp = {"hue": compare} if compare else {}
     draw = agg.filter(pl.col("points").list.len() > 0)
     if draw.is_empty():
         raise ValueError(f"reaction time cloud: no non-null {value!r} values to plot.")
     fig, ax = bv.plot_raincloud(
-        data=draw, x=x, ys="points", bin_width=bin_width, cloud_side="left", spec=spec, ax=ax, **grp, **style
+        data=draw,
+        x=x,
+        ys="points",
+        bin_width=bin_width,
+        cloud_side="left",
+        spec=spec,
+        ax=ax,
+        **grp,
+        **style,
     )
 
     test_res = None
     if compare is not None:
-        test_res = compare_by_x(df, x=x, subject=average_over, comparing=compare, value=value)
+        test_res = compare_by_x(
+            df, x=x, subject=average_over, comparing=compare, value=value
+        )
         for xc, p in test_res.select([x, "pvalue"]).to_numpy():
             _, ax = bv.plot_pval(
                 p,
@@ -224,7 +272,8 @@ def reaction_time_dist(
     **style,
 ) -> PlotResult:
     """Reaction-time distribution: a histogram + median line(s). With ``comparing`` it overlays one
-    histogram per group and tests the groups pairwise; without it, a single distribution (no test)."""
+    histogram per group and tests the groups pairwise; without it, a single distribution (no test).
+    """
     import behaviz as bv
 
     spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
@@ -233,7 +282,11 @@ def reaction_time_dist(
 
     _need(
         df,
-        [value, *([comparing] if comparing else []), *([average_over] if average_over else [])],
+        [
+            value,
+            *([comparing] if comparing else []),
+            *([average_over] if average_over else []),
+        ],
         plot="reaction time distribution",
     )  # structured error naming any missing column
 
@@ -243,10 +296,17 @@ def reaction_time_dist(
         if average_over:
             # Two-stage / hierarchical: per-subject median, then averaged across subjects.
             agg = subject_average(
-                df, subject=average_over, value=value, stat="median", compare=comparing, points=True
+                df,
+                subject=average_over,
+                value=value,
+                stat="median",
+                compare=comparing,
+                points=True,
             ).sort(comparing)
         else:
-            agg = aggregate(df, group=comparing, value=value, stat="median", points=True).sort(comparing)
+            agg = aggregate(
+                df, group=comparing, value=value, stat="median", points=True
+            ).sort(comparing)
     else:
         # single distribution over the whole frame (group by a constant, then drop it). With no
         # `comparing` there is nothing to subject-average across, so `average_over` is ignored here
@@ -264,8 +324,12 @@ def reaction_time_dist(
     # (min() of an empty array), so only hand it the groups that actually have values.
     draw = agg.filter(pl.col("points").list.len() > 0)
     if draw.is_empty():
-        raise ValueError(f"reaction time distribution: no non-null {value!r} values to plot.")
-    fig, ax = bv.plot_hist1d(data=draw, values="points", bin_width=bin_width, spec=spec, ax=ax, **grp, **style)
+        raise ValueError(
+            f"reaction time distribution: no non-null {value!r} values to plot."
+        )
+    fig, ax = bv.plot_hist1d(
+        data=draw, values="points", bin_width=bin_width, spec=spec, ax=ax, **grp, **style
+    )
 
     # median line(s) + label -- the group value when comparing, else the median itself
     for row in agg.iter_rows(named=True):
@@ -274,18 +338,34 @@ def reaction_time_dist(
             continue
         fig, ax = bv.plot_vertical(x=v, spec=spec, ax=ax, color="#990000")
         label = str(row[comparing]) if comparing else f"{v:.0f}"
-        _, ax = bv.plot_text(v + 3, 5, label, ax=ax, spec=spec, rotation=90, ha="left", va="bottom", color="#000000")
+        _, ax = bv.plot_text(
+            v + 3,
+            5,
+            label,
+            ax=ax,
+            spec=spec,
+            rotation=90,
+            ha="left",
+            va="bottom",
+            color="#000000",
+        )
 
     # pairwise comparison only makes sense with >= 2 groups
     test_res = None
     if comparing is not None and df[comparing].drop_nulls().n_unique() >= 2:
-        test_res = compare_groups(df, comparing=comparing, value=value, subject=average_over)
-        medians = dict(zip(agg[comparing].to_list(), agg["value"].to_list()))  # group -> its median
+        test_res = compare_groups(
+            df, comparing=comparing, value=value, subject=average_over
+        )
+        medians = dict(
+            zip(agg[comparing].to_list(), agg["value"].to_list())
+        )  # group -> its median
         ii = 0
         # iter_rows keeps native dtypes (a mixed to_numpy would coerce string groups + float p)
         for xc1, xc2, p in test_res.select(["group_a", "group_b", "pvalue"]).iter_rows():
             xi1, xi2 = medians.get(xc1), medians.get(xc2)
-            if xi1 is None or xi2 is None:  # a group with no median -> nowhere to anchor the bracket
+            if (
+                xi1 is None or xi2 is None
+            ):  # a group with no median -> nowhere to anchor the bracket
                 continue
             _, ax = bv.plot_pval(p, [xi1, xi2], 10 + (ii * 2), spec=spec, ax=ax)
             ii += 1
