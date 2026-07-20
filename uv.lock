@@ -156,7 +156,7 @@ wheels = [
 
 [[package]]
 name = "behaviz"
-version = "0.5.10"
+version = "0.5.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bokeh" },
@@ -167,9 +167,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "seaborn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4c/29/8cad47dc74833a637dbeafb8323b7436e032d54d26d4e607018964a69c2c/behaviz-0.5.10.tar.gz", hash = "sha256:fd12382c9e06acdd9e826f60dd202c1d79d89d3b7256bd1d26dd0a170c6b2e75", size = 133092, upload-time = "2026-06-25T20:56:21.333Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/92/ec85018a47b2e1547c5b158aba3de02c70c068a376778e71c80d5ef3012f/behaviz-0.5.17.tar.gz", hash = "sha256:a23b3d1cab45c44ede2111c3ca51440103554379e6458bc01157ddb75ebfaccd", size = 147565, upload-time = "2026-07-15T14:22:28.332Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/df/f54cbf815c39e9e50e88b94817db8f2b63f5a3ef5524002de860e72a2daf/behaviz-0.5.10-py3-none-any.whl", hash = "sha256:d84607e690ddec0716832ba8ff72e47bc575010ea15a0c58727a0e1996f7c553", size = 119717, upload-time = "2026-06-25T20:56:11.371Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/b1/beb355cf01cf81f6e7b6d3dd34b61aa212eb876e617441d4ea9b061c32b5/behaviz-0.5.17-py3-none-any.whl", hash = "sha256:a2fc580e9eed88056f9b1a513ae920330fee2e68c0dd563900bf38123d22d2f3", size = 134912, upload-time = "2026-07-15T14:22:26.634Z" },
 ]
 
 [[package]]
@@ -2167,7 +2167,7 @@ dependencies = [
     { name = "tqdm" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "black" },
     { name = "jupyter" },
@@ -2183,13 +2183,10 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "behaviz", specifier = ">=0.5.10" },
-    { name = "black", marker = "extra == 'dev'", specifier = ">=24" },
-    { name = "black", marker = "extra == 'test'", specifier = ">=24" },
+    { name = "behaviz", specifier = ">=0.5.17" },
     { name = "bokeh" },
     { name = "colorama" },
     { name = "ipykernel", specifier = "<7" },
-    { name = "jupyter", marker = "extra == 'dev'" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "natsort" },
     { name = "numpy", specifier = "==2.2.6" },
@@ -2198,13 +2195,8 @@ requires-dist = [
     { name = "patito", specifier = "~=0.8.3" },
     { name = "pillow" },
     { name = "polars", specifier = "~=1.19.0" },
-    { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "pyarrow" },
     { name = "pystackreg" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "ruff", marker = "extra == 'test'", specifier = ">=0.6" },
     { name = "scikit-image" },
     { name = "scikit-learn" },
     { name = "scipy" },
@@ -2213,7 +2205,20 @@ requires-dist = [
     { name = "tifffile" },
     { name = "tqdm", specifier = "==4.65.1" },
 ]
-provides-extras = ["test", "dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = "==26.5.1" },
+    { name = "jupyter" },
+    { name = "pre-commit" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
+]
+test = [
+    { name = "black", specifier = "==26.5.1" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
+]
 
 [[package]]
 name = "pillow"
