@@ -113,8 +113,16 @@ def frame_period_ms(timestamps, timestamp_precision, comments) -> float:
         comments: the camera log's comment lines (used only for the fallback).
     """
     ts = np.asarray(timestamps, dtype=float)
+    
+    # patch for now:
+    drops = np.diff(ts) < 0
+    # Count cumulative wraps and align with the original array size
+    cumulative_wraps = np.insert(drops, 0, False).cumsum()
+
+    # Apply the progressive offset (1,000,000 per accumulated wrap)
+    ts += cumulative_wraps * 1000000
+        
     ts = ts * timestamp_precision
-    print(ts, flush=True)
     avg = float(np.nanmean(np.diff(ts))) if ts.size > 1 else 0.0
 
     if avg == 0.0:
@@ -139,7 +147,6 @@ def to_display_uint16(movie: np.ndarray) -> np.ndarray:
     if hi == lo:
         return np.zeros(movie.shape, dtype=np.uint16)
     return ((movie - lo) / (hi - lo) * 65535).astype(np.uint16)
-
 
 def save_averages(results: dict, save_dir: str) -> list[str]:
     """Save each condition's averaged movie as a float32 tiff. Returns the paths written."""
