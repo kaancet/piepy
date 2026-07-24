@@ -13,8 +13,11 @@ repos:
         args: ["--maxkb=1024"]
 # ruff = linter only (unused imports, undefined names, ...). Formatting stays
 # with black below, so the two never fight over layout.
+# Keep these revs equal to the versions in uv.lock, otherwise a hook can pass
+# locally while CI fails on a different tool version. Check with:
+#   grep -A1 -E '^name = "(ruff|black)"' uv.lock
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.0
+    rev: v0.15.17
     hooks:
     -   id: ruff
         args: ["--fix"]

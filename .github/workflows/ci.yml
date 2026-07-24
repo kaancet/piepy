@@ -16,19 +16,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Install into a venv, not --system: the runner's /usr Python is PEP-668
-      # "externally managed" and uv refuses to install there with --system.
-      - name: Create venv and install (test extra)
-        run: |
-          uv venv --clear --python 3.12
-          uv pip install -e ".[test]"
+      # Install from uv.lock, so CI uses the EXACT versions committed to the repo.
+      # `uv sync` (not `uv pip install`) is the only command that reads uv.lock.
+      # `--locked` fails loudly if uv.lock is stale vs pyproject.toml, instead of
+      # silently resolving something different from what you run locally.
+      # Run this same line locally to reproduce CI exactly.
+      - name: Install (locked, test group)
+        run: uv sync --locked --no-dev --group test
 
       # Lint scope is intentionally limited to new code (tests/) for now; the
       # full-repo lint cleanup is a separate task in docs/refactor_plan.md.
+      # No flags here on purpose: line-length etc. live in pyproject.toml only.
       - name: Lint tests
         run: |
           .venv/bin/ruff check tests
-          .venv/bin/black --check --line-length 90 tests
+          .venv/bin/black --check tests
 
       # Golden parse tests need local session data and are excluded here.
       - name: Run data-free tests
