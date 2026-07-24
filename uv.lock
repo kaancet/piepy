@@ -156,7 +156,7 @@ wheels = [
 
 [[package]]
 name = "behaviz"
-version = "0.5.17"
+version = "0.5.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bokeh" },
@@ -167,9 +167,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "seaborn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5b/92/ec85018a47b2e1547c5b158aba3de02c70c068a376778e71c80d5ef3012f/behaviz-0.5.17.tar.gz", hash = "sha256:a23b3d1cab45c44ede2111c3ca51440103554379e6458bc01157ddb75ebfaccd", size = 147565, upload-time = "2026-07-15T14:22:28.332Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/0b/4651fbeba76608336bd53de5878d6a533cecb8c1e192dcdf822da244862e/behaviz-0.5.18.tar.gz", hash = "sha256:fb46e8b995f78e8222ed64b3b4ae0724ffc7e4d1a22c1e0c71fef5f6357396f6", size = 147668, upload-time = "2026-07-24T10:01:14.907Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/b1/beb355cf01cf81f6e7b6d3dd34b61aa212eb876e617441d4ea9b061c32b5/behaviz-0.5.17-py3-none-any.whl", hash = "sha256:a2fc580e9eed88056f9b1a513ae920330fee2e68c0dd563900bf38123d22d2f3", size = 134912, upload-time = "2026-07-15T14:22:26.634Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/f5/0fb10635442928e0d526370ffdc6a442ffc02517ba7380a7b509528fb551/behaviz-0.5.18-py3-none-any.whl", hash = "sha256:813ddc3a761d3fc3dd4950ad8a3b3db8dc929f52b8a37b429a5813710080b478", size = 135006, upload-time = "2026-07-24T10:01:13.112Z" },
 ]
 
 [[package]]
@@ -2183,7 +2183,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "behaviz", specifier = ">=0.5.17" },
+    { name = "behaviz", specifier = ">=0.5.18" },
     { name = "bokeh" },
     { name = "colorama" },
     { name = "ipykernel", specifier = "<7" },

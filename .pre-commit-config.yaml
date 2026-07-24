@@ -13,16 +13,25 @@ repos:
         args: ["--maxkb=1024"]
 # ruff = linter only (unused imports, undefined names, ...). Formatting stays
 # with black below, so the two never fight over layout.
--   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.0
+#
+# These run the tools from .venv instead of pre-commit downloading its own copies,
+# so uv.lock is the SINGLE source of the ruff/black version. A hook can no longer
+# pass locally on one version while CI fails on another. No args here either:
+# line-length etc. come from pyproject.toml.
+#
+# Requires the venv: uv sync --locked --group dev
+-   repo: local
     hooks:
     -   id: ruff
-        args: ["--fix"]
--   repo: https://github.com/psf/black
-    rev: 26.5.1
-    hooks:
+        name: ruff (from .venv)
+        entry: .venv/bin/ruff check --fix
+        language: system
+        types_or: [python, pyi]
     -   id: black
-        args: [--line-length=90]
+        name: black (from .venv)
+        entry: .venv/bin/black
+        language: system
+        types_or: [python, pyi]
 # strip outputs + execution counts from notebooks before they get committed
 -   repo: https://github.com/kynan/nbstripout
     rev: 0.7.1
