@@ -37,9 +37,10 @@ def trials():
 
 def test_rate_shorthand_tidy_shape(trials):
     out = aggregate(trials, group="cond", rate="outcome", rate_of="hit")
-    assert out.columns == ["cond", "metric", "value", "ci_low", "ci_high", "n"]
+    assert out.columns == ["cond", "metric", "value", "sem", "ci_low", "ci_high", "n"]
     by = {r["cond"]: r for r in out.iter_rows(named=True)}
     assert by["a"]["value"] == 0.5 and by["a"]["n"] == 6
+    assert by["a"]["sem"] == pytest.approx((0.5 * 0.5 / 6) ** 0.5)  # binomial SE
     assert by["b"]["value"] == 1.0 and by["b"]["n"] == 4
     # Wilson CI stays inside [0, 1] even at the 100% group
     assert 0.0 <= by["b"]["ci_low"] < 1.0 and by["b"]["ci_high"] <= 1.0

@@ -1,7 +1,7 @@
 """Group-and-estimate: the analysis workhorse.
 
 ``aggregate`` turns a trial table into a **tidy** per-condition estimate frame -- one row per
-``(group x metric)`` with ``value``, ``ci_low``, ``ci_high``, ``n`` -- which is what the
+``(group x metric)`` with ``value``, ``sem``, ``ci_low``, ``ci_high``, ``n`` -- which is what the
 plotting (behaviz) and statistics pipelines consume. It is experiment-agnostic: you name the
 grouping columns and the metrics; nothing about wheels/outcomes is hardcoded.
 
@@ -32,9 +32,17 @@ from scipy import stats as sps
 
 from .estimators import bootstrap_ci
 
-__all__ = ["Rate", "Mean", "Median", "Count", "aggregate", "subject_average", "group_arrays"]
+__all__ = [
+    "Rate",
+    "Mean",
+    "Median",
+    "Count",
+    "aggregate",
+    "subject_average",
+    "group_arrays",
+]
 
-_TIDY_COLS = ("metric", "value", "ci_low", "ci_high", "n")
+_TIDY_COLS = ("metric", "value", "sem", "ci_low", "ci_high", "n")
 
 
 # --------------------------------------------------------------------------- #
@@ -63,7 +71,9 @@ class Rate:
         tag = self.column if self.rate_of is None else f"{self.column}={self.rate_of}"
         return f"rate[{tag}]"
 
-    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
+    def compute(
+        self, df: pl.DataFrame, group: list[str], confidence: float
+    ) -> pl.DataFrame:
         succ = (
             pl.col(self.column).cast(pl.Float64)
             if self.rate_of is None
@@ -88,6 +98,12 @@ class Rate:
             *group,
             pl.lit(self.label).alias("metric"),
             pl.when(ok).then(p).otherwise(None).cast(pl.Float64).alias("value"),
+            # standard error of a proportion: sqrt(p*(1-p)/n)
+            pl.when(ok)
+            .then((p * (1 - p) / n).sqrt())
+            .otherwise(None)
+            .cast(pl.Float64)
+            .alias("sem"),
             pl.when(ok).then(lo).otherwise(None).cast(pl.Float64).alias("ci_low"),
             pl.when(ok).then(hi).otherwise(None).cast(pl.Float64).alias("ci_high"),
             n.alias("n"),
@@ -109,7 +125,9 @@ class Mean:
     def label(self) -> str:
         return self.name or f"mean[{self.column}]"
 
-    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
+    def compute(
+        self, df: pl.DataFrame, group: list[str], confidence: float
+    ) -> pl.DataFrame:
         agg = df.group_by(group).agg(
             pl.col(self.column).drop_nulls().mean().alias("value"),
             pl.col(self.column).drop_nulls().std().alias("_sd"),
@@ -119,12 +137,14 @@ class Mean:
         sd = agg["_sd"].to_numpy().astype(float)
         val = agg["value"].to_numpy().astype(float)
         with np.errstate(invalid="ignore", divide="ignore"):
+            sem = np.where(n >= 2, sd / np.sqrt(n), np.nan)  # standard error of the mean
             tcrit = sps.t.ppf(1 - (1 - confidence) / 2, np.maximum(n - 1, 1))
             half = np.where(n >= 2, tcrit * sd / np.sqrt(n), np.nan)
         return agg.select(
             *group,
             pl.lit(self.label).alias("metric"),
             pl.col("value").cast(pl.Float64),
+            pl.Series("sem", sem).cast(pl.Float64),
             pl.Series("ci_low", val - half).cast(pl.Float64),
             pl.Series("ci_high", val + half).cast(pl.Float64),
             pl.col("n"),
@@ -153,7 +173,9 @@ class Median:
     def label(self) -> str:
         return self.name or f"median[{self.column}]"
 
-    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
+    def compute(
+        self, df: pl.DataFrame, group: list[str], confidence: float
+    ) -> pl.DataFrame:
         agg = df.group_by(group).agg(
             pl.col(self.column).drop_nulls().sort().alias("_vals"),
             pl.col(self.column).drop_nulls().median().alias("value"),
@@ -179,6 +201,9 @@ class Median:
             *group,
             pl.lit(self.label).alias("metric"),
             pl.col("value").cast(pl.Float64),
+            pl.lit(None, dtype=pl.Float64).alias(
+                "sem"
+            ),  # no standard error for the median; CI only
             pl.when(ok)
             .then(pl.col("_vals").list.get(pl.col("_lo"), null_on_oob=True))
             .otherwise(None)
@@ -206,6 +231,9 @@ class Median:
             *group,
             pl.lit(self.label).alias("metric"),
             pl.col("value").cast(pl.Float64),
+            pl.lit(None, dtype=pl.Float64).alias(
+                "sem"
+            ),  # no standard error for the median; CI only
             pl.Series("ci_low", lows, dtype=pl.Float64),
             pl.Series("ci_high", highs, dtype=pl.Float64),
             pl.col("n"),
@@ -226,7 +254,9 @@ class Count:
     def label(self) -> str:
         return self.name
 
-    def compute(self, df: pl.DataFrame, group: list[str], confidence: float) -> pl.DataFrame:
+    def compute(
+        self, df: pl.DataFrame, group: list[str], confidence: float
+    ) -> pl.DataFrame:
         return (
             df.group_by(group)
             .agg(pl.len().cast(pl.Int64).alias("n"))
@@ -234,6 +264,7 @@ class Count:
                 *group,
                 pl.lit(self.label).alias("metric"),
                 pl.col("n").cast(pl.Float64).alias("value"),
+                pl.lit(None, dtype=pl.Float64).alias("sem"),
                 pl.lit(None, dtype=pl.Float64).alias("ci_low"),
                 pl.lit(None, dtype=pl.Float64).alias("ci_high"),
                 pl.col("n"),
@@ -298,9 +329,11 @@ def aggregate(
             value metrics (:class:`Mean`/:class:`Median`); ``Rate``/``Count`` rows leave it null.
 
     Returns:
-        pl.DataFrame with columns ``[*group, "metric", "value", "ci_low", "ci_high", "n"]``
-        (plus ``points`` when ``points=True``), one row per group x metric. Empty groups yield
-        NaN/None estimates rather than errors.
+        pl.DataFrame with columns ``[*group, "metric", "value", "sem", "ci_low", "ci_high", "n"]``
+        (plus ``points`` when ``points=True``), one row per group x metric. ``sem`` is the standard
+        error (proportion SE for :class:`Rate`, sd/sqrt(n) for :class:`Mean`; null for
+        :class:`Median`/:class:`Count`, which have no standard SEM). Empty groups yield NaN/None
+        estimates rather than errors.
     """
     group = _as_list(group)
     resolved = _resolve_metrics(metrics, rate, value, stat, rate_of)
@@ -309,12 +342,16 @@ def aggregate(
     for m in resolved:
         missing += [c for c in m.columns if c not in df.columns]
     if missing:
-        raise ValueError(f"aggregate: column(s) {sorted(set(missing))} not in the dataframe (have: {df.columns}).")
+        raise ValueError(
+            f"aggregate: column(s) {sorted(set(missing))} not in the dataframe (have: {df.columns})."
+        )
 
     parts = []
     for m in resolved:
         part = m.compute(df, group, confidence)
-        if points and isinstance(m, (Mean, Median)):  # raw distribution only for value metrics
+        if points and isinstance(
+            m, (Mean, Median)
+        ):  # raw distribution only for value metrics
             pts = df.group_by(group).agg(pl.col(m.column).drop_nulls().alias("points"))
             part = part.join(pts, on=group)
         parts.append(part)
@@ -350,16 +387,32 @@ def subject_average(
     single :func:`aggregate`. Give exactly one of ``rate`` / ``value`` (same rule as
     :func:`aggregate`).
 
-    Returns the same tidy schema as :func:`aggregate` (``[x(, compare), metric, value, ci_low,
-    ci_high, n]`` where ``n`` is the **number of subjects**), so it drops into the same downstream
+    Returns the same tidy schema as :func:`aggregate` (``[x(, compare), metric, value, sem, ci_low,
+    ci_high, n]`` where ``n`` is the **number of subjects** and ``sem`` is the SEM across subjects),
+    so it drops into the same downstream
     plotting/fitting. Note: because ``n`` is subjects (not trials), fit such curves with
     least-squares, not binomial MLE.
     """
     g = ([x] if x else []) + ([compare] if compare else [])
     # stage 1: one estimate per (x[, compare], subject) -- rate or median/mean of `value`.
-    per_subject = aggregate(df, group=g + [subject], rate=rate, rate_of=rate_of, value=value, stat=stat, sort=False)
+    per_subject = aggregate(
+        df,
+        group=g + [subject],
+        rate=rate,
+        rate_of=rate_of,
+        value=value,
+        stat=stat,
+        sort=False,
+    )
     # stage 2: mean of the per-subject estimates across subjects, with a t-CI.
-    return aggregate(per_subject, group=g, value="value", stat="mean", points=points, confidence=confidence)
+    return aggregate(
+        per_subject,
+        group=g,
+        value="value",
+        stat="mean",
+        points=points,
+        confidence=confidence,
+    )
 
 
 def group_arrays(df: pl.DataFrame, *, group: str | list[str], value: str) -> dict:
