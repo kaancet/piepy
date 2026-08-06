@@ -11,7 +11,15 @@ from .base import PlotResult, _need, _resolve
 
 
 def _aligned_trial_traces(
-    trace, wheel_t, wheel_pos, reset_times, *, time_range, common_t, plot_speed, interp_freq
+    trace,
+    wheel_t,
+    wheel_pos,
+    reset_times,
+    *,
+    time_range,
+    common_t,
+    plot_speed,
+    interp_freq,
 ) -> list:
     """Each trial's speed (or position) resampled onto ``common_t``; out-of-range -> NaN, empties skipped."""
     out = []
@@ -19,7 +27,9 @@ def _aligned_trial_traces(
         if reset_t is None or t is None or not len(t):
             continue
         processed = trace.load(t=t, pos=pos).process(reset_time=reset_t, freq=interp_freq)
-        idx = np.where((processed["t"] >= time_range[0]) & (processed["t"] <= time_range[1]))[0]
+        idx = np.where(
+            (processed["t"] >= time_range[0]) & (processed["t"] <= time_range[1])
+        )[0]
         if not idx.size:
             continue
         y = np.abs(processed["velocity"][idx]) if plot_speed else processed["pos"][idx]
@@ -32,80 +42,45 @@ def _mean_trace(traces) -> np.ndarray:
     return np.nanmean(np.vstack(traces), axis=0) if traces else None
 
 
-def wheel_profile(
+def wheel_profile_compute(
     data,
-    separate_by: str = "contrast",
+    separate_by="contrast",
     *,
-    time_reset: str = "t_vstimstart_rig",
-    time_range: list[float] | None = None,
-    plot_speed: bool = True,
-    average_over: str | None = None,
-    interp_freq: int = 5,
-    ax=None,
-    **style,
-) -> PlotResult:
-    """Average wheel trace over time, one curve per ``separate_by`` level (with a SEM band).
-
-    Each trial's wheel trace is zeroed at ``time_reset`` (stim onset), clipped to ``time_range`` (ms)
-    and resampled onto a common time axis. The curve is the mean over trials, the band its SEM.
-
-    ``average_over`` (e.g. ``animalid`` / ``session``) switches to a **two-stage** average: first the
-    mean trace per subject, then the mean of those per-subject mean traces. The band is then the SEM
-    **across subjects** -- every subject weighted equally, no pseudoreplication.
-
-    Args:
-        data: a Run / Session / Hub / trial-table DataFrame (``_resolve`` handles all four).
-        separate_by: column whose levels each get their own curve (e.g. ``contrast``).
-        time_reset: per-trial timestamp column each trace is zeroed on (default rig stim onset).
-        time_range: ``[start, end]`` ms around the reset; defaults to ``[-200, 1500]``.
-        plot_speed: True -> ``|velocity|``; False -> position.
-        average_over: subject column for the two-stage average; ``None`` -> pool all trials.
-        interp_freq: resample rate passed to :class:`WheelTrace` and used for the common time grid.
-        ax / **style: forwarded to behaviz (``fill_*`` / ``line_*`` component overrides).
-
-    Returns:
-        PlotResult(data=<per-level mean/SEM trace frame>, figure=(fig, ax)).
-    """
-    import behaviz as bv
-
-    spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
-
-    style_overrides = bv.split_styles(
-        style,
-        components=("fill", "line"),
-        defaults={
-            "fill": {
-                "color": "#090909",
-                "alpha": 0.3,
-                "linewidth": 0,
-            },
-            "line": {
-                "linewidth": 2,
-                "color": "#090909",
-            },
-        },
-    )
-
+    time_reset="t_vstimstart_rig",
+    time_range=None,
+    plot_speed=True,
+    average_over=None,
+    interp_freq=5,
+) -> "pl.DataFrame":
+    """EXPENSIVE half: process every trace, mean+SEM per level. Returns the small plot frame
+    [t, y, sem_lo, sem_hi, <separate_by>]. No behaviz."""
     df = _resolve(data)
-
     _need(
         df,
-        ["wheel_t", "wheel_pos", separate_by, time_reset, *([average_over] if average_over else [])],
+        [
+            "wheel_t",
+            "wheel_pos",
+            separate_by,
+            time_reset,
+            *([average_over] if average_over else []),
+        ],
         plot="wheel profile plot",
-    )  # structured error naming any missing column
-
+    )
     if time_range is None:
         time_range = [-200, 1500]
-
-    # check if time reset has non null
     if not df[time_reset].drop_nulls().len():
-        raise ValueError(f"The column {time_reset} used for time_reset has only null values!")
+        raise ValueError(
+            f"The column {time_reset} used for time_reset has only null values!"
+        )
 
     trace = WheelTrace()
     common_t = np.arange(time_range[0], time_range[1], 1 / interp_freq)
-
-    # to pass to mean func
-    kw = dict(time_range=time_range, common_t=common_t, plot_speed=plot_speed, interp_freq=interp_freq)
+    kw = dict(
+        time_range=time_range,
+        common_t=common_t,
+        plot_speed=plot_speed,
+        interp_freq=interp_freq,
+    )
 
     group_cols = [separate_by, average_over] if average_over else [separate_by]
     grouped_df = (
@@ -115,27 +90,30 @@ def wheel_profile(
         .sort(group_cols)
     )
 
-    # rows to average within each level: individual trials (pooled) or per-subject mean traces (2-stage)
-    level_rows: dict[object, list] = defaultdict(list)
+    level_rows = defaultdict(list)
     for r in grouped_df.iter_rows(named=True):
-        trials = _aligned_trial_traces(trace, r["wheel_t"], r["wheel_pos"], r[time_reset], **kw)
+        trials = _aligned_trial_traces(
+            trace, r["wheel_t"], r["wheel_pos"], r[time_reset], **kw
+        )
         if average_over:
-            # stage 1: this subject's mean trace at this level
             subj_mean = _mean_trace(trials)
             if subj_mean is not None:
                 level_rows[r[separate_by]].append(subj_mean)
         else:
             level_rows[r[separate_by]].extend(trials)
 
-    # stage 2: mean + SEM across the rows (trials, or subjects when averaging) of each level
     plot_dict = defaultdict(list)
     for level in sorted(level_rows):
         rows = level_rows[level]
-        if not rows:  # a level whose every trial fell outside time_range / had a null reset
+        if not rows:
             continue
         mat = np.vstack(rows)
         avg = np.nanmean(mat, axis=0)
-        sem = stats.sem(mat, axis=0, nan_policy="omit") if mat.shape[0] > 1 else np.full(avg.shape, np.nan)
+        sem = (
+            stats.sem(mat, axis=0, nan_policy="omit")
+            if mat.shape[0] > 1
+            else np.full(avg.shape, np.nan)
+        )
         plot_dict["t"].extend(common_t)
         plot_dict["y"].extend(avg)
         plot_dict["sem_lo"].extend(avg - sem)
@@ -143,9 +121,25 @@ def wheel_profile(
         plot_dict[separate_by].extend([level] * len(common_t))
 
     if not plot_dict:
-        raise ValueError("wheel profile: no wheel data fell inside time_range after resetting.")
+        raise ValueError(
+            "wheel profile: no wheel data fell inside time_range after resetting."
+        )
+    return pl.DataFrame(plot_dict)
 
-    plot_df = pl.DataFrame(plot_dict)
+
+def wheel_profile_draw(plot_df, separate_by="contrast", *, ax=None, **style):
+    """CHEAP half: fill + line from the precomputed mean/SEM frame."""
+    import behaviz as bv
+
+    spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
+    style_overrides = bv.split_styles(
+        style,
+        components=("fill", "line"),
+        defaults={
+            "fill": {"color": "#090909", "alpha": 0.3, "linewidth": 0},
+            "line": {"linewidth": 2, "color": "#090909"},
+        },
+    )
     fig, ax = bv.plot_fill_between(
         data=plot_df,
         x="t",
@@ -167,6 +161,31 @@ def wheel_profile(
         spec=spec,
         **style_overrides["line"],
     )
+    return fig, ax
+
+
+def wheel_profile(
+    data,
+    separate_by="contrast",
+    *,
+    time_reset="t_vstimstart_rig",
+    time_range=None,
+    plot_speed=True,
+    average_over=None,
+    interp_freq=5,
+    ax=None,
+    **style,
+) -> PlotResult:
+    plot_df = wheel_profile_compute(
+        data,
+        separate_by,
+        time_reset=time_reset,
+        time_range=time_range,
+        plot_speed=plot_speed,
+        average_over=average_over,
+        interp_freq=interp_freq,
+    )
+    fig, ax = wheel_profile_draw(plot_df, separate_by, ax=ax, **style)
     return PlotResult(data=plot_df, figure=(fig, ax))
 
 
@@ -227,19 +246,32 @@ def wheel_heatmap(
 
     # check if time reset has non null
     if not df[time_reset].drop_nulls().len():
-        raise ValueError(f"The column {time_reset} used for time_reset has only null values!")
+        raise ValueError(
+            f"The column {time_reset} used for time_reset has only null values!"
+        )
 
     trace = WheelTrace()
     common_t = np.arange(time_range[0], time_range[1], 1 / interp_freq)
 
     # to pass to mean func
-    kw = dict(time_range=time_range, common_t=common_t, plot_speed=plot_speed, interp_freq=interp_freq)
+    kw = dict(
+        time_range=time_range,
+        common_t=common_t,
+        plot_speed=plot_speed,
+        interp_freq=interp_freq,
+    )
 
     # order by sort_by
     ordered_df = df.sort(sort_by, descending=[True, False]).drop_nulls(sort_by[0])
     # create the
     trials = np.array(
-        _aligned_trial_traces(trace, ordered_df["wheel_t"], ordered_df["wheel_pos"], ordered_df[time_reset], **kw)
+        _aligned_trial_traces(
+            trace,
+            ordered_df["wheel_t"],
+            ordered_df["wheel_pos"],
+            ordered_df[time_reset],
+            **kw,
+        )
     )
 
     label_suffix = ""
@@ -257,7 +289,9 @@ def wheel_heatmap(
             0,
             len(ordered_df),
         ],
-        colorbar=f"{label_suffix} speed (rad/s)" if plot_speed else f"{label_suffix} pos (rad)",
+        colorbar=(
+            f"{label_suffix} speed (rad/s)" if plot_speed else f"{label_suffix} pos (rad)"
+        ),
         ax=ax,
         spec=spec,
         **style_overrides["image"],
@@ -268,7 +302,13 @@ def wheel_heatmap(
     unique_counts = ordered_df[sort_by[0]].unique_counts().to_list()[::-1]
     for u_n, u_s in zip(uniques, unique_counts):
         f, ax = bv.plot_bar(
-            time_range[-1], u_s - 1, bottom=bottom + 1, width=10, ax=ax, spec=spec, **style_overrides["bar"]
+            time_range[-1],
+            u_s - 1,
+            bottom=bottom + 1,
+            width=10,
+            ax=ax,
+            spec=spec,
+            **style_overrides["bar"],
         )
 
         f, ax = bv.plot_text(

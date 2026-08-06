@@ -2135,11 +2135,10 @@ wheels = [
 
 [[package]]
 name = "piepy-neuro"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "behaviz" },
-    { name = "bokeh" },
     { name = "colorama" },
     { name = "ipykernel" },
     { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2184,10 +2183,9 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "behaviz", specifier = ">=0.6.2" },
-    { name = "bokeh" },
     { name = "colorama" },
     { name = "ipykernel", specifier = "<7" },
-    { name = "matplotlib", specifier = ">=3.10.0" },
+    { name = "matplotlib" },
     { name = "natsort" },
     { name = "numpy", specifier = "==2.2.6" },
     { name = "opencv-python" },

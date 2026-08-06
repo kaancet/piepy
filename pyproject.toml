@@ -1,6 +1,6 @@
 [project]
 name = "piepy-neuro"
-version = "0.3.0"
+version = "0.3.1"
 description = "Code for Behavioral, Imaging Analysis"
 authors = [{name = "Sakir Kaan Cetindag", email = "cetindag.kaan@gmail.com" }]
 readme = "README.md"
@@ -23,12 +23,11 @@ classifiers = [
 dependencies = [
     "behaviz >= 0.6.2",
     "numpy == 2.2.6",
-    "matplotlib >= 3.10.0",
     "patito ~= 0.8.3",
     "polars ~= 1.19.0",
+    "matplotlib",
     "pyarrow",
     "tqdm == 4.65.1",
-    "bokeh",
     "scipy",
     "pandas < 3",
     "colorama",

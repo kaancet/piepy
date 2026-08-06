@@ -10,53 +10,97 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
-
+from dataclasses import dataclass
 
 from piepy.stats import aggregate, compare_groups, compare_by_x, subject_average
 from piepy.fitting import fit
 from .base import PlotResult, _need, _resolve
 
 
-def psychometric(
+@dataclass
+class PsychometricData:
+    """The picklable intermediate data."""
+
+    agg: "pl.DataFrame"  # per-level estimate: [x, value, ci_low, ci_high, n]
+    curve: "pl.DataFrame | None"  # fitted curve: [x, value, (compare)]  (None if fit_curve=False)
+    test_res: "pl.DataFrame | None"
+    xticks: list
+
+
+def psychometric_compute(
     data,
     *,
-    x: str = "contrast",
-    outcome: str = "outcome",
-    success: object = "hit",
-    compare: str | None = None,
-    average_over: str | None = None,
-    fit_curve: bool = True,
-    model: str = "logistic",
-    ax=None,
-    **style,
-) -> PlotResult:
-    """Success-rate vs stimulus level: Wilson-CI points + an optional fitted curve.
+    x="contrast",
+    outcome="outcome",
+    success="hit",
+    compare=None,
+    average_over=None,
+    fit_curve=True,
+    model="logistic",
+) -> PsychometricData:
+    """EXPENSIVE half: resolve → aggregate → (bootstrap) fit. No behaviz, no drawing."""
+    df = _resolve(data)
+    _need(
+        df,
+        [
+            x,
+            outcome,
+            *([compare] if compare else []),
+            *([average_over] if average_over else []),
+        ],
+        plot="psychometric",
+    )
 
-    Args:
-        data: a Run / Session / Hub / trial-table DataFrame (``_resolve`` handles all four).
-        x: stimulus-level column to put on the x-axis (e.g. ``signed_contrast``).
-        outcome / success: the rate at each level is the fraction of ``outcome == success``
-            (pass ``success=None`` if ``outcome`` is already a 0/1 column).
-        compare: a column to split on -> one colored curve per level (behaviz ``hue=``), a fit per
-            level, and a per-x significance frame in ``stats``. ``None`` -> a single series.
-        average_over: a subject column (e.g. ``animalid``) -> plot the **subject-averaged** rate
-            (each subject's rate, then the mean across subjects with a t-CI -- no pseudoreplication).
-            Usually you don't pass this by hand: ``hub.viz.psychometric()`` sets it for you.
-        fit_curve: set False to skip the fit.
-        model: psychometric model for the fitted curve ("logistic"/"weibull"/"erf").
-        ax / **style: forwarded to behaviz. Colour rides in ``**style`` -- ``color=`` for a single
-            series, ``palette=`` for the ``compare`` levels (behaviz's own kwargs; no separate args).
-    Returns:
-        PlotResult(data=per-level estimate frame, stats=per-x test frame|None, figure=(fig, ax)).
-    """
-    # behaviz is the drawing backend; import it lazily so importing piepy.viz never requires it.
+    xticks = df[x].drop_nulls().unique().sort().to_list()
+    group = [x, compare] if compare else x
+    if average_over:
+        agg = subject_average(
+            df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare
+        )
+    else:
+        agg = aggregate(df, group=group, rate=outcome, rate_of=success).sort(group)
+
+    test_res = None
+    if compare is not None:
+        if df[compare].drop_nulls().n_unique() < 2:
+            raise ValueError(f"{compare} column has less than 2 values")
+        test_res = compare_by_x(
+            df,
+            x=x,
+            subject=average_over,
+            comparing=compare,
+            value=outcome,
+            success=success,
+        )
+
+    curve = None
+    if fit_curve:
+
+        def fit_n(frame):
+            return None if average_over else frame["n"].to_numpy()
+
+        if compare is None:
+            f = fit(model, agg[x].to_numpy(), agg["value"].to_numpy(), n=fit_n(agg))
+            curve = pl.DataFrame(dict(zip([x, "value"], f.curve())))
+        else:
+            parts = []
+            for key, sub in agg.group_by(compare, maintain_order=True):
+                lvl = key[0] if isinstance(key, tuple) else key
+                f = fit(model, sub[x].to_numpy(), sub["value"].to_numpy(), n=fit_n(sub))
+                xx, yy = f.curve()
+                parts.append(pl.DataFrame({x: xx, "value": yy, compare: lvl}))
+            curve = pl.concat(parts)
+
+    return PsychometricData(agg=agg, curve=curve, test_res=test_res, xticks=xticks)
+
+
+def psychometric_draw(
+    cd: PsychometricData, *, x="contrast", compare=None, ax=None, **style
+):
+    """Builds the behaviz/bokeh figure from precomputed data."""
     import behaviz as bv
 
-    # `spec` is the saved look (axes, limits, labels) for psychometric plots, loaded from ~/.behaviz.
-    spec = bv.load_preset(style.pop("preset", "psychometric"))
-
-    # Pull styling for each drawn component out of **style (so callers can pass e.g.
-    # error_markersize=12 / fit_linewidth=1) and merge over these defaults.
+    spec = bv.load_preset(style.pop("preset", "psychometric")).with_xticks(cd.xticks)
     style_overrides = bv.split_styles(
         style,
         components=("errorbar", "line"),
@@ -69,47 +113,14 @@ def psychometric(
                 "markeredgecolor": "#FFFFFF",
                 "dodge": "none",
             },
-            "line": {
-                "linewidth": 2.5,
-            },
+            "line": {"linewidth": 2.5},
         },
     )
-
-    # resolve the input to a trial table and validate the columns we will touch
-    # Run -> run.data.data, Session -> concatenate_runs(), Hub -> .data, df -> df
-    df = _resolve(data)
-
-    _need(
-        df,
-        [
-            x,
-            outcome,
-            *([compare] if compare else []),
-            *([average_over] if average_over else []),
-        ],
-        plot="psychometric",
-    )  # structured error naming any missing column
-
-    spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
-
-    # aggregate to one tidy estimate per x-level (per `compare` level).
-    group = [x, compare] if compare else x
-    if average_over:
-        # Two-stage / hierarchical: each subject's rate, then the mean across subjects (t-CI).
-        # This weights subjects equally.
-        agg = subject_average(
-            df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare
-        )
-    else:
-        # Single-stage: pool all trials at each level, Wilson CI on the counts.
-        agg = aggregate(df, group=group, rate=outcome, rate_of=success).sort(group)
-
+    agg = cd.agg
     y = agg["value"].to_numpy()
-    # behaviz wants error as (2, N) positive magnitudes; the agg gives absolute Wilson bounds.
     err = np.vstack([y - agg["ci_low"].to_numpy(), agg["ci_high"].to_numpy() - y])
-
-    # split a compare column onto behaviz's `hue`; colour (color=/palette=) rides in **style
     grp = {"hue": compare} if compare else {}
+
     fig, ax = bv.plot_errorbar(
         data=agg,
         x=x,
@@ -120,53 +131,48 @@ def psychometric(
         **grp,
         **style_overrides["errorbar"],
     )
-
-    # (only when comparing) a significance test at each x-level, drawn as p-value stars
-    test_res = None
-    if compare is not None:
-        if df[compare].drop_nulls().n_unique() < 2:
-            raise ValueError(f"{compare} column has less than 2 values")
-        else:
-            test_res = compare_by_x(
-                df,
-                x=x,
-                subject=average_over,
-                comparing=compare,
-                value=outcome,
-                success=success,
-            )
-            for xc, p in test_res.select([x, "pvalue"]).to_numpy():
-                _, ax = bv.plot_pval(
-                    p,
-                    [xc, xc],
-                    spec.y.lim[1],  # y-loc
-                    spec=spec,
-                    ax=ax,
-                )
-
-    # fit a curve and draw it.
-    if fit_curve:
-        # When subject-averaged, `n` is a subject count (not binomial trials) -> least-squares
-        def fit_n(frame):
-            return None if average_over else frame["n"].to_numpy()
-
-        if compare is None:
-            f = fit(model, agg[x].to_numpy(), agg["value"].to_numpy(), n=fit_n(agg))
-            curve = pl.DataFrame(dict(zip([x, "value"], f.curve())))
-        else:
-            # one fit per compare level, stacked long-form so behaviz can hue the curves to match
-            parts = []
-            for key, sub in agg.group_by(compare, maintain_order=True):
-                lvl = key[0] if isinstance(key, tuple) else key
-                f = fit(model, sub[x].to_numpy(), sub["value"].to_numpy(), n=fit_n(sub))
-                xx, yy = f.curve()
-                parts.append(pl.DataFrame({x: xx, "value": yy, compare: lvl}))
-            curve = pl.concat(parts)
+    if cd.test_res is not None:
+        for xc, p in cd.test_res.select([x, "pvalue"]).to_numpy():
+            _, ax = bv.plot_pval(p, [xc, xc], spec.y.lim[1], spec=spec, ax=ax)
+    if cd.curve is not None:
         fig, ax = bv.plot_line(
-            data=curve, x=x, y="value", spec=spec, ax=ax, **grp, **style_overrides["line"]
+            data=cd.curve,
+            x=x,
+            y="value",
+            spec=spec,
+            ax=ax,
+            **grp,
+            **style_overrides["line"],
         )
+    return fig, ax
 
-    return PlotResult(data=agg, stats=test_res, figure=(fig, ax))
+
+def psychometric(
+    data,
+    *,
+    x="contrast",
+    outcome="outcome",
+    success="hit",
+    compare=None,
+    average_over=None,
+    fit_curve=True,
+    model="logistic",
+    ax=None,
+    **style,
+) -> PlotResult:
+    """public API = compute + draw (existing callers/behaviour untouched)."""
+    cd = psychometric_compute(
+        data,
+        x=x,
+        outcome=outcome,
+        success=success,
+        compare=compare,
+        average_over=average_over,
+        fit_curve=fit_curve,
+        model=model,
+    )
+    fig, ax = psychometric_draw(cd, x=x, compare=compare, ax=ax, **style)
+    return PlotResult(data=cd.agg, stats=cd.test_res, figure=(fig, ax))
 
 
 def reaction_time_cloud(
