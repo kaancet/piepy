@@ -97,9 +97,7 @@ def psychometric(
     if average_over:
         # Two-stage / hierarchical: each subject's rate, then the mean across subjects (t-CI).
         # This weights subjects equally.
-        agg = subject_average(
-            df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare
-        )
+        agg = subject_average(df, x=x, subject=average_over, rate=outcome, rate_of=success, compare=compare)
     else:
         # Single-stage: pool all trials at each level, Wilson CI on the counts.
         agg = aggregate(df, group=group, rate=outcome, rate_of=success).sort(group)
@@ -165,9 +163,7 @@ def psychometric(
                 xx, yy = f.curve()
                 parts.append(pl.DataFrame({x: xx, "value": yy, compare: lvl}))
             curve = pl.concat(parts)
-        fig, ax = bv.plot_line(
-            data=curve, x=x, y="value", spec=spec, ax=ax, **grp, **style_overrides["line"]
-        )
+        fig, ax = bv.plot_line(data=curve, x=x, y="value", spec=spec, ax=ax, **grp, **style_overrides["line"])
 
     return PlotResult(data=agg, stats=test_res, figure=(fig, ax))
 
@@ -208,8 +204,9 @@ def reaction_time_cloud(
 
     spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
     vals = df[value].drop_nulls()
-    if vals.len():  # empty / all-null value column -> keep the preset's ylim
-        spec = spec.with_ylim(lo=vals.min() - 10, hi=vals.max() + 10)
+    if spec.y.lim is None and vals.len():
+        lo = max(float(vals.min()) - 10, 1.0)  # keep > 0 so log / symlog axes stay valid
+        spec = spec.with_ylim(lo=lo, hi=float(vals.max()) + 10)
 
     # aggregate to one tidy estimate per x-level (per `compare` level).
     group = [x, compare] if compare else x
@@ -227,9 +224,7 @@ def reaction_time_cloud(
         )
     else:
         # Single-stage: pool all trials at each level, Wilson CI on the counts.
-        agg = aggregate(df, group=group, value=value, stat="median", points=True).sort(
-            group
-        )
+        agg = aggregate(df, group=group, value=value, stat="median", points=True).sort(group)
 
     grp = {"hue": compare} if compare else {}
     draw = agg.filter(pl.col("points").list.len() > 0)
@@ -249,9 +244,7 @@ def reaction_time_cloud(
 
     test_res = None
     if compare is not None:
-        test_res = compare_by_x(
-            df, x=x, subject=average_over, comparing=compare, value=value
-        )
+        test_res = compare_by_x(df, x=x, subject=average_over, comparing=compare, value=value)
         for xc, p in test_res.select([x, "pvalue"]).to_numpy():
             _, ax = bv.plot_pval(
                 p,
@@ -307,9 +300,7 @@ def reaction_time_dist(
                 points=True,
             ).sort(comparing)
         else:
-            agg = aggregate(
-                df, group=comparing, value=value, stat="median", points=True
-            ).sort(comparing)
+            agg = aggregate(df, group=comparing, value=value, stat="median", points=True).sort(comparing)
     else:
         # single distribution over the whole frame (group by a constant, then drop it). With no
         # `comparing` there is nothing to subject-average across, so `average_over` is ignored here
@@ -327,12 +318,8 @@ def reaction_time_dist(
     # (min() of an empty array), so only hand it the groups that actually have values.
     draw = agg.filter(pl.col("points").list.len() > 0)
     if draw.is_empty():
-        raise ValueError(
-            f"reaction time distribution: no non-null {value!r} values to plot."
-        )
-    fig, ax = bv.plot_hist1d(
-        data=draw, values="points", bin_width=bin_width, spec=spec, ax=ax, **grp, **style
-    )
+        raise ValueError(f"reaction time distribution: no non-null {value!r} values to plot.")
+    fig, ax = bv.plot_hist1d(data=draw, values="points", bin_width=bin_width, spec=spec, ax=ax, **grp, **style)
 
     # median line(s) + label -- the group value when comparing, else the median itself
     for row in agg.iter_rows(named=True):
@@ -356,19 +343,13 @@ def reaction_time_dist(
     # pairwise comparison only makes sense with >= 2 groups
     test_res = None
     if comparing is not None and df[comparing].drop_nulls().n_unique() >= 2:
-        test_res = compare_groups(
-            df, comparing=comparing, value=value, subject=average_over
-        )
-        medians = dict(
-            zip(agg[comparing].to_list(), agg["value"].to_list())
-        )  # group -> its median
+        test_res = compare_groups(df, comparing=comparing, value=value, subject=average_over)
+        medians = dict(zip(agg[comparing].to_list(), agg["value"].to_list()))  # group -> its median
         ii = 0
         # iter_rows keeps native dtypes (a mixed to_numpy would coerce string groups + float p)
         for xc1, xc2, p in test_res.select(["group_a", "group_b", "pvalue"]).iter_rows():
             xi1, xi2 = medians.get(xc1), medians.get(xc2)
-            if (
-                xi1 is None or xi2 is None
-            ):  # a group with no median -> nowhere to anchor the bracket
+            if xi1 is None or xi2 is None:  # a group with no median -> nowhere to anchor the bracket
                 continue
             _, ax = bv.plot_pval(p, [xi1, xi2], 10 + (ii * 2), spec=spec, ax=ax)
             ii += 1
