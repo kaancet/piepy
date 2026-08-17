@@ -53,7 +53,9 @@ def psychometric(
     import behaviz as bv
 
     # `spec` is the saved look (axes, limits, labels) for psychometric plots, loaded from ~/.behaviz.
-    spec = bv.load_preset(style.pop("preset", "psychometric"))
+    spec = style.pop("spec", None)
+    if spec is None:
+        spec = bv.load_preset(style.pop("preset", "psychometric"))
 
     # Pull styling for each drawn component out of **style (so callers can pass e.g.
     # error_markersize=12 / fit_linewidth=1) and merge over these defaults.
@@ -90,7 +92,8 @@ def psychometric(
         plot="psychometric",
     )  # structured error naming any missing column
 
-    spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
+    if spec.x.ticks is None:
+        spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
 
     # aggregate to one tidy estimate per x-level (per `compare` level).
     group = [x, compare] if compare else x
@@ -106,6 +109,11 @@ def psychometric(
 
     y = agg["value"].to_numpy()
     # behaviz wants error as (2, N) positive magnitudes; the agg gives absolute Wilson bounds.
+
+    vals = agg["value"].drop_nulls()
+    if spec.y.lim is None and vals.len():  # keep > 0 so log / symlog axes stay valid
+        spec = spec.with_ylim(lo=0, hi=1.1)
+
     if average_over is not None:
         err = np.vstack([agg["sem"].to_numpy(), agg["sem"].to_numpy()])
     else:
@@ -191,7 +199,9 @@ def reaction_time_cloud(
     """
     import behaviz as bv
 
-    spec = bv.load_preset(style.pop("preset", "reaction_time_cloud"))
+    spec = style.pop("spec", None)
+    if spec is None:
+        spec = bv.load_preset(style.pop("preset", "reaction_time_cloud"))
 
     df = _resolve(data)
 
@@ -206,7 +216,8 @@ def reaction_time_cloud(
         plot="reaction time cloud",
     )  # structured error naming any missing column
 
-    spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
+    if spec.x.ticks is None:
+        spec = spec.with_xticks(df[x].drop_nulls().unique().sort().to_list())
     vals = df[value].drop_nulls()
     if spec.y.lim is None and vals.len():
         lo = max(float(vals.min()) - 10, 1.0)  # keep > 0 so log / symlog axes stay valid
@@ -280,7 +291,9 @@ def reaction_time_dist(
     """
     import behaviz as bv
 
-    spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
+    spec = style.pop("spec", None)
+    if spec is None:
+        spec = bv.load_preset(style.pop("preset", "reaction_distribution"))
 
     df = _resolve(data)
 
