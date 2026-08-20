@@ -110,6 +110,7 @@ def parse_labcams_log(fname: str):
                 comments.append(line.strip("\n").strip("\r"))
 
     commit = None
+    camlogheader = ["frame_id","timestamp"]
     for c in comments:
         if c.startswith("# Log header:"):
             cod = c.strip("# Log header:").strip(" ").split(",")

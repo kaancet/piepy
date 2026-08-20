@@ -36,6 +36,7 @@ from .log_repair_functions import (
     extract_trial_count,
     stitch_logs,
     extrapolate_time,
+    convert_riglog_to_camloglike
 )
 from .paths import RunArtifacts as Paths
 from .paths import parse_session_name
@@ -446,8 +447,16 @@ class Run:
         if "screen" in self.rawdata and len(self.rawdata["screen"]):
             if self.rawdata["screen"][0, "value"] == 0:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
-
-        if self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
+                
+        # special case for mesorig, where there is no camlog file and just the tiffs, frame timing is from riglog:
+        if self.paths.onepcam is not None and self.paths.onepcamlog is None:
+            onep_df, _ = parse_stimpy_log(
+                self.paths.riglog,
+            )
+            self.rawdata["onepcam_log"] = convert_riglog_to_camloglike(onep_df["onepcam"],
+                                                                       timecol="duinotime",
+                                                                       save_path=self.paths.onepcam)
+        elif self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
             self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
                 self.paths.onepcamlog
             )

@@ -212,7 +212,7 @@ class VisualTrialHandler(TrialHandler):
             else:
                 if len(_entries):
                     if len(nonan_unique(_entries)) == 1:
-                        self._trial[col] = [[_entries[0]]]
+                        self._trial[col] = _entries[0]
                     else:
                         self._trial[col] = [_entries]
                 else:

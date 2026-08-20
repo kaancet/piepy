@@ -3,6 +3,8 @@ import polars as pl
 from .io import display
 from scipy.interpolate import interp1d
 
+from datetime import datetime as dt
+
 
 def add_total_iStim(rawdata: dict) -> dict:
     """Adds another column to the DataFrame where iStim increments for each presentation
@@ -135,6 +137,19 @@ def compare_cam_logging(rawdata: dict) -> dict:
                 display("Camlogs are equal now!", color="cyan")
 
     return rawdata
+
+
+def convert_riglog_to_camloglike(cam_data:pl.DataFrame,timecol:str,save_path:str) -> pl.DataFrame:
+    """ Converts the column names to match the expected ['frame_id','timestamp'] format"""
+    df = cam_data.select(["value",timecol])
+    df = df.rename({"value":"frame_id",timecol:"timestamp"})
+    
+    # also save a camlog file, because why not
+    # although I believe this will bite me in the ass in the future
+    path = f"{save_path}/{dt.today().strftime("%Y%m%d")}_pseudo.camlog"
+    df.write_csv(path, separator=",",include_header=True, quote_style="non_numeric",quote_char="#")
+    display(f"Saved pseudo camlog: {save_path}")
+    return df
 
 
 def extract_trial_count(rawdata: dict) -> dict:
