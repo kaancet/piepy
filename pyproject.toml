@@ -1,6 +1,6 @@
 [project]
 name = "piepy-neuro"
-version = "0.3.1"
+version = "0.3.2"
 description = "Code for Behavioral, Imaging Analysis"
 authors = [{name = "Sakir Kaan Cetindag", email = "cetindag.kaan@gmail.com" }]
 readme = "README.md"
