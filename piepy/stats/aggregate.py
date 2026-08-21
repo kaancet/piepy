@@ -80,8 +80,6 @@ class Rate:
             else (pl.col(self.column) == self.rate_of).cast(pl.Float64)
         )
 
-        df = df.filter(pl.col("outcome") != "early")
-
         agg = df.group_by(group).agg(
             pl.col(self.column).is_not_null().sum().cast(pl.Int64).alias("n"),
             succ.sum().alias("k"),
