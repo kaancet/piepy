@@ -522,6 +522,8 @@ class Run:
         self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
             {"cycle": "trialNo"}
         )
+        
+    
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists

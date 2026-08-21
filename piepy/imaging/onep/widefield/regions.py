@@ -42,7 +42,11 @@ def reference_frame(movie: np.ndarray, source=None) -> np.ndarray:
         return np.nanmean(_squeeze_movie(movie), axis=0)
     if isinstance(source, np.ndarray):
         return source
-    return tf.imread(str(source))
+    ref_img = tf.imread(str(source))
+    while ref_img.ndim >= 3:
+        # average the dimensions other than the last two (W x H)
+        ref_img = np.nanmean(ref_img,axis=0)
+    return ref_img
 
 
 def draw_regions(ref_img: np.ndarray, names=None) -> dict:

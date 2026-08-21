@@ -74,6 +74,7 @@ class Session:
             else:
                 r.analyze_run()
                 r.data.add_metadata_columns(r.meta)
+                r._extract_list_columns()
                 r.save_run(save_mat)
 
         return self.concatenate_runs(paradigm)
