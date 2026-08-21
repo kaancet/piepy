@@ -38,6 +38,10 @@ PARADIGMS: dict[str, tuple[str, str]] = {
         "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
         "WheelDiscriminationSession",
     ),
+    "visual": (
+        "piepy.tasks.sensory.visual.visualSession",
+        "VisualSession",
+    ),
 }
 
 

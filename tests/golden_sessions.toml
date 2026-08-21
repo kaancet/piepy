@@ -16,3 +16,6 @@ session = "240312_KC147_detect_opto120_V1__1P_KC"   # opto + 1P imaging path
 
 [[wheel_discrimination]]
 session = "250217_VB101_discrim_opto120_V1__no_cam_VO"
+
+[[visual]]
+session = "221010_KC144__1P_KC"

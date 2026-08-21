@@ -24,7 +24,9 @@ class VisualRun(Run):
         """Standard read, plus a visual-specific fix: some logs number trials from 0, not 1."""
         super().read_run_data()
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
-            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
+                (pl.col("iTrial") + 1).alias("iTrial")
+            )
 
     def repair_rawdata(self) -> None:
         """Shift the trial start/end times by fixed offsets so the downstream timing lines up.
@@ -53,7 +55,22 @@ class VisualSession(Session):
             load_flag: reuse a previous parse if one is saved, instead of parsing again.
             save_mat: also write a MATLAB ``.mat`` copy.
         """
-        return super().analyze("visual", load_flag=load_flag, save_mat=save_mat)
+        ret = super().analyze("visual", load_flag=load_flag, save_mat=save_mat)
+        return self._extract_list_columns(ret)
+
+    @staticmethod
+    def _extract_list_columns(df: pl.DataFrame) -> pl.DataFrame:
+        """Extracts the element iin single element list columns"""
+        # all list-typed columns
+        list_cols = [c for c in df.columns if df.schema[c].base_type() == pl.List]
+
+        # check lengths in a single pass
+        max_lens = df.select(pl.col(c).list.len().max().alias(c) for c in list_cols)
+
+        # keep only columns where the longest list is 1 element
+        single_element_cols = [c for c in list_cols if max_lens[c].item() == 1]
+
+        return df.with_columns(pl.col(c).list.first() for c in single_element_cols)
 
 
 register_paradigm("visual", VisualSession)

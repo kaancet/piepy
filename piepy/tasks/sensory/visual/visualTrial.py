@@ -20,7 +20,9 @@ class VisualTrialHandler(TrialHandler):
         super().__init__()
         self.set_model(VisualTrial)
 
-    def get_trial(self, trial_no: int, rawdata: dict, return_as: str = "dict") -> pt.DataFrame | dict | list:
+    def get_trial(
+        self, trial_no: int, rawdata: dict, return_as: str = "dict"
+    ) -> pt.DataFrame | dict | list:
         """Main function that is called from outside, sets the trial, validates data type and returns it
 
         Args:
@@ -52,6 +54,7 @@ class VisualTrialHandler(TrialHandler):
 
             self.set_state_events()  # for passive visual session this is mostly a formality
             self.set_vstim_properties()  # should be run after sync_timeframes
+
             # get the frame endpoints for 2P and/or cam data
             for f_col in ["imaging", "onepcam", "facecam", "eyecam"]:
                 self.set_frame_endpoints(
@@ -98,7 +101,8 @@ class VisualTrialHandler(TrialHandler):
             screen_data (pl.DataFrame): Screen photodiode dataframe
         """
         _screen_new = screen_data.filter(
-            (pl.col("duinotime") >= self._trial["t_trialstart"]) & (pl.col("duinotime") <= self._trial["t_trialend"])
+            (pl.col("duinotime") >= self._trial["t_trialstart"])
+            & (pl.col("duinotime") <= self._trial["t_trialend"])
         )
         if _screen_new is None:
             return None
@@ -130,7 +134,9 @@ class VisualTrialHandler(TrialHandler):
         trial_screen = screen_data.filter(pl.col("value") == self._trial["trial_no"])
 
         if trial_screen.is_empty():
-            raise ScreenPulseError(f"No screen pulse data for trial {self._trial['trial_no']}")
+            raise ScreenPulseError(
+                f"No screen pulse data for trial {self._trial['trial_no']}"
+            )
 
         if len(trial_screen) == 2:
             self.was_screen_off = True
@@ -149,15 +155,22 @@ class VisualTrialHandler(TrialHandler):
             vstim_diff = 0.0
             state_diff = 0.0
         else:
-            _state_onset = _state.filter(pl.col("transition") == "stimstart")[0, "elapsed"]
+            _state_onset = _state.filter(pl.col("transition") == "stimstart")[
+                0, "elapsed"
+            ]
 
             # some stimpy version has inverted photostim values, so adaptively set it
             # first entry is always the inverse of "stim_on"
             photo_stim = not _vstim["photo"].drop_nulls()[0]
             try:
-                _vstim_onset = _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"] * 1000  # ms
+                _vstim_onset = (
+                    _vstim.filter(pl.col("photo") == photo_stim)[0, "presentTime"] * 1000
+                )  # ms
             except Exception:
-                _vstim_onset = _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"] * 1000  # ms
+                _vstim_onset = (
+                    _vstim.filter(pl.col("presentTime") >= _rig_onset)[0, "presentTime"]
+                    * 1000
+                )  # ms
             if isinstance(_vstim_onset, pl.Series):
                 if _vstim_onset.is_empty():
                     # no vstim start found for this trial?? is this expected???
@@ -168,16 +181,24 @@ class VisualTrialHandler(TrialHandler):
             # if difference is negative, that means the rig_onset time happened after the python timing
 
         # update the data
-        _state = _state.with_columns((pl.col("elapsed") - state_diff).alias("corrected_elapsed"))
+        _state = _state.with_columns(
+            (pl.col("elapsed") - state_diff).alias("corrected_elapsed")
+        )
         self.data["state"] = _state
 
-        _vstim = _vstim.with_columns((pl.col("presentTime") * 1000 - vstim_diff).alias("corrected_presentTime"))
+        _vstim = _vstim.with_columns(
+            (pl.col("presentTime") * 1000 - vstim_diff).alias("corrected_presentTime")
+        )
         self.data["vstim"] = _vstim
 
         # update the trial endpoints
-        self._trial["t_trialstart"] = int(_state.filter(pl.col("transition") == "trialstart")[0, "corrected_elapsed"])
+        self._trial["t_trialstart"] = int(
+            _state.filter(pl.col("transition") == "trialstart")[0, "corrected_elapsed"]
+        )
         self._trial["t_trialend"] = int(
-            _state.filter(pl.col("transition").str.contains("trialend"))[0, "corrected_elapsed"]
+            _state.filter(pl.col("transition").str.contains("trialend"))[
+                0, "corrected_elapsed"
+            ]
         )
 
         # add the time difference values to _trial
@@ -189,7 +210,10 @@ class VisualTrialHandler(TrialHandler):
         ignore = ["code", "presentTime", "stim_idx", "duinotime", "photo", "reward"]
 
         _vstim = self.data["vstim"]
-        if self._trial["t_vstimstart_rig"] is None or self._trial["t_vstimend_rig"] is None:
+        if (
+            self._trial["t_vstimstart_rig"] is None
+            or self._trial["t_vstimend_rig"] is None
+        ):
             _vstim = _vstim.filter(pl.col("photo") != self.data["vstim"][0, "photo"])
         else:
             _vstim = _vstim.filter(
@@ -212,7 +236,7 @@ class VisualTrialHandler(TrialHandler):
             else:
                 if len(_entries):
                     if len(nonan_unique(_entries)) == 1:
-                        self._trial[col] = _entries[0]
+                        self._trial[col] = [[_entries[0]]]
                     else:
                         self._trial[col] = [_entries]
                 else:
@@ -225,10 +249,10 @@ class VisualTrialHandler(TrialHandler):
             bool: True if state set correctly, False if not
         """
 
-        self._trial["t_vstimstart"] = self.data["state"].filter(pl.col("transition") == "stimstart")[
-            0, "corrected_elapsed"
-        ]
+        self._trial["t_vstimstart"] = self.data["state"].filter(
+            pl.col("transition") == "stimstart"
+        )[0, "corrected_elapsed"]
 
-        self._trial["t_vstimend"] = self.data["state"].filter(pl.col("transition").is_in(["stimend", "stimtrialend"]))[
-            0, "corrected_elapsed"
-        ]
+        self._trial["t_vstimend"] = self.data["state"].filter(
+            pl.col("transition").is_in(["stimend", "stimtrialend"])
+        )[0, "corrected_elapsed"]
