@@ -42,23 +42,104 @@ def reference_frame(movie: np.ndarray, source=None) -> np.ndarray:
         return np.nanmean(_squeeze_movie(movie), axis=0)
     if isinstance(source, np.ndarray):
         return source
-    ref_img = tf.imread(str(source))
-    while ref_img.ndim >= 3:
-        # average the dimensions other than the last two (W x H)
-        ref_img = np.nanmean(ref_img,axis=0)
-    return ref_img
+    return tf.imread(str(source))
+
+
+class RegionDrawer:
+    """Interactive polygon drawer for notebooks (VSCode/Jupyter).
+
+    Opens a persistent window with a PolygonSelector plus a name box and an
+    "Add region" button. Draw a polygon (click vertices, click the first point
+    to close it), type a name in the box and press <enter> (or click the
+    button) to store it; the selector resets for the next region. Read the
+    result from `.regions` -> {name: (V,2) float (x,y) array}.
+
+        d = RegionDrawer(ref)   # window opens; draw, name, <enter>, repeat
+        ...
+        regions = d.regions
+
+    ponytail: needs a native-window backend. macOS: `%matplotlib osx`. Inline
+    backends (ipympl/widget) and Agg cannot drive the widgets.
+    """
+
+    def __init__(self, ref_img: np.ndarray):
+        import matplotlib.pyplot as plt
+        from matplotlib.widgets import PolygonSelector, Button, TextBox
+
+        self._PolygonSelector = PolygonSelector
+        self.regions = {}
+        self._cur = None
+
+        self.fig, self.ax = plt.subplots()
+        self.fig.subplots_adjust(bottom=0.18)
+        self.ax.imshow(ref_img, cmap="gray")
+        self.ax.set_title("draw a polygon, type a name, press <enter>")
+
+        # name box + add button along the bottom
+        self.textbox = TextBox(
+            self.fig.add_axes([0.15, 0.05, 0.45, 0.06]), "name ", initial=""
+        )
+        self.button = Button(self.fig.add_axes([0.65, 0.05, 0.2, 0.06]), "Add region")
+        self.textbox.on_submit(self._commit)  # <enter> in the box
+        self.button.on_clicked(lambda _evt: self._commit(self.textbox.text))
+
+        self._new_selector()
+        plt.show()
+
+    def _new_selector(self):
+        self.selector = self._PolygonSelector(self.ax, self._onselect)
+
+    def _onselect(self, pts):
+        self._cur = np.asarray(pts, dtype=float)
+
+    def _commit(self, name: str) -> None:
+        name = (name or "").strip()
+        if not name:
+            self.ax.set_title("!! type a name first")
+            self.fig.canvas.draw_idle()
+            return
+        if self._cur is None or len(self._cur) < 3:
+            self.ax.set_title("!! draw and close a polygon first")
+            self.fig.canvas.draw_idle()
+            return
+        self.save(name)
+        self.textbox.set_val("")
+        self.ax.set_title(f"added '{name}' - draw the next region")
+        self.fig.canvas.draw_idle()
+
+    def save(self, name: str) -> None:
+        """Snapshot the current polygon under `name`, then reset for the next.
+
+        Also callable directly from a cell if you prefer not to use the button.
+        """
+        if not name:
+            raise ValueError("name must be non-empty")
+        if self._cur is None or len(self._cur) < 3:
+            raise ValueError("no completed polygon; draw one (close it) before saving")
+        self.regions[name] = self._cur
+        # draw a static outline so saved regions stay visible
+        self.ax.fill(self._cur[:, 0], self._cur[:, 1], alpha=0.25, edgecolor="r")
+        self.ax.text(
+            self._cur[:, 0].mean(),
+            self._cur[:, 1].mean(),
+            name,
+            color="r",
+            ha="center",
+            va="center",
+        )
+        self.selector.disconnect_events()
+        self._cur = None
+        self._new_selector()
+        self.fig.canvas.draw_idle()
 
 
 def draw_regions(ref_img: np.ndarray, names=None) -> dict:
-    """Hand-draw polygons over ref_img. Returns {name: (V,2) float (x,y) array}.
+    """Blocking hand-draw for a plain terminal IPython/python session only.
 
-    Draw a polygon (click vertices, close it), press <enter> to accept, then
-    type a name at the prompt. Blank name ends the session. If `names` is given,
-    they are consumed in order and drawing stops when exhausted.
-
-    ponytail: needs an interactive matplotlib backend (e.g. `%matplotlib qt`
-    or `%matplotlib widget` in a notebook); the default inline/Agg backend
-    cannot capture clicks.
+    Draw a polygon, close the window; type a name at the prompt (blank ends).
+    Does NOT work in VSCode/Jupyter notebooks (the GUI loop makes
+    `plt.show(block=True)` non-blocking) -> use `RegionDrawer` there.
+    Returns {name: (V,2) float (x,y) array}.
     """
     import matplotlib.pyplot as plt
     from matplotlib.widgets import PolygonSelector
@@ -68,7 +149,7 @@ def draw_regions(ref_img: np.ndarray, names=None) -> dict:
     while True:
         fig, ax = plt.subplots()
         ax.imshow(ref_img, cmap="gray")
-        ax.set_title("draw polygon, press <enter> to accept, close window when done")
+        ax.set_title("draw polygon, close window when done")
 
         verts = {}
 
@@ -76,7 +157,7 @@ def draw_regions(ref_img: np.ndarray, names=None) -> dict:
             _store["v"] = np.asarray(pts, dtype=float)
 
         selector = PolygonSelector(ax, _onselect)
-        plt.show(block=True)  # blocks until window closed
+        plt.show(block=True)  # blocks only in a real terminal event loop
         selector.disconnect_events()
 
         if "v" not in verts or len(verts["v"]) < 3:
