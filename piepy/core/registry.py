@@ -46,15 +46,17 @@ class ParadigmSpec:
     """What the analysis pipeline needs to know about a paradigm."""
 
     paradigm: str
-    session_cls: type  # its .analyze() returns the cohort-ready table (concatenate_runs + enrich)
+    session_cls: (
+        type  # its .analyze() returns the cohort-ready table (concatenate_runs + enrich)
+    )
 
 
 _REGISTRY: dict[str, ParadigmSpec] = {}
 
 # builtin paradigms, imported lazily so their @register_paradigm decorators run on first lookup
 _BUILTIN_MODULES: dict[str, str] = {
-    "wheel_detection": "piepy.tasks.wheel_detection.wheelDetectionSession",
-    "wheel_discrimination": "piepy.tasks.wheel_discrimination.wheelDiscriminationSession",
+    "wheel_detection": "piepy.psychophysics.tasks.wheel_detection.wheelDetectionSession",
+    "wheel_discrimination": "piepy.psychophysics.tasks.wheel_discrimination.wheelDiscriminationSession",
 }
 
 
@@ -82,7 +84,9 @@ def register_paradigm(
     """
 
     def _store(cls: type) -> type:
-        cls.paradigm = paradigm  # so Session.analyze()/concatenate_runs() know their own name
+        cls.paradigm = (
+            paradigm  # so Session.analyze()/concatenate_runs() know their own name
+        )
         _REGISTRY[paradigm] = ParadigmSpec(paradigm, cls)
         return cls
 
@@ -99,11 +103,17 @@ def register_paradigm(
             from .paths.parser import register_scheme
 
             register_scheme(paradigm, scheme["naming_template"])
-        return _store(_build_session_cls(paradigm, trial_handler_cls, rundata_cls, state_transitions))
+        return _store(
+            _build_session_cls(
+                paradigm, trial_handler_cls, rundata_cls, state_transitions
+            )
+        )
     return _store  # decorator form: @register_paradigm("x")
 
 
-def _validate_transitions(paradigm: str, trial_handler_cls: type, state_transitions: dict | None) -> None:
+def _validate_transitions(
+    paradigm: str, trial_handler_cls: type, state_transitions: dict | None
+) -> None:
     """Check the state-transition map produces every name the handler declares it needs.
 
     Fails at registration with a clear message instead of a deep ``StateMachineError`` once
@@ -165,7 +175,9 @@ def _build_session_cls(
     from .run import Run, RunData
     from .session import Session
 
-    name = "".join(w.capitalize() for w in paradigm.replace("_", " ").split()) or "Paradigm"
+    name = (
+        "".join(w.capitalize() for w in paradigm.replace("_", " ").split()) or "Paradigm"
+    )
     run_cls = type(
         f"{name}Run",
         (Run,),

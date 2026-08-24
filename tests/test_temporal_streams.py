@@ -9,7 +9,9 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from piepy.tasks.wheel_detection.wheelDetectionStreams import WheelDetectionStreams
+from piepy.psychophysics.tasks.wheel_detection.wheelDetectionStreams import (
+    WheelDetectionStreams,
+)
 from piepy.temporal import SessionStreams, trial_slice
 
 

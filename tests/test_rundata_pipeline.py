@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from piepy.tasks.wheel_detection.wheelDetectionSession import (
+from piepy.psychophysics.tasks.wheel_detection.wheelDetectionSession import (
     add_contrast_descriptors,
     add_sftf_descriptor,
 )

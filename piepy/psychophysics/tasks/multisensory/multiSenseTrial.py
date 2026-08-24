@@ -1,6 +1,4 @@
-import numpy as np
-from ...core.utils import *
-from ...core.trial import *
+from ....core.trial import Trial
 
 
 class MultiSenseTrial(Trial):

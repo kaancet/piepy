@@ -53,7 +53,9 @@ class Session:
             run.get_rawdata()
             self.runs.append(run)
 
-    def analyze(self, paradigm: str | None = None, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+    def analyze(
+        self, paradigm: str | None = None, load_flag: bool = False, save_mat: bool = False
+    ) -> pl.DataFrame:
         """The analysis-ready trial table for this session
 
         This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
@@ -74,7 +76,6 @@ class Session:
             else:
                 r.analyze_run()
                 r.data.add_metadata_columns(r.meta)
-                r._extract_list_columns()
                 r.save_run(save_mat)
 
         return self.concatenate_runs(paradigm)

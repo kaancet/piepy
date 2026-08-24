@@ -15,7 +15,14 @@ from piepy.temporal.base import SessionStreams
 
 
 class WheelDetectionStreams(SessionStreams):
-    trial_attrs = ("trial_no", "outcome", "contrast", "signed_contrast", "stim_side", "opto")
+    trial_attrs = (
+        "trial_no",
+        "outcome",
+        "contrast",
+        "signed_contrast",
+        "stim_side",
+        "opto",
+    )
 
     def extra_streams(self, trials: Interval) -> dict:
         df = self._with_rig_offset()
@@ -37,7 +44,9 @@ class WheelDetectionStreams(SessionStreams):
         """Add ``_off`` = state-minus-rig stim-onset offset per trial (0 when there is no rig clock)."""
         df = self.df
         if {"t_vstimstart_session", "t_vstimstart_rig_session"} <= set(df.columns):
-            off = (pl.col("t_vstimstart_session") - pl.col("t_vstimstart_rig_session")).cast(pl.Float64)
+            off = (
+                pl.col("t_vstimstart_session") - pl.col("t_vstimstart_rig_session")
+            ).cast(pl.Float64)
             df = df.with_columns(off.alias("_off"))
             return df.with_columns(pl.col("_off").fill_null(df["_off"].median() or 0.0))
         return df.with_columns(pl.lit(0.0).alias("_off"))
@@ -63,7 +72,9 @@ class WheelDetectionStreams(SessionStreams):
             return None
         time = pl.col(col).list.first() if first_only else pl.col(col)
         sel = df.select(time.alias("ts"), "_off")
-        if not first_only:  # a full train is a list per trial -> explode; first_only is already scalar
+        if (
+            not first_only
+        ):  # a full train is a list per trial -> explode; first_only is already scalar
             sel = sel.explode("ts")
         t = (
             sel.drop_nulls("ts")
@@ -71,7 +82,9 @@ class WheelDetectionStreams(SessionStreams):
             .sort("t")
         )
         return (
-            IrregularTimeSeries(timestamps=t["t"].cast(pl.Float64).to_numpy(), domain=trials)
+            IrregularTimeSeries(
+                timestamps=t["t"].cast(pl.Float64).to_numpy(), domain=trials
+            )
             if t.height
             else None
         )

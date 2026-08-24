@@ -1,8 +1,8 @@
 import polars as pl
 
-from ....core.run import Run
-from ....core.session import Session
-from ....core.registry import register_paradigm
+from ...core.run import Run
+from ...core.session import Session
+from ...core.registry import register_paradigm
 from .visualTrial import VisualTrialHandler
 
 STATE_TRANSITION_KEYS = {
@@ -43,24 +43,31 @@ class VisualRun(Run):
             .otherwise(pl.col("elapsed"))
             .alias("elapsed")
         )
-    
+
     def analyze_run(self):
         super().analyze_run()
         self._extract_list_columns()
 
-
     def _extract_list_columns(self) -> pl.DataFrame:
         """Extracts the element in single element list columns"""
         # all list-typed columns
-        list_cols = [c for c in self.data.data.columns if self.data.data.schema[c].base_type() == pl.List]
+        list_cols = [
+            c
+            for c in self.data.data.columns
+            if self.data.data.schema[c].base_type() == pl.List
+        ]
 
         # check lengths in a single pass
-        max_lens = self.data.data.select(pl.col(c).list.len().max().alias(c) for c in list_cols)
+        max_lens = self.data.data.select(
+            pl.col(c).list.len().max().alias(c) for c in list_cols
+        )
 
         # keep only columns where the longest list is 1 element
         single_element_cols = [c for c in list_cols if max_lens[c].item() == 1]
 
-        self.data.data = self.data.data.with_columns(pl.col(c).list.first() for c in single_element_cols)
+        self.data.data = self.data.data.with_columns(
+            pl.col(c).list.first() for c in single_element_cols
+        )
 
 
 class VisualSession(Session):

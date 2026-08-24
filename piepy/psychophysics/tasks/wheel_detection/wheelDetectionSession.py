@@ -58,7 +58,9 @@ class WheelDetectionRun(Run):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
+            _stats = (
+                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
+            )
         return _base + _stats
 
     def augment_data(self) -> None:
@@ -154,16 +156,28 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["catch_trial_count"] = len(catch_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["opto_ratio"] = round(
+        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
+    )
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
+    stats_dict["nonopto_hit_rate"] = round(
+        100 * nonopto_correct_count / len(nonopto_data), 3
+    )
 
-    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
-    stats_dict["hit_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3)
-    stats_dict["false_alarm_rate"] = round(100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3)
-    stats_dict["nogo_rate"] = round(100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3)
+    stats_dict["correct_rate"] = round(
+        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
+    )
+    stats_dict["hit_rate"] = round(
+        100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3
+    )
+    stats_dict["false_alarm_rate"] = round(
+        100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3
+    )
+    stats_dict["nogo_rate"] = round(
+        100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3
+    )
 
     # median response time #
     stats_dict["median_response_time"] = round(
@@ -186,7 +200,9 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["easy_trial_count"] = len(easy_data)
     easy_correct_count = len(easy_data.filter(pl.col("outcome") == "hit"))
     if stats_dict["easy_trial_count"]:
-        stats_dict["easy_hit_rate"] = round(100 * easy_correct_count / stats_dict["easy_trial_count"], 3)
+        stats_dict["easy_hit_rate"] = round(
+            100 * easy_correct_count / stats_dict["easy_trial_count"], 3
+        )
         stats_dict["easy_median_response_time"] = round(
             easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
             3,
@@ -217,10 +233,14 @@ def _detection_per_run(run, d, session) -> dict:
     return {
         "opto_targets": d["opto_pattern"].unique().len() - 1,
         "stimulus_count": d["stim_type"].drop_nulls().unique().len(),
-        "stim_combination": "+".join(d["stim_type"].unique().sort().drop_nulls().to_list()),
+        "stim_combination": "+".join(
+            d["stim_type"].unique().sort().drop_nulls().to_list()
+        ),
         "isTitrated": n_uniq_contrast > len(contrast_vector),
         "rig": rig.get("name") if isinstance(rig, dict) else rig,
-        "session_id": generate_unique_session_id(meta.get("baredate", ""), meta.get("animalid", "")),
+        "session_id": generate_unique_session_id(
+            meta.get("baredate", ""), meta.get("animalid", "")
+        ),
         "area": meta.get("area"),
         "opto_power": meta.get("opto_power"),
         "imaging": meta.get("imaging"),
@@ -228,8 +248,12 @@ def _detection_per_run(run, d, session) -> dict:
         "isCNO": meta.get("isCNO"),
         "contrast_vector": list(contrast_vector),
         "stim_size": stim_size,
-        "sf_values": (d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []),
-        "tf_values": (d["tf"].drop_nulls().unique().to_list() if "tf" in d.columns else []),
+        "sf_values": (
+            d["sf"].drop_nulls().unique().to_list() if "sf" in d.columns else []
+        ),
+        "tf_values": (
+            d["tf"].drop_nulls().unique().to_list() if "tf" in d.columns else []
+        ),
     }
 
 

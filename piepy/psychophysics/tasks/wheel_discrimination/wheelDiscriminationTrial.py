@@ -3,7 +3,7 @@ import patito as pt
 from typing import Literal
 
 from piepy.psychophysics.wheelTrace import WheelTrace, match_response_movement
-from piepy.tasks.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
+from piepy.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from piepy.psychophysics.psychophysicalTrial import (
     PsychophysicalTrial,
     PsychophysicalTrialHandler,
@@ -32,7 +32,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.set_model(WheelDiscriminationTrial)
 
-    def get_trial(self, trial_no: int, rawdata: dict, return_as="dict") -> pt.DataFrame | dict | list | None:
+    def get_trial(
+        self, trial_no: int, rawdata: dict, return_as="dict"
+    ) -> pt.DataFrame | dict | list | None:
         """Main function that is called from outside, sets the trial, validates data type and returns it"""
         self.init_trial()
         is_trial_set = self.set_trial(trial_no, rawdata)
@@ -57,7 +59,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             self.set_opto()
             # start with rig time, if not use state time
             wheel_reset = (
-                self._trial["t_vstimstart_rig"] if self._trial["t_vstimstart_rig"] else self._trial["t_vstimstart"]
+                self._trial["t_vstimstart_rig"]
+                if self._trial["t_vstimstart_rig"]
+                else self._trial["t_vstimstart"]
             )
             self.set_wheel_traces(wheel_reset)
 
@@ -66,11 +70,13 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
     def set_state_events(self) -> None:
         """Goes over the transitions to set state based timings and also sets the state_outcome"""
 
-        self._trial["t_vstimstart"] = self.data["state"].filter(pl.col("transition") == "stimstart")[
-            0, "corrected_elapsed"
-        ]
+        self._trial["t_vstimstart"] = self.data["state"].filter(
+            pl.col("transition") == "stimstart"
+        )[0, "corrected_elapsed"]
 
-        openloop_start = self.data["state"].filter(pl.col("transition") == "responsestart")
+        openloop_start = self.data["state"].filter(
+            pl.col("transition") == "responsestart"
+        )
 
         correct = self.data["state"].filter(pl.col("transition") == "correct")
         if len(correct):
@@ -88,7 +94,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         if len(stim_end):
             self._trial["t_vstimend"] = stim_end[0, "corrected_elapsed"]
 
-        trial_end = self.data["state"].filter(pl.col("transition").str.contains("trialend"))
+        trial_end = self.data["state"].filter(
+            pl.col("transition").str.contains("trialend")
+        )
         if len(trial_end):
             self._trial["t_trialend"] = trial_end[0, "corrected_elapsed"]
 
@@ -96,7 +104,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties"""
         super().set_vstim_properties()
         # only look at columns that have "_l", ASSUMING there will be an "_r" counterpart of it
-        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
+        columns_to_modify = [
+            k.strip("_l") for k in self._trial.keys() if k.endswith("_l")
+        ]
         self._trial["prob"] = self._trial["prob"][0][0]
         self._trial["fraction_r"] = self._trial["fraction_r"][0][0]
         if "opto_pattern" in self._trial.keys():
@@ -145,7 +155,9 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         resp = self._trial.get("rig_response_time")
         if resp is None:
             resp = self._trial["state_response_time"]
-        rt = match_response_movement(res["movements"], resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS)
+        rt = match_response_movement(
+            res["movements"], resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS
+        )
         self._trial["reaction_time"] = rt.reaction_time
         self._trial["reaction_time_source"] = rt.source
         self._trial["anticipatory"] = rt.anticipatory

@@ -45,7 +45,9 @@ def add_choice_descriptors(df: pl.DataFrame) -> pl.DataFrame:
 
 def add_stim_diff_and_type(df: pl.DataFrame, discrim_of: str) -> pl.DataFrame:
     """Add the discriminated-feature difference + a ``stim_type`` key (needs ``discrim_of``)."""
-    unit = {"width": "deg", "sf": "cpd", "tf": "Hz", "contrast": "%"}.get(discrim_of, "NA")
+    unit = {"width": "deg", "sf": "cpd", "tf": "Hz", "contrast": "%"}.get(
+        discrim_of, "NA"
+    )
     df = df.with_columns(pl.lit(discrim_of).alias("discriminating"))
     df = df.with_columns(
         pl.when(pl.col("target_side") == "contra")
@@ -71,7 +73,9 @@ class WheelDiscriminationRun(Run):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
+            _stats = (
+                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
+            )
         return _base + _stats
 
     def repair_rawdata(self) -> None:
@@ -89,7 +93,7 @@ class WheelDiscriminationRun(Run):
             pl.DataFrame: _description_
         """
         header = df.columns.copy()
-        attend_name = self.meta["opts"]["AttendVectorName"]
+        attend_name = self.meta["opts"]["AttendVectorName"]  # noqa: F841
         distract_name = self.meta["opts"]["DistractVectorName"]
         if distract_name == "c":
             realtf_cols = [rc for rc in header if "realtf" in rc]
@@ -97,7 +101,9 @@ class WheelDiscriminationRun(Run):
             if len(realtf_cols) != 0:
                 # get all the columns with _r and _l
                 l_headers = [c for c in header if "_l" in c if "pos" not in c]
-                lr_headers = [(i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers]
+                lr_headers = [
+                    (i, c.split("_")[0]) for i, c in enumerate(header) if c in l_headers
+                ]
 
                 for j, head_tup in enumerate(lr_headers):
                     h_pos, h_name = head_tup
@@ -203,7 +209,9 @@ class WheelDiscriminationSession(Session):
         Returns:
             pl.DataFrame: Concatenated session data
         """
-        return super().analyze("wheel_discrimination", load_flag=load_flag, save_mat=save_mat)
+        return super().analyze(
+            "wheel_discrimination", load_flag=load_flag, save_mat=save_mat
+        )
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
@@ -219,17 +227,25 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["opto_ratio"] = round(
+        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
+    )
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(100 * nonopto_correct_count / len(nonopto_data), 3)
+    stats_dict["nonopto_hit_rate"] = round(
+        100 * nonopto_correct_count / len(nonopto_data), 3
+    )
 
-    stats_dict["correct_rate"] = round(100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3)
+    stats_dict["correct_rate"] = round(
+        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
+    )
 
     # median response time #
     stats_dict["median_response_latency "] = round(
-        nonopto_data.filter(pl.col("outcome") == "correct")["state_response_time"].median(),
+        nonopto_data.filter(pl.col("outcome") == "correct")[
+            "state_response_time"
+        ].median(),
         3,
     )
 
@@ -241,14 +257,20 @@ def _discrimination_per_run(run, d, session) -> dict:
     meta = run.meta or {}
     opts = meta.get("opts") or {}  # a pandas DataFrame (from parse_protocol); not a dict
     rig = meta.get("rig")
-    contrast_vector = opts.get("contrastVector", []) or []  # noqa: BLE001 - width may be absent / shaped differently
+    contrast_vector = (
+        opts.get("contrastVector", []) or []
+    )  # noqa: BLE001 - width may be absent / shaped differently
 
     return {
         "opto_targets": d["opto_pattern"].unique().len() - 1,
         "stimulus_count": d["stim_type"].drop_nulls().unique().len(),
-        "stim_combination": "+".join(d["stim_type"].unique().sort().drop_nulls().to_list()),
+        "stim_combination": "+".join(
+            d["stim_type"].unique().sort().drop_nulls().to_list()
+        ),
         "rig": rig.get("name") if isinstance(rig, dict) else rig,
-        "session_id": generate_unique_session_id(meta.get("baredate", ""), meta.get("animalid", "")),
+        "session_id": generate_unique_session_id(
+            meta.get("baredate", ""), meta.get("animalid", "")
+        ),
         "area": meta.get("area"),
         "opto_power": meta.get("opto_power"),
         "imaging": meta.get("imaging"),
