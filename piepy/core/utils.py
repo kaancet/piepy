@@ -6,6 +6,23 @@ from .io import display
 from numpy.typing import ArrayLike
 
 
+def safe_ratio(num, den):
+    """Return rounded percentage num/den, or None when den is 0."""
+    if den == 0:
+        return None
+    return round(100 * num / den, 3)
+
+
+def safe_median(series):
+    """Return rounded median, or None when the series is empty or all-null."""
+    if len(series) == 0:
+        return None
+    m = series.median()
+    if m is None:
+        return None
+    return round(m, 3)
+
+
 def unique_except(x: ArrayLike, exceptions: list) -> np.ndarray:
     """Returns the unique values in an array except the given list
 
@@ -71,7 +88,9 @@ def timeit(msg):
 #######################
 
 
-def pl_weighted_mean(value_col: str, weight_col: str, ignore_nulls: bool = True) -> pl.Expr:
+def pl_weighted_mean(
+    value_col: str, weight_col: str, ignore_nulls: bool = True
+) -> pl.Expr:
     """Generate a Polars aggregation expression to take a weighted mean
     https://github.com/pola-rs/polars/issues/7499
 

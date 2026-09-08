@@ -39,7 +39,12 @@ def add_total_iStim(rawdata: dict) -> dict:
     # Tuning stimuli not working because it's one long shuffled trial
     # Retinotopy not working because it's 2 trials with a certain number of stim each
 
-    if len(_iStim_monot) and np.all(_iStim_monot > 0) and not len(_iTrial_monot) and not np.all(_iTrial_monot > 0):
+    if (
+        len(_iStim_monot)
+        and np.all(_iStim_monot > 0)
+        and not len(_iTrial_monot)
+        and not np.all(_iTrial_monot > 0)
+    ):
         # istim monotonic, take that (scenario 1)
         rawdata["vstim"] = rawdata["vstim"].with_columns(
             pl.when(pl.col("iStim").first() == 0)
@@ -50,7 +55,9 @@ def add_total_iStim(rawdata: dict) -> dict:
 
     elif len(_iTrial_monot) and np.all(_iTrial_monot > 0):
         # If within each iTrial, iStim is monotonic, take that (scenario 2)
-        _iTogether = pl.concat([_iStim.to_frame(), _iTrial.to_frame()], how="horizontal").drop_nulls()
+        _iTogether = pl.concat(
+            [_iStim.to_frame(), _iTrial.to_frame()], how="horizontal"
+        ).drop_nulls()
 
         _stim_in_trial = (
             _iTogether.filter(pl.col("iTrial") == pl.col("iTrial").first())
@@ -61,11 +68,23 @@ def add_total_iStim(rawdata: dict) -> dict:
         if len(_stim_in_trial) == 1:
             # itrial is monotonic and there is only one stim in the trial, take itrial (scenario 3)
             _zero_trial_data = rawdata["vstim"].filter(pl.col("iTrial") == 0)
-            len(_zero_trial_data.select(pl.col("photo")).drop_nulls().unique().to_series())
+            len(
+                _zero_trial_data.select(pl.col("photo")).drop_nulls().unique().to_series()
+            )
             # Check if the first iTrial is 0 and contains a photodiode flip - if not start at 0 so it's skipped by the trial indexing.
             # It appears that it's junk caused by the point at which the rig starts recording
-            if len(_zero_trial_data.select(pl.col("photo")).drop_nulls().unique().to_series()) == 1:
-                rawdata["vstim"] = rawdata["vstim"].with_columns(pl.col("iTrial").alias("total_iStim"))
+            if (
+                len(
+                    _zero_trial_data.select(pl.col("photo"))
+                    .drop_nulls()
+                    .unique()
+                    .to_series()
+                )
+                == 1
+            ):
+                rawdata["vstim"] = rawdata["vstim"].with_columns(
+                    pl.col("iTrial").alias("total_iStim")
+                )
             else:
                 rawdata["vstim"] = rawdata["vstim"].with_columns(
                     pl.when(pl.col("iTrial").first() == 0)
@@ -112,9 +131,9 @@ def compare_cam_logging(rawdata: dict) -> dict:
     rig_cams = [k for k in rawdata.keys() if k.endswith("cam")]
     labcam_cams = [k for k in rawdata.keys() if k.endswith("cam_log")]
 
-    assert len(rig_cams) == len(labcam_cams), (
-        f"Number of camlogs in rig({len(rig_cams)}) and labcams({len(labcam_cams)}) are not equal!! "
-    )
+    assert len(rig_cams) == len(
+        labcam_cams
+    ), f"Number of camlogs in rig({len(rig_cams)}) and labcams({len(labcam_cams)}) are not equal!! "
 
     for i, lab_cam_key in enumerate(labcam_cams):
         rig_cam_frames = len(rawdata[rig_cams[i]])
@@ -132,22 +151,32 @@ def compare_cam_logging(rawdata: dict) -> dict:
                 color="yellow",
             )
 
-            rawdata[lab_cam_key] = rawdata[lab_cam_key].slice(0, rig_cam_frames)  # removing extra recorded frames
+            rawdata[lab_cam_key] = rawdata[lab_cam_key].slice(
+                0, rig_cam_frames
+            )  # removing extra recorded frames
             if len(rawdata[lab_cam_key]) == rig_cam_frames:
                 display("Camlogs are equal now!", color="cyan")
 
     return rawdata
 
 
-def convert_riglog_to_camloglike(cam_data:pl.DataFrame,timecol:str,save_path:str) -> pl.DataFrame:
-    """ Converts the column names to match the expected ['frame_id','timestamp'] format"""
-    df = cam_data.select(["value",timecol])
-    df = df.rename({"value":"frame_id",timecol:"timestamp"})
-    
+def convert_riglog_to_camloglike(
+    cam_data: pl.DataFrame, timecol: str, save_path: str
+) -> pl.DataFrame:
+    """Converts the column names to match the expected ['frame_id','timestamp'] format"""
+    df = cam_data.select(["value", timecol])
+    df = df.rename({"value": "frame_id", timecol: "timestamp"})
+
     # also save a camlog file, because why not
     # although I believe this will bite me in the ass in the future
-    path = f"{save_path}/{dt.today().strftime("%Y%m%d")}_pseudo.camlog"
-    df.write_csv(path, separator=",",include_header=True, quote_style="non_numeric",quote_char="#")
+    path = f"{save_path}/{dt.today().strftime('%Y%m%d')}_pseudo.camlog"
+    df.write_csv(
+        path,
+        separator=",",
+        include_header=True,
+        quote_style="non_numeric",
+        quote_char="#",
+    )
     display(f"Saved pseudo camlog: {save_path}")
     return df
 
@@ -169,7 +198,10 @@ def extract_trial_count(rawdata: dict) -> dict:
         )
 
         trialends = rawdata["statemachine"].with_columns(
-            pl.when(pl.col("transition").str.contains("trialend")).then(1).otherwise(0).alias("end_flag")
+            pl.when(pl.col("transition").str.contains("trialend"))
+            .then(1)
+            .otherwise(0)
+            .alias("end_flag")
         )
 
         trial_no = []
@@ -218,10 +250,14 @@ def stitch_logs(data_list: list, is_stimlog: bool) -> dict:
                 if not to_append[k].is_empty():
                     if k not in ["reward", "position", "screen"]:
                         # adjust the values
-                        to_append[k] = to_append[k].with_columns(pl.col("value") + v[-1, "value"] + 1)
+                        to_append[k] = to_append[k].with_columns(
+                            pl.col("value") + v[-1, "value"] + 1
+                        )
                     elif k == "screen":
                         to_append[k] = to_append[k].slice(1)
-                        to_append[k] = to_append[k].with_columns(pl.col("value") + v[-1, "value"])
+                        to_append[k] = to_append[k].with_columns(
+                            pl.col("value") + v[-1, "value"]
+                        )
 
                     to_append[k] = to_append[k].with_columns(
                         [
@@ -247,16 +283,20 @@ def extrapolate_time(rawdata: dict) -> dict:
         fliploc = []
         if "indicatorFlag" in rawdata["vstim"].columns:
             indkey = "indicatorFlag"
-            fliploc = np.where(np.diff(np.hstack([0, rawdata["vstim"]["indicatorFlag"], 0])) != 0)[0]
+            fliploc = np.where(
+                np.diff(np.hstack([0, rawdata["vstim"]["indicatorFlag"], 0])) != 0
+            )[0]
         elif "photo" in rawdata["vstim"].columns:
             indkey = "photo"
             vstim_data = rawdata["vstim"].to_pandas()
-            fliploc = np.where(np.diff(np.hstack([0, vstim_data["photo"] == 0, 0])) != 0)[0]
+            fliploc = np.where(np.diff(np.hstack([0, vstim_data["photo"] == 0, 0])) != 0)[
+                0
+            ]
 
         if len(rawdata["screen"]) == len(fliploc):
-            temp = interp1d(fliploc, rawdata["screen"]["duinotime"], fill_value="extrapolate")(
-                np.arange(len(rawdata["vstim"]))
-            ).tolist()
+            temp = interp1d(
+                fliploc, rawdata["screen"]["duinotime"], fill_value="extrapolate"
+            )(np.arange(len(rawdata["vstim"]))).tolist()
             temp_df = pl.Series("duinotime", temp)
             rawdata["vstim"] = rawdata["vstim"].hstack([temp_df])
         else:

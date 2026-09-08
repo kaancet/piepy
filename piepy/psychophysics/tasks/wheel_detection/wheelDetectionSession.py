@@ -5,6 +5,7 @@ from piepy.core.run import Run
 from piepy.core.session import Session
 from piepy.core.registry import register_paradigm
 from piepy.core.hub import generate_unique_session_id
+from piepy.core.utils import safe_ratio, safe_median
 from piepy.psychophysics.opto import add_opto_pattern_columns
 from piepy.psychophysics.transforms import (
     add_runno,
@@ -58,9 +59,9 @@ class WheelDetectionRun(Run):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = (
-                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
-            )
+            hr = self.stats.get("hit_rate")
+            fa = self.stats.get("false_alarm_rate")
+            _stats = f"- HR={hr}% - FA={fa}"
         return _base + _stats
 
     def augment_data(self) -> None:
@@ -84,22 +85,23 @@ class WheelDetectionRun(Run):
         concatenated by :meth:`Session.analyze`; this never concatenates.)
         """
         d = self.data.data
+        if d is None or d.is_empty():
+            return
 
-        if d is not None and d is not d.is_empty():
-            meta = self.meta or {}
-            opts = meta.get("opts") or {}
+        meta = self.meta or {}
+        opts = meta.get("opts") or {}
 
-            _enrich = {
-                "run_no": self.run_no,
-                **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
-                "level": meta.get("level"),
-                "run_start_time": meta.get("run_start_time"),
-                "task": opts.get("controller"),
-                "opto_ratio": opts.get("optoRatio"),
-                "wait_window": opts.get("openStimDuration"),
-                "response_window": opts.get("closedStimDuration"),
-                **_detection_per_run(self, d, self),
-            }
+        _enrich = {
+            "run_no": self.run_no,
+            **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
+            "level": meta.get("level"),
+            "run_start_time": meta.get("run_start_time"),
+            "task": opts.get("controller"),
+            "opto_ratio": opts.get("optoRatio"),
+            "wait_window": opts.get("openStimDuration"),
+            "response_window": opts.get("closedStimDuration"),
+            **_detection_per_run(self, d, self),
+        }
 
         add = pl.DataFrame([_enrich]).with_columns(pl.col("run_no").cast(pl.UInt32))
         self.data.data = d.join(add, on="run_no", how="left")
@@ -148,68 +150,69 @@ def get_run_stats(data: pl.DataFrame) -> dict:
     nonopto_data = stim_data.filter(pl.col("opto") == 0)
     opto_data = stim_data.filter(pl.col("opto") == 1)
 
+    total = len(data)
+
     # counts #
-    stats_dict["total_trial_count"] = len(data)
+    stats_dict["total_trial_count"] = total
     stats_dict["early_trial_count"] = len(early_data)
     stats_dict["stim_trial_count"] = len(stim_data)
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["catch_trial_count"] = len(catch_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = safe_ratio(len(opto_data), total)
 
     # rates #
     nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
-    )
+    stats_dict["nonopto_hit_rate"] = safe_ratio(nonopto_correct_count, len(nonopto_data))
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["hit_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
-    stats_dict["false_alarm_rate"] = round(
-        100 * stats_dict["early_trial_count"] / stats_dict["total_trial_count"], 3
-    )
-    stats_dict["nogo_rate"] = round(
-        100 * stats_dict["miss_trial_count"] / stats_dict["stim_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = safe_ratio(len(correct_data), total)
+    stats_dict["hit_rate"] = safe_ratio(len(correct_data), len(stim_data))
+    stats_dict["false_alarm_rate"] = safe_ratio(len(early_data), total)
+    stats_dict["nogo_rate"] = safe_ratio(len(miss_data), len(stim_data))
 
     # median response time #
-    stats_dict["median_response_time"] = round(
-        nonopto_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
-        3,
+    hit_nonopto = nonopto_data.filter(pl.col("outcome") == "hit")
+    stats_dict["median_response_time"] = safe_median(
+        hit_nonopto["state_response_time"]
+        if len(hit_nonopto)
+        else pl.Series(dtype=pl.Float64)
     )
 
     # median reaction time
-    stats_dict["median_reaction_time"] = round(
-        nonopto_data.filter(pl.col("outcome") == "hit")["reaction_time"].median(), 3
+    stats_dict["median_reaction_time"] = safe_median(
+        hit_nonopto["reaction_time"] if len(hit_nonopto) else pl.Series(dtype=pl.Float64)
     )
 
     # d prime(?) #
-    stats_dict["d_prime"] = st.norm.ppf(stats_dict["hit_rate"] / 100) - st.norm.ppf(
-        stats_dict["false_alarm_rate"] / 100
-    )
+    # d_prime with 1/(2N) correction to keep it finite at 0% and 100%
+    hr = stats_dict["hit_rate"]
+    far = stats_dict["false_alarm_rate"]
+    if hr is not None and far is not None and len(stim_data) > 0:
+        n_stim = len(stim_data)
+        clipped_hr = max(1 / (2 * n_stim), min(1 - 1 / (2 * n_stim), hr / 100))
+        clipped_far = max(1 / (2 * total), min(1 - 1 / (2 * total), far / 100))
+        stats_dict["d_prime"] = st.norm.ppf(clipped_hr) - st.norm.ppf(clipped_far)
+    else:
+        stats_dict["d_prime"] = None
 
     ## performance on easy trials
     easy_data = nonopto_data.filter(pl.col("contrast").is_in([1.0, 0.5]))
     stats_dict["easy_trial_count"] = len(easy_data)
-    easy_correct_count = len(easy_data.filter(pl.col("outcome") == "hit"))
+    easy_correct = easy_data.filter(pl.col("outcome") == "hit")
     if stats_dict["easy_trial_count"]:
-        stats_dict["easy_hit_rate"] = round(
-            100 * easy_correct_count / stats_dict["easy_trial_count"], 3
+        stats_dict["easy_hit_rate"] = safe_ratio(
+            len(easy_correct), stats_dict["easy_trial_count"]
         )
-        stats_dict["easy_median_response_time"] = round(
-            easy_data.filter(pl.col("outcome") == "hit")["state_response_time"].median(),
-            3,
+        stats_dict["easy_median_response_time"] = safe_median(
+            easy_correct["state_response_time"]
+            if len(easy_correct)
+            else pl.Series(dtype=pl.Float64)
         )
-        stats_dict["easy_median_reaction_time"] = round(
-            easy_data.filter(pl.col("outcome") == "hit")["reaction_time"].median(),
-            3,
+        stats_dict["easy_median_reaction_time"] = safe_median(
+            easy_correct["reaction_time"]
+            if len(easy_correct)
+            else pl.Series(dtype=pl.Float64)
         )
     else:
         stats_dict["easy_hit_rate"] = -1

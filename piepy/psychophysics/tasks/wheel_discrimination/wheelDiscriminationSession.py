@@ -4,6 +4,7 @@ from piepy.core.run import Run
 from piepy.core.session import Session
 from piepy.core.registry import register_paradigm
 from piepy.core.hub import generate_unique_session_id
+from piepy.core.utils import safe_ratio, safe_median
 from piepy.core.log_repair_functions import fix_first_line_state_logging
 from piepy.psychophysics.opto import add_opto_pattern_columns
 from piepy.psychophysics.transforms import add_runno
@@ -73,9 +74,8 @@ class WheelDiscriminationRun(Run):
         _base = super().__repr__()
         _stats = ""
         if self.stats is not None:
-            _stats = (
-                f"- HR={self.stats['hit_rate']}% - FA={self.stats['false_alarm_rate']}"
-            )
+            cr = self.stats.get("correct_rate")
+            _stats = f"- CR={cr}%"
         return _base + _stats
 
     def repair_rawdata(self) -> None:
@@ -159,7 +159,7 @@ class WheelDiscriminationRun(Run):
         self.data.data = d
 
     def enrich_data(self) -> pl.DataFrame:
-        """Join per-run detection stats + session metadata onto the concatenated table.
+        """Join per-run discrimination stats + session metadata onto the concatenated table.
 
         One row per run: ``stat_*`` from ``get_run_stats``, a few meta/opts fields, and the derived
         columns from ``_detection_per_run`` -- left-joined on ``run_no``. (``df`` is already
@@ -167,21 +167,23 @@ class WheelDiscriminationRun(Run):
         """
         d = self.data.data
 
-        if d is not None and d is not d.is_empty():
-            meta = self.meta or {}
-            opts = meta.get("opts") or {}
+        if d is None or d.is_empty():
+            return
 
-            _enrich = {
-                "run_no": self.run_no,
-                **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
-                "level": meta.get("level"),
-                "run_start_time": meta.get("run_start_time"),
-                "task": opts.get("controller"),
-                "opto_ratio": opts.get("optoRatio"),
-                "wait_window": opts.get("openStimDuration"),
-                "response_window": opts.get("closedStimDuration"),
-                **_discrimination_per_run(self, d, self),
-            }
+        meta = self.meta or {}
+        opts = meta.get("opts") or {}
+
+        _enrich = {
+            "run_no": self.run_no,
+            **{f"stat_{k}": v for k, v in get_run_stats(d).items()},
+            "level": meta.get("level"),
+            "run_start_time": meta.get("run_start_time"),
+            "task": opts.get("controller"),
+            "opto_ratio": opts.get("optoRatio"),
+            "wait_window": opts.get("openStimDuration"),
+            "response_window": opts.get("closedStimDuration"),
+            **_discrimination_per_run(self, d, self),
+        }
 
         add = pl.DataFrame([_enrich]).with_columns(pl.col("run_no").cast(pl.UInt32))
         self.data.data = d.join(add, on="run_no", how="left")
@@ -215,38 +217,40 @@ class WheelDiscriminationSession(Session):
 
 
 def get_run_stats(data: pl.DataFrame) -> dict:
-    """Gets run stats from run dataframe"""
+    """Per-run summary statistics for wheel-discrimination.
+
+    Safe against edge cases: empty subsets return None for rates/medians.
+    Uses outcome == "correct" (not "hit") for discrimination.
+    """
     stats_dict = {}
     correct_data = data.filter(pl.col("outcome") == "correct")
     miss_data = data.filter(pl.col("outcome") == "incorrect")
     nonopto_data = data.filter(pl.col("opto") == 0)
     opto_data = data.filter(pl.col("opto") == 1)
 
+    total = len(data)
+
     # counts #
-    stats_dict["total_trial_count"] = len(data)
+    stats_dict["total_trial_count"] = total
     stats_dict["correct_trial_count"] = len(correct_data)
     stats_dict["miss_trial_count"] = len(miss_data)
     stats_dict["opto_trial_count"] = len(opto_data)
-    stats_dict["opto_ratio"] = round(
-        100 * stats_dict["opto_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["opto_ratio"] = safe_ratio(len(opto_data), total)
 
     # rates #
-    nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "hit"))
-    stats_dict["nonopto_hit_rate"] = round(
-        100 * nonopto_correct_count / len(nonopto_data), 3
+    nonopto_correct_count = len(nonopto_data.filter(pl.col("outcome") == "correct"))
+    stats_dict["nonopto_correct_rate"] = safe_ratio(
+        nonopto_correct_count, len(nonopto_data)
     )
 
-    stats_dict["correct_rate"] = round(
-        100 * stats_dict["correct_trial_count"] / stats_dict["total_trial_count"], 3
-    )
+    stats_dict["correct_rate"] = safe_ratio(len(correct_data), total)
 
     # median response time #
-    stats_dict["median_response_latency "] = round(
-        nonopto_data.filter(pl.col("outcome") == "correct")[
-            "state_response_time"
-        ].median(),
-        3,
+    correct_nonopto = nonopto_data.filter(pl.col("outcome") == "correct")
+    stats_dict["median_response_time"] = safe_median(
+        correct_nonopto["state_response_time"]
+        if len(correct_nonopto)
+        else pl.Series(dtype=pl.Float64)
     )
 
     return stats_dict
