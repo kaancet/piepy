@@ -57,6 +57,7 @@ _REGISTRY: dict[str, ParadigmSpec] = {}
 _BUILTIN_MODULES: dict[str, str] = {
     "wheel_detection": "piepy.psychophysics.tasks.wheel_detection.wheelDetectionSession",
     "wheel_discrimination": "piepy.psychophysics.tasks.wheel_discrimination.wheelDiscriminationSession",
+    "visual": "piepy.sensory.visual.visualSession",
 }
 
 

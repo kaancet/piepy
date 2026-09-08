@@ -17,32 +17,17 @@ Design notes
 
 from __future__ import annotations
 
-import importlib
 import os
 import tomllib
 from pathlib import Path
 
 import pytest
 
+from piepy.core.registry import get_session_class
+
 HERE = Path(__file__).parent
 SESSIONS_TOML = HERE / "golden_sessions.toml"
 DEFAULT_SNAPSHOT_DIR = HERE / "_snapshots"
-
-# paradigm name -> (module path, Session class name)
-PARADIGMS: dict[str, tuple[str, str]] = {
-    "wheel_detection": (
-        "piepy.psychophysics.tasks.wheel_detection.wheelDetectionSession",
-        "WheelDetectionSession",
-    ),
-    "wheel_discrimination": (
-        "piepy.psychophysics.tasks.wheel_discrimination.wheelDiscriminationSession",
-        "WheelDiscriminationSession",
-    ),
-    "visual": (
-        "piepy.sensory.visual.visualSession",
-        "VisualSession",
-    ),
-}
 
 
 class SessionUnavailable(Exception):
@@ -64,19 +49,14 @@ def load_cases() -> list[tuple[str, str]]:
 
 def build_session(paradigm: str, session_dir: str):
     """Construct the Session for ``paradigm`` (forces a fresh re-parse)."""
-    if paradigm not in PARADIGMS:
-        raise ValueError(f"Unknown paradigm {paradigm!r}; known: {sorted(PARADIGMS)}")
     from piepy.core.errors import PathfindingError
 
-    mod_name, cls_name = PARADIGMS[paradigm]
-    session_cls = getattr(importlib.import_module(mod_name), cls_name)
+    session_cls = get_session_class(paradigm)
     try:
         sess = session_cls(session_dir)
         sess.analyze(load_flag=False)
         return sess
-
     except (FileNotFoundError, PathfindingError) as exc:
-        # not found locally, ambiguous, or malformed -> can't resolve here, so skip not fail.
         raise SessionUnavailable(
             f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
         ) from exc

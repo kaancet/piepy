@@ -53,18 +53,12 @@ class Session:
             run.get_rawdata()
             self.runs.append(run)
 
-    def analyze(
-        self, paradigm: str | None = None, load_flag: bool = False, save_mat: bool = False
-    ) -> pl.DataFrame:
+    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
         """The analysis-ready trial table for this session
 
-        This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
-        runs on one clock)
-
         Args:
-            paradigm (str | None, optional): _description_. Defaults to None.
-            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
-            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
+            load_flag: reuse a previous parse if one is saved, instead of re-parsing.
+            save_mat: also write a MATLAB ``.mat`` copy alongside the parquet.
 
         Returns:
             pl.DataFrame: Concatenated session data
@@ -78,7 +72,7 @@ class Session:
                 r.data.add_metadata_columns(r.meta)
                 r.save_run(save_mat)
 
-        return self.concatenate_runs(paradigm)
+        return self.concatenate_runs()
 
     def concatenate_runs(self, paradigm: str | None = None) -> pl.DataFrame:
         """Concatenate this session's runs into one trial table on a session-wide clock.

@@ -198,23 +198,6 @@ class WheelDiscriminationSession(Session):
     def __repr__(self):
         return f"Discrimination Session {self.sessiondir}"
 
-    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
-        """The analysis-ready trial table for this session, paradigm is already set for discrimination
-
-        This is what users (and the Hub) call. ``concatenate_runs`` is the structural step (stack
-        runs on one clock)
-
-        Args:
-            load_flag (bool, optional):  flag to either load previously parsed data or to parse it again. Defaults to False
-            save_mat (bool, optional):   flag to make the parser also output a .mat file to be used in MATLAB scripts. Defaults to False
-
-        Returns:
-            pl.DataFrame: Concatenated session data
-        """
-        return super().analyze(
-            "wheel_discrimination", load_flag=load_flag, save_mat=save_mat
-        )
-
 
 def get_run_stats(data: pl.DataFrame) -> dict:
     """Per-run summary statistics for wheel-discrimination.

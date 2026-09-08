@@ -73,14 +73,5 @@ class VisualRun(Run):
 class VisualSession(Session):
     run_cls = VisualRun
 
-    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
-        """Parse (or load) every run and return the concatenated visual trial table.
-
-        Args:
-            load_flag: reuse a previous parse if one is saved, instead of parsing again.
-            save_mat: also write a MATLAB ``.mat`` copy.
-        """
-        return super().analyze("visual", load_flag=load_flag, save_mat=save_mat)
-
 
 register_paradigm("visual", VisualSession)

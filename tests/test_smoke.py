@@ -54,9 +54,9 @@ def test_config_singleton_has_paths():
 
 
 def test_paradigm_registry_resolves():
-    """Every paradigm declared for the golden tests must point at a real class."""
-    from conftest import PARADIGMS
+    """Every builtin paradigm must resolve to a Session class via the registry."""
+    from piepy.core.registry import get_session_class, registered_paradigms
 
-    for paradigm, (mod_name, cls_name) in PARADIGMS.items():
-        mod = importlib.import_module(mod_name)
-        assert hasattr(mod, cls_name), f"{paradigm}: {mod_name}.{cls_name} missing"
+    for paradigm in registered_paradigms():
+        cls = get_session_class(paradigm)
+        assert cls is not None, f"{paradigm}: registry returned None"
