@@ -4,6 +4,7 @@ import numpy as np
 from typing import Literal
 
 from piepy.core.errors import StateMachineError, VstimLoggingError  # noqa: F401
+from piepy.core.io import display
 from piepy.core.utils import unique_except
 from piepy.sensory.visual.visualTrial import VisualTrial, VisualTrialHandler
 from piepy.psychophysics.psychophysicalTrial import (
@@ -54,10 +55,11 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         self.was_screen_off = True  # flag for not having OFF pulse in screen data
         self.init_trial()
         _is_trial_set = self.set_trial(trial_no, rawdata)
-        self.is_early = self.check_early()
 
         if not _is_trial_set:
             return None
+
+        self.is_early = self.check_early()
 
         if not self.is_early:
             self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
@@ -108,7 +110,10 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
             elif "catch" in self.data["state"]["transition"].to_list():
                 _name = "catch"
             else:
-                raise ValueError("ijbasdjsdobwdfibwdefiubweiubwef")
+                raise StateMachineError(
+                    problem=f"Trial {self._trial['trial_no']}: no outcome transition (hit/miss/catch/early) in state table.",
+                    fix="Check the paradigm's state_transitions map includes hit, miss, catch, and early.",
+                )
 
             _resp = self.data["state"].filter(pl.col("transition") == _name)[
                 0, "stateElapsed"
@@ -182,8 +187,9 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     # This should not happen
                     # DISCARD TRIAL
                     _states_set = False
-                    print(
-                        f"[TRIAL-{self._trial['trial_no']}] A miss trial that has a state_response_time of {temp_resp} is not allowed!!"
+                    display(
+                        f"[TRIAL-{self._trial['trial_no']}] A miss trial that has a state_response_time of {temp_resp} is not allowed!!",
+                        color="yellow",
                     )
                 else:
                     # actual miss >= 1050

@@ -22,7 +22,7 @@ except PackageNotFoundError:  # running from a source tree, not installed
 
 
 from .config import config
-from .errors import StateMachineError, WrongSessionTypeError, DataMissingError
+from .errors import StateMachineError, DataMissingError
 from .io import display, load_json_dict, save_dict_json
 from .parsers import (
     parse_labcams_log,
@@ -36,12 +36,11 @@ from .log_repair_functions import (
     extract_trial_count,
     stitch_logs,
     extrapolate_time,
-    convert_riglog_to_camloglike
+    convert_riglog_to_camloglike,
 )
 from .paths import RunArtifacts as Paths
 from .paths import parse_session_name
 from .trial import TrialHandler
-
 
 STATE_TRANSITION_KEYS = {}
 
@@ -447,15 +446,15 @@ class Run:
         if "screen" in self.rawdata and len(self.rawdata["screen"]):
             if self.rawdata["screen"][0, "value"] == 0:
                 self.rawdata["screen"] = self.rawdata["screen"].slice(1)
-                
+
         # special case for mesorig, where there is no camlog file and just the tiffs, frame timing is from riglog:
         if self.paths.onepcam is not None and self.paths.onepcamlog is None:
             onep_df, _ = parse_stimpy_log(
                 self.paths.riglog,
             )
-            self.rawdata["onepcam_log"] = convert_riglog_to_camloglike(onep_df["onepcam"],
-                                                                       timecol="duinotime",
-                                                                       save_path=self.paths.onepcam)
+            self.rawdata["onepcam_log"] = convert_riglog_to_camloglike(
+                onep_df["onepcam"], timecol="duinotime", save_path=self.paths.onepcam
+            )
         elif self.paths.onepcam is not None and pexists(self.paths.onepcamlog):
             self.rawdata["onepcam_log"], self.comments["onepcam"], _ = parse_labcams_log(
                 self.paths.onepcamlog
@@ -475,15 +474,14 @@ class Run:
         display("Read rawdata")
 
     def translate_state_changes(self, transform_dict: dict = None) -> None:
-        """Checks if state data exists and translated the state transitions according to defined translation dictionary
-        This function needs the translate transition to be defined beforehand
+        """Vectorized state-transition translation.
 
         Args:
-            transform_dict (dict): The dictionary that maps the numbered state transitions (2->3) to named transitions (stimstart)
+            transform_dict (dict): Maps numbered transitions ("2->3") to named ones ("stimstart").
         """
         if transform_dict is None:
             display(
-                ">> WARNING! << No state transofrmation dictionary provided, using a generic one. It is very likely this will cause issues",
+                ">> WARNING! << No state transformation dictionary provided, using a generic one. It is very likely this will cause issues",
                 color="yellow",
             )
             transform_dict = {
@@ -493,37 +491,36 @@ class Run:
                 "3->0": "trialend",
             }
 
-        def translate_transition(old_state: str, new_state: str) -> str:
-            _key = f"{int(old_state)}->{int(new_state)}"
-            return transform_dict[_key]
-
-        # do the translation
-        try:
-            self.rawdata["statemachine"] = self.rawdata["statemachine"].with_columns(
-                pl.struct(["oldState", "newState"])
-                .map_elements(
-                    lambda x: translate_transition(x["oldState"], x["newState"]),
-                    return_dtype=str,
-                )
-                .alias("transition")
-            )
-        except WrongSessionTypeError:
-            raise WrongSessionTypeError(
-                "Unable to translate state changes to valid transitions. Make sure you are using the correct session type to analyze your data!"
-            )
-
-        if self.rawdata["statemachine"]["transition"].is_null().any():
-            raise StateMachineError(
-                """There are untranslated state changes! Are you sure you're using the correct state transition keys?
-                                    I got"""
-            )
-
-        # rename cycle to 'trialNo for semantic reasons
-        self.rawdata["statemachine"] = self.rawdata["statemachine"].rename(
-            {"cycle": "trialNo"}
+        sm = self.rawdata["statemachine"]
+        key_col = (
+            pl.col("oldState").cast(pl.Int64).cast(pl.Utf8)
+            + pl.lit("->")
+            + pl.col("newState").cast(pl.Int64).cast(pl.Utf8)
         )
-        
-    
+        sm = sm.with_columns(
+            key_col.replace_strict(
+                transform_dict, default=None, return_dtype=pl.Utf8
+            ).alias("transition")
+        )
+
+        if sm["transition"].is_null().any():
+            unmapped = (
+                sm.filter(pl.col("transition").is_null())
+                .select(key_col.alias("key"))["key"]
+                .unique()
+                .sort()
+                .to_list()
+            )
+            n = sm["transition"].null_count()
+            run_dir = getattr(self, "paths", None)
+            where = getattr(run_dir, "stimlog", None) if run_dir else None
+            raise StateMachineError(
+                problem=f"{n} state transition(s) have no name in the map.",
+                where=where,
+                fix=f"Add {unmapped} to the paradigm's state_transitions dict.",
+            )
+
+        self.rawdata["statemachine"] = sm.rename({"cycle": "trialNo"})
 
     def is_run_saved(self) -> bool:
         """Checks if data already exists

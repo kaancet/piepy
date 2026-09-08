@@ -52,3 +52,23 @@ def test_rig_event_is_windowed_per_trial():
     h.set_trial(2, _rawdata())  # window [100, 150] -> lick at 120
     assert len(h.rig_event("lick")) == 1
     assert h.rig_event("reward") is None  # absent channel -> None, not a crash
+
+
+def test_set_trial_skips_none_channel():
+    """A rawdata entry that is None should not crash set_trial."""
+    raw = _rawdata()
+    raw["broken_channel"] = None
+    h = TrialHandler()
+    h.init_trial()
+    assert h.set_trial(1, raw) is True
+    assert "broken_channel" not in h.data
+
+
+def test_set_trial_skips_non_vstim_presenttime_channel():
+    """A channel with 'presentTime' column that isn't 'vstim' should be skipped."""
+    raw = _rawdata()
+    raw["photo"] = pl.DataFrame({"presentTime": [0.01, 0.02], "code": [1, 1]})
+    h = TrialHandler()
+    h.init_trial()
+    assert h.set_trial(1, raw) is True
+    assert "photo" not in h.data
