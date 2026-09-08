@@ -14,23 +14,24 @@ experiment specifics live in the Session class + its registered enrich hook.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import os
 
 import natsort
 import polars as pl
 from datetime import datetime as dt
-from multiprocessing import Pool, set_start_method
 
 from .config import config as cfg
 from .io import display
-from .paths import parse_session_name
 from .registry import get_paradigm
 from .schema import align_and_concat
 
 __all__ = ["Hub", "generate_unique_session_id"]
 
 
-def generate_unique_session_id(baredate: str, animalid: str, *args, digit_len: int = 7) -> int:
+def generate_unique_session_id(
+    baredate: str, animalid: str, *args, digit_len: int = 7
+) -> int:
     """A deterministic legacy session id from date+animal (used by the detection plotters).
 
     NOTE: this assumes baredate+animalid is unique. For the canonical, collision-free id use
@@ -40,13 +41,12 @@ def generate_unique_session_id(baredate: str, animalid: str, *args, digit_len: i
     return int(hashlib.sha256(combined.encode("utf-8")).hexdigest(), 16) % 10**digit_len
 
 
-def _analyze_one(args: tuple) -> pl.DataFrame:
-    """Worker: analyze one session into its cohort-ready frame (empty frame on failure).
+def _analyze_one(args: tuple) -> tuple[pl.DataFrame, str | None]:
+    """Worker: analyze one session into its cohort-ready frame.
 
+    Returns ``(frame, None)`` on success or ``(empty_frame, error_string)`` on failure.
     Takes ``(paradigm, load_flag, sessiondir)`` -- only picklable strings/flags cross the
-    process boundary. Each worker resolves the paradigm spec itself via :func:`get_paradigm`
-    (re-importing/discovering as needed under ``spawn``), so a dynamically-synthesized Session
-    class never needs to be pickled to the worker.
+    process boundary.
     """
     paradigm, load_flag, sessiondir = args
     name = os.path.basename(str(sessiondir).rstrip("/\\"))
@@ -54,10 +54,10 @@ def _analyze_one(args: tuple) -> pl.DataFrame:
         spec = get_paradigm(paradigm)
         session = spec.session_cls(name)
 
+        return session.analyze(load_flag=load_flag), None
+
     except Exception as exc:  # noqa: BLE001 - one bad session shouldn't sink the gather
-        print(f" >> WARNING << {name} not analyzed ({exc}); skipping...", flush=True)
-        return pl.DataFrame()
-    return session.analyze(load_flag=load_flag)
+        return pl.DataFrame(), f"{name} : {type(exc).__name__} — {exc}"
 
 
 def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
@@ -68,8 +68,12 @@ def _combine_session_data(frames: list[pl.DataFrame]) -> pl.DataFrame:
     sort_cols = [c for c in ("date", "animalid", "run_no") if c in data.columns]
     if sort_cols:
         data = data.sort(sort_cols)
-    data = data.with_columns(pl.int_range(1, data.height + 1, dtype=pl.Int64).alias("total_trial_no"))
-    return data.select(["total_trial_no", *(c for c in data.columns if c != "total_trial_no")])
+    data = data.with_columns(
+        pl.int_range(1, data.height + 1, dtype=pl.Int64).alias("total_trial_no")
+    )
+    return data.select(
+        ["total_trial_no", *(c for c in data.columns if c != "total_trial_no")]
+    )
 
 
 class Hub:
@@ -106,35 +110,48 @@ class Hub:
                     f">>> WARNING <<< No trials match paradigm {self.paradigm!r}; data is empty!",
                     color="red",
                 )
-            id_col = "session_path" if "session_path" in self.data.columns else "session_uid"
+            id_col = (
+                "session_path" if "session_path" in self.data.columns else "session_uid"
+            )
             self.session_list = self.data[id_col].unique(maintain_order=True).to_list()
         else:
             self.session_list = natsort.natsorted(data)
             self.gather_sessions(self.session_list, load_sessions=load_sessions)
 
-    def _filter_session_list(self, session_list: list) -> list:
-        """Keep sessions whose parsed paradigm matches this hub's (skipping unparseable names)."""
-        kept = []
-        for s in session_list:
-            try:
-                if parse_session_name(s).paradigm == self.paradigm:
-                    kept.append(s)
-            except Exception:  # noqa: BLE001 - an unparseable name just isn't this paradigm
-                continue
-        return kept
-
-    def gather_sessions(self, session_list: list, load_sessions: bool = False) -> pl.DataFrame:
+    def gather_sessions(
+        self, session_list: list, load_sessions: bool = False
+    ) -> pl.DataFrame:
         """Analyze each session in parallel and stack into the cohort table."""
         self.load_flag = load_sessions
-        try:
-            set_start_method("spawn")
-        except RuntimeError:
-            pass
-        with Pool(processes=cfg.multiprocess["cores"]) as pool:
-            frames = pool.map(
-                _analyze_one,
-                [(self.paradigm, self.load_flag, s) for s in session_list],
+
+        work = [(self.paradigm, self.load_flag, s) for s in session_list]
+
+        cores = cfg.multiprocess.get("cores", 1)
+        use_mp = cfg.multiprocess.get("enable", False) and cores > 1 and len(work) > 1
+
+        if use_mp:
+            ctx = multiprocessing.get_context("spawn")
+            with ctx.Pool(processes=cores) as pool:
+                results = pool.map(_analyze_one, work)
+        else:
+            results = [_analyze_one(w) for w in work]
+
+        frames = []
+        failures = []
+        for frame, err in results:
+            if err is not None:
+                failures.append(err)
+            elif not frame.is_empty():
+                frames.append(frame)
+
+        if failures:
+            display(
+                f"\n>> WARNING << {len(failures)} session(s) failed during gather:",
+                color="yellow",
             )
+            for f in failures:
+                display(f"  {f}", color="yellow")
+
         self.data = _combine_session_data(frames)
         return self.data
 
@@ -144,7 +161,10 @@ class Hub:
         Kept for direct single-process use; the parallel path uses the module-level
         :func:`_analyze_one` so nothing on ``self`` is pickled to the workers.
         """
-        return _analyze_one((self.paradigm, self.load_flag, sessiondir))
+        frame, err = _analyze_one((self.paradigm, self.load_flag, sessiondir))
+        if err is not None:
+            display(f">> WARNING << {err}", color="yellow")
+        return frame
 
     def save(self, saveloc: str | None = None) -> None:
         """Save the cohort data as a dated parquet."""
@@ -152,6 +172,7 @@ class Hub:
         animals = ",".join(self.data["animalid"].unique().sort().to_list())
         savename = f"{date_first}-{date_last}_{animals}_{dt.strftime(dt.today(), '%y%m%d')}.parquet"
         if saveloc is None:
-            saveloc = self.data[-1, "session_path"].replace("presentation", "analysis")
+            saveloc = cfg.paths["analysis"][0]
+        os.makedirs(saveloc, exist_ok=True)
         self.data.write_parquet(f"{saveloc}/{savename}")
-        display(f"Saved at {saveloc}", color="green")
+        display(f"Saved at {saveloc}/{savename}", color="green")

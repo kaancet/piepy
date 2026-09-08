@@ -65,18 +65,74 @@ def test_combine_session_data_sorts_and_numbers():
     assert out["x"].to_list() == [2, 1]  # sorted by date ascending
 
 
-def test_hub_filters_session_list_by_paradigm():
+def test_analyze_one_catches_failures():
+    """_analyze_one wraps both construction AND analyze(); returns error string on failure."""
+    from piepy.core.hub import _analyze_one
+
+    frame, err = _analyze_one(("wheel_detection", False, "nonexistent_session_dir"))
+    assert frame.is_empty()
+    assert err is not None
+    assert "nonexistent_session_dir" in err
+
+
+def test_analyze_one_returns_none_err_on_success(monkeypatch):
+    """On success, error is None."""
+    from piepy.core.hub import _analyze_one
+
+    class FakeSession:
+        def __init__(self, name):
+            pass
+
+        def analyze(self, load_flag=False):
+            return pl.DataFrame({"x": [1]})
+
+    class FakeSpec:
+        session_cls = FakeSession
+
+    monkeypatch.setattr("piepy.core.hub.get_paradigm", lambda p: FakeSpec())
+    frame, err = _analyze_one(("fake", False, "some_session"))
+    assert not frame.is_empty()
+    assert err is None
+
+
+def test_gather_sessions_sequential_collects_failures(monkeypatch):
+    """Sequential gather collects failures and still returns successful frames."""
     from piepy.core.hub import Hub
 
+    call_count = {"n": 0}
+
+    def fake_analyze_one(args):
+        call_count["n"] += 1
+        paradigm, load_flag, sessiondir = args
+        if "bad" in sessiondir:
+            return pl.DataFrame(), f"{sessiondir} : ValueError — broke"
+        return (
+            pl.DataFrame({"date": ["2024-01-01"], "animalid": ["A"], "run_no": [1]}),
+            None,
+        )
+
+    monkeypatch.setattr("piepy.core.hub._analyze_one", fake_analyze_one)
+    monkeypatch.setattr("piepy.core.hub.cfg.multiprocess", {"enable": False, "cores": 1})
+
     hub = Hub("wheel_detection")
-    kept = hub._filter_session_list(
-        [
-            "240810_KC150_detect__no_cam_KC",
-            "250217_VB101_discrim_opto120_V1__no_cam_VO",
-            "garbage-name",
-        ]
-    )
-    assert kept == ["240810_KC150_detect__no_cam_KC"]
+    hub.gather_sessions(["good_session", "bad_session", "good_session2"])
+
+    assert call_count["n"] == 3
+    assert hub.data is not None
+    assert hub.data.height == 2
+
+
+def test_save_defaults_to_analysis_path(monkeypatch, tmp_path):
+    """save(None) uses cfg.paths['analysis'][0], not a nonexistent session_path column."""
+    from piepy.core.hub import Hub
+
+    monkeypatch.setattr("piepy.core.hub.cfg.paths", {"analysis": [str(tmp_path / "out")]})
+
+    hub = Hub("wheel_detection")
+    hub.data = pl.DataFrame({"baredate": ["20240101"], "animalid": ["A"], "x": [1]})
+    hub.save()
+    saved = list((tmp_path / "out").glob("*.parquet"))
+    assert len(saved) == 1
 
 
 @pytest.mark.needs_data
