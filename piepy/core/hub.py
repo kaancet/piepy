@@ -150,6 +150,7 @@ class Hub:
                 for w in tqdm(work, desc="Gathering sessions", unit="session")
             ]
 
+        cfg.verbose = True
         frames = []
         failures = []
         for frame, err in results:
