@@ -25,6 +25,7 @@ from .config import config as cfg
 from .io import display
 from .registry import get_paradigm
 from .schema import align_and_concat
+from tqdm.auto import tqdm
 
 __all__ = ["Hub", "generate_unique_session_id"]
 
@@ -50,6 +51,9 @@ def _analyze_one(args: tuple) -> tuple[pl.DataFrame, str | None]:
     """
     paradigm, load_flag, sessiondir = args
     name = os.path.basename(str(sessiondir).rstrip("/\\"))
+
+    # Mute per-session output in workers so it doesn't flood the caller
+    cfg.verbose = False
     try:
         spec = get_paradigm(paradigm)
         session = spec.session_cls(name)
@@ -132,9 +136,19 @@ class Hub:
         if use_mp:
             ctx = multiprocessing.get_context("spawn")
             with ctx.Pool(processes=cores) as pool:
-                results = pool.map(_analyze_one, work)
+                results = list(
+                    tqdm(
+                        pool.imap(_analyze_one, work),
+                        total=len(work),
+                        desc="Gathering sessions",
+                        unit="session",
+                    )
+                )
         else:
-            results = [_analyze_one(w) for w in work]
+            results = [
+                _analyze_one(w)
+                for w in tqdm(work, desc="Gathering sessions", unit="session")
+            ]
 
         frames = []
         failures = []

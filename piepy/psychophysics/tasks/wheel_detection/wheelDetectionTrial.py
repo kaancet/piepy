@@ -288,8 +288,9 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 _time_temp = unique_except(self._trial["rig_react_t"][0], [-1])
                 if len(_time_temp) == 1:
                     if self._trial["t_vstimstart_rig"] is None:
-                        print(
-                            "NO RIG VSTIM TIME IN A NON_EARLY TRIAL THIS SHOULD NOT HAPPEN, USING STATE TIME"
+                        display(
+                            "NO RIG VSTIM TIME IN A NON_EARLY TRIAL THIS SHOULD NOT HAPPEN, USING STATE TIME",
+                            color="yellow",
                         )
                         self._trial["t_vstimstart_rig"] = int(self._trial["t_vstimstart"])
                         self._trial["t_vstimend_rig"] = int(self._trial["t_vstimend"])
