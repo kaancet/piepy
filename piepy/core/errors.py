@@ -21,9 +21,7 @@ renders (via ``str(exc)``) as::
               pair into its own run folder, or remove the extra one.
 
 Design:
-* One base, ``PiepyError(Exception)`` -- so it IS caught by ``except Exception`` (the existing
-  exceptions in ``exceptions.py`` subclass ``BaseException``, which is a bug to be migrated).
-* A small category taxonomy (config / pathfinding / parsing / schema), each with a short tag.
+* One base, ``PiepyError(Exception)`` allows catching ``except Exception`` with a short tag.
 * "Smart" subclasses (e.g. :class:`MissingConfigKeyError`) pre-fill the fix text so call
   sites stay short and messages stay consistent.
 """
@@ -76,7 +74,9 @@ class PiepyError(Exception):
 
     def render(self) -> str:
         """The full multi-line message (used as the exception string)."""
-        header = "piepy error" if self.category == "error" else f"piepy {self.category} error"
+        header = (
+            "piepy error" if self.category == "error" else f"piepy {self.category} error"
+        )
         lines = [f"{header}: {self.problem}"]
         if self.where is not None:
             lines.append(self._field("where:", self.where))
@@ -177,10 +177,6 @@ class LogTypeMissingError(ParsingError):
 
 
 class FrameLoggingError(ParsingError):
-    pass
-
-
-class ScreenPulseError(ParsingError):
     pass
 
 

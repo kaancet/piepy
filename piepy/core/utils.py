@@ -1,3 +1,5 @@
+import functools
+
 import time
 import numpy as np
 import polars as pl
@@ -71,6 +73,7 @@ def clean_string(str_in: str) -> str:
 
 def timeit(msg):
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             ts = time.time()
             result = func(*args, **kwargs)

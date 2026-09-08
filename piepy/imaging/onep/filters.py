@@ -53,6 +53,8 @@ def butter_filter(signal, filter_type, cutoff, fs, order=3, plot=True):
     w, h = freqz(b, a, worN=2000)
 
     if plot:
+        import matplotlib.pyplot as plt
+
         f, axs = plt.subplots(1, 2, figsize=(12, 8))
         axs[0].plot((fs * 0.5 / np.pi) * w, abs(h))
 

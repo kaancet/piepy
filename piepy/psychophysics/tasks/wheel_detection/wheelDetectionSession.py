@@ -9,7 +9,6 @@ from piepy.core.utils import safe_ratio, safe_median
 from piepy.psychophysics.opto import add_opto_pattern_columns
 from piepy.psychophysics.transforms import (
     add_runno,
-    set_outcome,
     add_rig_response_time,
     add_stim_side,
     add_sftf_descriptor,
@@ -69,7 +68,6 @@ class WheelDetectionRun(Run):
         # per-run pattern path on self) -- composed from pure transforms.
         d = self.data.data
         d = add_runno(d, self.run_no)
-        d = set_outcome(d)
         d = add_stim_side(d)
         d = add_contrast_descriptors(d)
         d = add_sftf_descriptor(d)

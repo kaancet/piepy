@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import tifffile as tf
 from glob import glob
 from natsort import natsorted
@@ -24,28 +24,18 @@ def load_stack(foldername, nchannels=None, imager_preview=False):
         # these don't need channel number because it is written with the filename
         if len(files) == 1:
             return mmap_dat(files[0])
-        print("Loading binary stack.")
-        return BinaryStack(files)
+        raise NotImplementedError("Multi-file binary stacks not supported")
     # check tiff sequence
     for ext in [".TIFF", ".TIF", ".tif", ".tiff"]:
         files = natsorted(glob(pjoin(foldername, "*" + ext)))
         if len(files):
             return TiffStack(files, nchannels=nchannels)
-    # check imager
-    files = natsorted(glob(pjoin(foldername, "Analog*.dat")))
-    if len(files):
-        return ImagerStack(foldername, imager_preview=imager_preview)
-    # check for avi and mov
-    for ext in [".avi", ".mov", ".mj2"]:
-        files = natsorted(glob(pjoin(foldername, "*" + ext)))
-        if len(files):
-            return VideoStack(files, extension=ext, nchannels=nchannels)
     # check for dat
     files = natsorted(glob(pjoin(foldername, "*.dat")))
     if len(files):
         if len(files) == 1:
             return mmap_dat(files[0])
-        return BinaryStack(foldername)
+        raise NotImplementedError("Multi-file binary stacks not supported")
 
 
 class GenericStack:
@@ -100,7 +90,7 @@ class GenericStack:
         img = np.empty((len(idx1), *self.dims), dtype=self.dtype)
         for i, ind in enumerate(idx1):
             img[i] = self._get_frame(ind)
-        if not idx2 is None:
+        if idx2 is not None:
             if squeeze:
                 return img[:, idx2].squeeze()
             else:
@@ -129,7 +119,7 @@ class GenericStack:
         chunks = chunk_indices(nframes, chunksize)
         chunks = [[c[0] + start_frame, c[1] + start_frame] for c in chunks]
         shape = [nframes, *self.shape[1:]]
-        if not channel is None:
+        if channel is not None:
             shape[1] = 1
         fname = pjoin(
             "{0}".format(foldername),
@@ -168,7 +158,7 @@ class GenericStack:
         chunks = chunk_indices(nframes, chunksize)
         chunks = [[c[0] + start_frame, c[1] + start_frame] for c in chunks]
         shape = [nframes, *self.shape[1:]]
-        if not channel is None:
+        if channel is not None:
             shape[1] = 1
 
         file_no = 0
@@ -178,12 +168,12 @@ class GenericStack:
 
         for c in tqdm(chunks, desc="Exporting tiffs"):
             if channel is None:
-                tf.imsave(
+                tf.imwrite(
                     fname.format(basename, file_no),
                     self[c[0] : c[1]].reshape((-1, *self.dims[1:])),
                 )
             else:
-                tf.imsave(
+                tf.imwrite(
                     fname.format(basename, file_no),
                     self[c[0] : c[1], channel].squeeze(),
                 )
