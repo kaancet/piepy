@@ -48,37 +48,42 @@ class TrialHandler:
             model: The patito model the handler class will use to validate the parsed trial
         """
         self.trial_model = model
+        self._model_columns = frozenset(model.columns)
+        self._model_null_cols = frozenset(
+            k for k, dt in model.dtypes.items() if isinstance(dt, pl.datatypes.Null)
+        )
+
+    @staticmethod
+    def _list_field_fixer(field_val) -> tuple[type, Any]:
+        if isinstance(field_val, list):
+            if isinstance(field_val[0], int):
+                return (list[int], [])
+            return (list[float], [])
+        return (type(field_val), None)
 
     def _update_model(self) -> None:
-        """Updates the model with new keys in the dictionary, if there are any new ones"""
+        """Expand the trial model with new columns / resolve Null dtypes. Skips work when stable."""
+        updates = {}
 
-        def list_field_fixer(field_val) -> tuple[type, Any]:
-            """Fixes the typing and defult value for lists"""
-            if isinstance(field_val, list):
-                if isinstance(field_val[0], int):
-                    return (list[int], [])
-                else:
-                    return (list[float], [])
-            else:
-                return (type(field_val), None)
+        # new columns not yet in the model
+        for k, v in self._trial.items():
+            if k not in self._model_columns:
+                updates[k] = self._list_field_fixer(v)
 
-        # adding new columns (this should only work in the first trial)
-        _new_cols = {
-            k: list_field_fixer(v)
-            for k, v in self._trial.items()
-            if k not in self.trial_model.columns
-        }
-        if len(_new_cols):
-            self.trial_model = self.trial_model.with_fields(**_new_cols)
+        # Null-typed columns that now have a real value
+        if self._model_null_cols:
+            for k in self._model_null_cols:
+                if self._trial.get(k) is not None:
+                    updates[k] = self._list_field_fixer(self._trial[k])
 
-        # making sure no column has None(Null) as a dtype
-        _retry_none_type_cols = {
-            k: list_field_fixer(self._trial[k])
-            for k, m_dt in self.trial_model.dtypes.items()
-            if isinstance(m_dt, pl.datatypes.Null)
-        }
-        if len(_retry_none_type_cols):
-            self.trial_model = self.trial_model.with_fields(**_retry_none_type_cols)
+        if updates:
+            self.trial_model = self.trial_model.with_fields(**updates)
+            self._model_columns = frozenset(self.trial_model.columns)
+            self._model_null_cols = frozenset(
+                k
+                for k, dt in self.trial_model.dtypes.items()
+                if isinstance(dt, pl.datatypes.Null)
+            )
 
     def _update_and_return(
         self, return_as: Literal["df", "dict", "list"] = "dict"
