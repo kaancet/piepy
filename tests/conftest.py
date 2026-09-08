@@ -18,7 +18,15 @@ Design notes
 from __future__ import annotations
 
 import os
-import tomllib
+import sys
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        tomllib = None
 from pathlib import Path
 
 import pytest
@@ -36,7 +44,7 @@ class SessionUnavailable(Exception):
 
 def load_cases() -> list[tuple[str, str]]:
     """Flatten golden_sessions.toml into ``(paradigm, session_dir)`` tuples."""
-    if not SESSIONS_TOML.exists():
+    if tomllib is None or not SESSIONS_TOML.exists():
         return []
     with SESSIONS_TOML.open("rb") as fh:
         data = tomllib.load(fh)
