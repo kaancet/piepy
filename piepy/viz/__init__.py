@@ -7,6 +7,13 @@ calling a plot does.
 from .base import PlotResult
 from .accessor import Viz
 from .plots import psychometric, reaction_time_cloud, reaction_time_dist
+from .impact_plot import impact
 
-
-__all__ = ["PlotResult", "Viz", "psychometric", "reaction_time_cloud", "reaction_time_dist"]
+__all__ = [
+    "PlotResult",
+    "Viz",
+    "psychometric",
+    "reaction_time_cloud",
+    "reaction_time_dist",
+    "impact",
+]
