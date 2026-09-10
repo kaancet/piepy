@@ -113,6 +113,7 @@ def attach_run_identity(
         pl.lit(run_uid(sessiondir, run_no, run_name)).cast(pl.UInt64).alias("run_uid"),
         pl.lit(run_no).cast(pl.UInt32).alias("run_no"),
         pl.lit(paradigm).cast(pl.Utf8).alias("paradigm"),
+        pl.lit(sessiondir).cast(pl.Utf8).alias("sessiondir"),
     )
 
     if "animalid" not in out.columns and animalid is not None:
