@@ -17,6 +17,7 @@ draws, per level of ``x``:
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 
 from piepy.stats import aggregate, compare_groups, subject_average
 from .base import PlotResult, _need, _resolve
@@ -145,6 +146,36 @@ def impact(
         **grp,
         **style_overrides["errorbar"],
     )
+
+    # baseline: metric at baseline_col == baseline_value, as a horizontal line + SEM band
+
+    base_df = df.filter(pl.col("contrast") == 0.0)
+    if not base_df.is_empty():
+        per_sub_base = aggregate(base_df, group=[subject], **metric)
+        vals = per_sub_base["value"].drop_nulls().to_numpy()
+        if vals.size:
+            b_mean = float(np.mean(vals))
+            b_sem = (
+                float(np.std(vals, ddof=1) / np.sqrt(vals.size)) if vals.size > 1 else 0.0
+            )
+
+            bv.plot_horizontal(
+                b_mean,
+                linestyle="--",
+                color="#000000",
+                ax=ax,
+                spec=spec,
+                zorder=1,
+            )
+            bv.plot_fill_between(
+                b_mean - b_sem,
+                b_mean + b_sem,
+                color="#525252",
+                alpha=0.4,
+                ax=ax,
+                spec=spec,
+                zorder=1,
+            )
 
     # pairwise significance between manipulation levels (paired across subjects)
     test_res = None
