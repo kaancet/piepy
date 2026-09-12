@@ -31,7 +31,7 @@ def impact(
     success: object = "hit",
     value: str | None = None,
     stat: str = "mean",
-    subject: str = "animalid",
+    average_over: str = "animalid",
     compare: str | None = None,
     test: bool = True,
     ax=None,
@@ -85,7 +85,7 @@ def impact(
         df,
         [
             x,
-            subject,
+            average_over,
             *([outcome] if value is None else [value]),
             *([compare] if compare else []),
         ],
@@ -101,15 +101,18 @@ def impact(
         else {"value": value, "stat": stat}
     )
 
+    base_df = df.filter(pl.col("contrast") == 0.0)
+    data_df = df.filter(pl.col("contrast") != 0.0)
+
     # per-subject value at each manipulation level (the paired lines)
     per_subject = aggregate(
-        df, group=[x, subject, *([compare] if compare else [])], **metric
-    ).sort([x, subject])
+        data_df, group=[x, average_over, *([compare] if compare else [])], **metric
+    ).sort([x, average_over])
 
     # across-subject summary at each level (equal weight per subject) -- mean/sem via subject_average
-    summary = subject_average(df, x=x, subject=subject, compare=compare, **metric).sort(
-        [x, *([compare] if compare else [])]
-    )
+    summary = subject_average(
+        data_df, x=x, subject=average_over, compare=compare, **metric
+    ).sort([x, *([compare] if compare else [])])
 
     grp = {"hue": compare} if compare else {}
 
@@ -118,10 +121,10 @@ def impact(
         data=per_subject,
         x=x,
         y="value",
-        group=subject,
+        group=average_over,
         spec=spec,
         ax=ax,
-        **({"hue": compare} if compare else {"hue": subject}),
+        **({"hue": compare} if compare else {"hue": average_over}),
         **style_overrides["line"],
     )
     fig, ax = bv.plot_scatter(
@@ -130,7 +133,7 @@ def impact(
         y="value",
         spec=spec,
         ax=ax,
-        **({"hue": compare} if compare else {"hue": subject}),
+        **({"hue": compare} if compare else {"hue": average_over}),
         **style_overrides["scatter"],
     )
 
@@ -147,11 +150,8 @@ def impact(
         **style_overrides["errorbar"],
     )
 
-    # baseline: metric at baseline_col == baseline_value, as a horizontal line + SEM band
-
-    base_df = df.filter(pl.col("contrast") == 0.0)
     if not base_df.is_empty():
-        per_sub_base = aggregate(base_df, group=[subject], **metric)
+        per_sub_base = aggregate(base_df, group=[average_over], **metric)
         vals = per_sub_base["value"].drop_nulls().to_numpy()
         if vals.size:
             b_mean = float(np.mean(vals))
@@ -168,9 +168,11 @@ def impact(
                 zorder=1,
             )
             bv.plot_fill_between(
+                summary[x].to_list(),
                 b_mean - b_sem,
                 b_mean + b_sem,
                 color="#525252",
+                linewidth=0,
                 alpha=0.4,
                 ax=ax,
                 spec=spec,
@@ -185,7 +187,7 @@ def impact(
             comparing=x,
             value=(outcome if value is None else value),
             success=(success if value is None else None),
-            subject=subject,
+            subject=average_over,
         )
         y_top = (
             float(summary["value"].max()) if summary["value"].drop_nulls().len() else 1.0
