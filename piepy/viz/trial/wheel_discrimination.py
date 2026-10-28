@@ -15,6 +15,7 @@ def trial_snapshot(
     *,
     show_movements: bool = False,
     movement_params: dict | None = None,
+    annotation_offset: float = 3,
     ax=None,
     **style,
 ) -> PlotResult:
@@ -29,13 +30,17 @@ def trial_snapshot(
 
     style_overrides = bv.split_styles(
         style,
-        components=("wheel", "lick"),
+        components=("wheel", "lick", "reward"),
         defaults={
             "wheel": {"linewidth": 2, "color": "#090909"},
             "lick": {
                 "marker": "|",
                 "s": 250,
                 "color": "#1EB9E4",
+            },
+            "reward": {
+                "color": "#007DB7",
+                "s": 100,
             },
         },
     )
@@ -78,7 +83,14 @@ def trial_snapshot(
     wheel_t = np.array(row["wheel_t"], float)
     wheel_pos = np.array(row["wheel_pos"], float)
 
-    movement_params = {} if movement_params is None else movement_params
+    if movement_params is None:
+        movement_params = {
+            "pos_thresh": 0.025,
+            "t_thresh": 20,
+            "min_dur": 40,
+            "min_gap": 40,
+            "pos_thresh_onset": 0.005,
+        }
     res = WheelTrace(t=wheel_t, pos=wheel_pos).process(
         reset_time=z_rig, freq=5, units="rad", **movement_params
     )
@@ -131,15 +143,19 @@ def trial_snapshot(
                 [row[col] - z_state], spec=spec, ax=ax, color="#4C4C4C"
             )
             fig, ax = bv.plot_text(
-                row[col] - z_state + 3,
-                9,
+                row[col] - z_state + 15,
+                annotation_offset,
+                f"{label}",
                 label,
                 ax=ax,
                 spec=spec,
                 rotation=90,
                 ha="left",
-                va="bottom",
+                va="center",
                 color="#4C4C4C",
+                backgroundcolor="#FFFFFF",
+                alpha=0.3,
+                zorder=1,
             )
 
     # reaction / response are already measured from stimulus onset
@@ -147,15 +163,16 @@ def trial_snapshot(
         if row.get(col) is not None:
             _, ax = bv.plot_vertical([row[col]], spec=spec, ax=ax, color="#990000")
             fig, ax = bv.plot_text(
-                row[col] + 3,
-                9,
-                label,
+                row[col] - 5,
+                annotation_offset,
+                f"{label}:{round(row[col], 1)}ms",
                 ax=ax,
                 spec=spec,
                 rotation=90,
-                ha="left",
+                ha="right",
                 va="bottom",
                 color="#990000",
+                alpha=0.5,
             )
 
     # licks (all times) and reward (only its first element is a time), rig clock
@@ -163,15 +180,20 @@ def trial_snapshot(
         licks = np.array(row["lick"], float) - z_rig
         _, ax = bv.plot_scatter(
             licks,
-            np.zeros_like(licks),
+            np.ones_like(licks) * annotation_offset,
             spec=spec,
             ax=ax,
             label="lick",
             **style_overrides["lick"],
         )
     if row.get("reward"):
-        _, ax = bv.plot_scatter(
-            [row["reward"][0] - z_rig], [0], spec=spec, ax=ax, label="reward"
+        _, ax_pos = bv.plot_scatter(
+            [row["reward"][0] - z_rig],
+            [annotation_offset],
+            spec=spec,
+            ax=ax,
+            label="reward",
+            **style_overrides["reward"],
         )
 
     # post-stim phases as a stacked horizontal bar from stim onset (state clock); drawn when the
@@ -184,17 +206,26 @@ def trial_snapshot(
         w = row.get(col)
         if w is not None:
             _, ax = bv.plot_hbar(
-                8, w, left=t0, height=2, spec=spec, ax=ax, color=color, alpha=0.3
+                annotation_offset,
+                w,
+                left=t0,
+                height=3,
+                spec=spec,
+                ax=ax,
+                color=color,
+                linewidth=0,
+                alpha=0.3,
             )
             _, ax = bv.plot_text(
                 t0 + w / 2,
-                8,
-                label,
+                annotation_offset,
+                f"{label}\n{int(row[col])}ms",
                 spec=spec,
                 ax=ax,
                 ha="center",
                 va="center",
                 color="#000000",
+                alpha=0.3,
             )
             t0 += w
 
