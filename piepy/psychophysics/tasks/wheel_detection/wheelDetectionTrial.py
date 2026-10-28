@@ -333,14 +333,14 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
             reset_time_point,
             freq=5,
             units="rad",
-            pos_thresh=0.0003,  # rads, 0.02 for ticks
-            t_thresh=1,
-            min_dur=20,
-            min_gap=30,
+            pos_thresh=0.025,
+            t_thresh=20,
+            min_dur=40,
+            min_gap=40,
+            pos_thresh_onset=0.0092,
         )
         t_interp = res["t"]
         mov_dict = res["movements"]
-
         # match the response to the movement that produced it (hardware time preferred, else the
         # state-machine time). The matcher prefers the *containing* movement over an earlier one
         # that merely ends just before the response, and flags anticipatory onsets.

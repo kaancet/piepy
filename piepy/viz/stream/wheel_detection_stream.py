@@ -58,7 +58,14 @@ def session_stream(
             continue
 
         res = trace.load(trial_wt, trial_wp).process(
-            reset_time=trial_wt[0], freq=3, units="rad"
+            reset_time=trial_wt[0],
+            freq=3,
+            units="rad",
+            pos_thresh=0.025,
+            t_thresh=20,
+            min_dur=40,
+            min_gap=40,
+            pos_thresh_onset=0.0092,
         )
 
         fig, ax = bv.plot_line(

@@ -9,8 +9,16 @@ from ..base import PlotResult, _need, _resolve
 from ...psychophysics.wheelTrace import WheelTrace
 
 
-def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
-    """Wheel position vs time for one trial, aligned to stimulus onset, with event markers.
+def trial_snapshot(
+    data,
+    trial_no: int,
+    *,
+    ax=None,
+    show_movements: bool = False,
+    movement_params: dict | None = None,
+    **style,
+) -> PlotResult:
+    """Wheel position vs time and wheel speed vs time for one trial, aligned to stimulus onset, with event markers.
 
     Two clocks, both zeroed at stimulus onset: state events use ``t_vstimstart``; the rig streams
     (wheel/lick/reward) use ``t_vstimstart_rig``. Early trials fall back to cue + blank.
@@ -60,7 +68,6 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
         raise ValueError(f"trial_no {trial_no} not found in the data.")
     row = sel.row(0, named=True)
     title = f"{row['trial_no']}-{row['outcome']}"
-    spec = spec.with_title(title)
 
     # always look for rig times first, if not use state times
     z_state = (
@@ -75,9 +82,87 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
     wheel_pos = np.array(row["wheel_pos"], float)
 
     trace = WheelTrace(t=wheel_t, pos=wheel_pos)
-    res = trace.process(reset_time=z_rig, freq=5, units="rad")
+    res = trace.process(
+        reset_time=z_rig,
+        freq=5,
+        units="rad",
+        **movement_params,
+    )
+    pos = res["pos"]
+    speed = np.abs(res["velocity"] * 1000)
 
-    fig, ax = bv.plot_line(res["t"], np.abs(res["velocity"] * 1000), spec=spec, ax=ax, **style_overrides["wheel"])
+    with bv.grid(
+        nrows=2, ncols=1, spec=spec, height_ratios=[1, 1], sharex=True, suptitle=title
+    ) as axs:
+        fig, ax_pos = bv.plot_line(
+            res["t"], pos, ax=axs[0, 0], **style_overrides["wheel"]
+        )
+
+        fig, ax_speed = bv.plot_line(
+            res["t"], speed, ax=axs[1, 0], **style_overrides["wheel"]
+        )
+
+        if show_movements:
+            for on_idx, off_idx in zip(
+                res["movements"]["onsets"][:, 0].astype(int),
+                res["movements"]["offsets"][:, 0].astype(int),
+            ):
+                fig, ax_pos = bv.plot_line(
+                    res["t"][on_idx:off_idx],
+                    pos[on_idx:off_idx],
+                    spec=spec,
+                    ax=ax_pos,
+                    linewidth=2,
+                    color="#223399",
+                )
+                # start
+                fig, ax_pos = bv.plot_scatter(
+                    [res["t"][on_idx]],
+                    [pos[on_idx]],
+                    color="#1A902F",
+                    marker=">",
+                    spec=spec,
+                    ax=ax_pos,
+                )
+
+                # end
+                fig, ax_pos = bv.plot_scatter(
+                    [res["t"][off_idx]],
+                    [pos[off_idx]],
+                    color="#C70C02",
+                    marker="<",
+                    spec=spec,
+                    ax=ax_pos,
+                )
+
+                fig, ax_speed = bv.plot_line(
+                    res["t"][on_idx:off_idx],
+                    speed[on_idx:off_idx],
+                    spec=spec,
+                    ax=ax_speed,
+                    linewidth=2,
+                    color="#223399",
+                )
+
+                # start
+                fig, ax_speed = bv.plot_scatter(
+                    [res["t"][on_idx]],
+                    [speed[on_idx]],
+                    color="#1A902F",
+                    marker=">",
+                    spec=spec,
+                    ax=ax_speed,
+                )
+
+                # end
+                fig, ax_speed = bv.plot_scatter(
+                    [res["t"][off_idx]],
+                    [speed[off_idx]],
+                    color="#C70C02",
+                    marker="<",
+                    spec=spec,
+                    ax=ax_speed,
+                )
 
     # state-clock event markers, drawn only when present
     for label, col in [
@@ -88,13 +173,15 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
         ("trial end", "t_trialend"),
     ]:
         if row[col] is not None:
-            _, ax = bv.plot_vertical([row[col] - z_state], spec=spec, ax=ax, color="#4C4C4C")
+            _, ax_pos = bv.plot_vertical(
+                [row[col] - z_state], spec=spec, ax=ax_pos, color="#4C4C4C"
+            )
 
-            fig, ax = bv.plot_text(
+            fig, ax_pos = bv.plot_text(
                 row[col] - z_state + 3,
                 9,
                 label,
-                ax=ax,
+                ax=ax_pos,
                 spec=spec,
                 rotation=90,
                 ha="left",
@@ -105,12 +192,14 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
     # reaction / response are already measured from stimulus onset
     for label, col in [("reaction", "reaction_time"), ("response", "response_time")]:
         if row[col] is not None:
-            _, ax = bv.plot_vertical([row[col]], spec=spec, ax=ax, color="#990000")
-            fig, ax = bv.plot_text(
+            _, ax_pos = bv.plot_vertical(
+                [row[col]], spec=spec, ax=ax_pos, color="#990000"
+            )
+            fig, ax_pos = bv.plot_text(
                 row[col] + 3,
                 9,
                 label,
-                ax=ax,
+                ax=ax_pos,
                 spec=spec,
                 rotation=90,
                 ha="left",
@@ -121,18 +210,46 @@ def trial_snapshot(data, trial_no: int, *, ax=None, **style) -> PlotResult:
     # licks (all times) and reward (only its first element is a time), rig clock
     if row["lick"]:
         licks = np.array(row["lick"], float) - z_rig
-        _, ax = bv.plot_scatter(licks, np.zeros_like(licks), spec=spec, ax=ax, label="lick", **style_overrides["lick"])
+        _, ax_pos = bv.plot_scatter(
+            licks,
+            np.zeros_like(licks),
+            spec=spec,
+            ax=ax_pos,
+            label="lick",
+            **style_overrides["lick"],
+        )
     if row["reward"]:
-        _, ax = bv.plot_scatter([row["reward"][0] - z_rig], [0], spec=spec, ax=ax, label="reward")
+        _, ax_pos = bv.plot_scatter(
+            [row["reward"][0] - z_rig], [0], spec=spec, ax=ax_pos, label="reward"
+        )
 
     # pre-stim phases as a stacked horizontal bar (state clock)
     t0 = row["t_trialstart"] - z_state
-    for label, col, color in [("quiescence", "duration_quiescence", "#ACACAC"), ("blank", "duration_blank", "#343434")]:
+    for label, col, color in [
+        ("quiescence", "duration_quiescence", "#ACACAC"),
+        ("blank", "duration_blank", "#343434"),
+    ]:
         if row[col] is not None:
-            _, ax = bv.plot_hbar(8, row[col], left=t0, height=2, spec=spec, ax=ax, color=color, alpha=0.3)
-            _, ax = bv.plot_text(
-                t0 + row[col] / 2, 8, label, spec=spec, ax=ax, ha="center", va="center", color="#000000"
+            _, ax_pos = bv.plot_hbar(
+                8,
+                row[col],
+                left=t0,
+                height=2,
+                spec=spec,
+                ax=ax_pos,
+                color=color,
+                alpha=0.3,
+            )
+            _, ax_pos = bv.plot_text(
+                t0 + row[col] / 2,
+                8,
+                label,
+                spec=spec,
+                ax=ax_pos,
+                ha="center",
+                va="center",
+                color="#000000",
             )
             t0 += row[col]
 
-    return PlotResult(data=row, figure=(fig, ax))
+    return PlotResult(data=row, figure=(fig, ax_pos, ax_speed))

@@ -147,8 +147,11 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
             reset_time_point,
             freq=5,
             units="rad",
-            pos_thresh=0.00015,  # rads, 0.02 for ticks
-            t_thresh=0.5,
+            pos_thresh=0.025,
+            t_thresh=20,
+            min_dur=40,
+            min_gap=40,
+            pos_thresh_onset=0.0092,
         )
 
         # hardware response time preferred, else the state-machine time
