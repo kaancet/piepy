@@ -77,6 +77,8 @@ def trial_snapshot(
     # wheel trace (raw rig time -> shift onto the stim-onset frame)
     wheel_t = np.array(row["wheel_t"], float)
     wheel_pos = np.array(row["wheel_pos"], float)
+
+    movement_params = {} if movement_params is None else movement_params
     res = WheelTrace(t=wheel_t, pos=wheel_pos).process(
         reset_time=z_rig, freq=5, units="rad", **movement_params
     )

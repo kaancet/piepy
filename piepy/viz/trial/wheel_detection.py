@@ -13,7 +13,6 @@ def trial_snapshot(
     data,
     trial_no: int,
     *,
-    ax=None,
     show_movements: bool = False,
     movement_params: dict | None = None,
     **style,
@@ -82,6 +81,8 @@ def trial_snapshot(
     wheel_pos = np.array(row["wheel_pos"], float)
 
     trace = WheelTrace(t=wheel_t, pos=wheel_pos)
+
+    movement_params = {} if movement_params is None else movement_params
     res = trace.process(
         reset_time=z_rig,
         freq=5,
