@@ -28,9 +28,7 @@ def test_resolve_hub_data_attr():
 
 
 def test_resolve_run_data_data():
-    run = types.SimpleNamespace(
-        data=types.SimpleNamespace(data=DF)
-    )  # Run.data (RunData).data
+    run = types.SimpleNamespace(data=types.SimpleNamespace(data=DF))  # Run.data (RunData).data
     assert _resolve(run) is DF
 
 

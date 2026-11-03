@@ -20,9 +20,7 @@ class FakeStack:
     """
 
     def __init__(self, n_frames=200, h=4, w=5, channels=None):
-        base = np.arange(n_frames, dtype=np.uint16)[:, None, None] * np.ones(
-            (1, h, w), dtype=np.uint16
-        )
+        base = np.arange(n_frames, dtype=np.uint16)[:, None, None] * np.ones((1, h, w), dtype=np.uint16)
         self.frames = base if channels is None else base[:, None].repeat(channels, axis=1)
 
     def __getitem__(self, idx):
@@ -54,9 +52,7 @@ def test_pieces_do_not_change_result_exact():
     one = trial_average(stack, w, n_pieces=1)
     for k in (2, 3, 7, 10):  # 10 > 7 trials: extra empty pieces are dropped
         many = trial_average(stack, w, n_pieces=k)
-        assert np.array_equal(
-            one[None], many[None]
-        )  # identical, bit for bit (integer frames)
+        assert np.array_equal(one[None], many[None])  # identical, bit for bit (integer frames)
 
 
 def test_overlapping_windows_still_exact():
@@ -84,12 +80,8 @@ def test_grouped_conditions():
     w = _windows([0, 10, 20, 30], count=5, groups=["a", "a", "b", "b"])
     out = trial_average(stack, w, n_pieces=3)
     assert set(out) == {"a", "b"}
-    assert np.allclose(
-        out["a"], np.mean([stack.frames[0:5], stack.frames[10:15]], axis=0)
-    )
-    assert np.allclose(
-        out["b"], np.mean([stack.frames[20:25], stack.frames[30:35]], axis=0)
-    )
+    assert np.allclose(out["a"], np.mean([stack.frames[0:5], stack.frames[10:15]], axis=0))
+    assert np.allclose(out["b"], np.mean([stack.frames[20:25], stack.frames[30:35]], axis=0))
     # grouping is unaffected by how the trials are split
     ref = trial_average(stack, w, n_pieces=1)
     assert np.array_equal(out["a"], ref["a"]) and np.array_equal(out["b"], ref["b"])
@@ -99,9 +91,7 @@ def test_channel_axis_selected():
     flat = FakeStack()
     multi = FakeStack(channels=3)  # (frames, channels, H, W)
     w = _windows([0, 10, 20], count=6)
-    assert np.array_equal(
-        trial_average(flat, w)[None], trial_average(multi, w, channel=0)[None]
-    )
+    assert np.array_equal(trial_average(flat, w)[None], trial_average(multi, w, channel=0)[None])
 
 
 def test_combine_order_does_not_matter():
@@ -129,9 +119,7 @@ def test_local_executor_runs_in_order():
 def test_process_executor_matches_serial():
     # a plain array is a valid frame source (fancy indexing) and is picklable, so it can be sent
     # to worker processes; the parallel result must equal the single-process one, bit for bit.
-    frames = np.arange(200, dtype=np.uint16)[:, None, None] * np.ones(
-        (1, 4, 5), dtype=np.uint16
-    )
+    frames = np.arange(200, dtype=np.uint16)[:, None, None] * np.ones((1, 4, 5), dtype=np.uint16)
     w = _windows([0, 10, 20, 30, 40, 50, 60], count=8)
     serial = trial_average(frames, w, n_pieces=1)[None]
     parallel = trial_average(frames, w, executor=ProcessExecutor(2), n_pieces=4)[None]
@@ -146,9 +134,7 @@ def test_float_frames_use_float_total():
 
     stack = FloatStack()
     w = _windows([0, 10, 20], count=5)
-    assert np.allclose(
-        trial_average(stack, w)[None], trial_average(stack, w, n_pieces=3)[None]
-    )
+    assert np.allclose(trial_average(stack, w)[None], trial_average(stack, w, n_pieces=3)[None])
 
 
 @pytest.mark.parametrize("n_pieces", [1, 2, 4])
@@ -159,7 +145,5 @@ def test_partial_sum_counts(n_pieces):
     total = 0
     for g in groups:
         if g.size:
-            total += partial_sum(stack, w, g)[None][
-                1
-            ]  # trial count for the ungrouped case
+            total += partial_sum(stack, w, g)[None][1]  # trial count for the ungrouped case
     assert total == w.n

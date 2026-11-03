@@ -55,11 +55,7 @@ def test_parameter_recovery_sample_then_fit():
     outcomes = m.sample(x_rep, true, rng=0).astype(int)
 
     df = pl.DataFrame({"x": x_rep, "hit": outcomes})
-    agg = (
-        df.group_by("x")
-        .agg(pl.col("hit").mean().alias("rate"), pl.len().alias("n"))
-        .sort("x")
-    )
+    agg = df.group_by("x").agg(pl.col("hit").mean().alias("rate"), pl.len().alias("n")).sort("x")
     res = fit("logistic", agg["x"], agg["rate"], n=agg["n"], ci="none")
 
     assert abs(res.params["x0"] - 0.0) < 0.15

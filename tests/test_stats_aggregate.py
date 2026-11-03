@@ -77,9 +77,7 @@ def test_multi_metric_one_pass(trials):
     # 2 groups x 3 metrics = 6 rows
     assert out.height == 6
     assert set(out["metric"].unique()) == {"rate[is_hit]", "median[rt]", "count"}
-    cnt = out.filter((pl.col("cond") == "a") & (pl.col("metric") == "count")).row(
-        0, named=True
-    )
+    cnt = out.filter((pl.col("cond") == "a") & (pl.col("metric") == "count")).row(0, named=True)
     assert cnt["value"] == 6.0
 
 
@@ -110,9 +108,7 @@ def test_bootstrap_median_option(trials):
 def test_rate_ci_always_brackets_value_at_extremes():
     # all-hit and all-miss groups: ci must bracket value exactly (no float overshoot that
     # would make value > ci_high / value < ci_low and break errorbar plots downstream).
-    df = pl.DataFrame(
-        {"cond": ["all_hit"] * 38 + ["all_miss"] * 20, "outcome": [1] * 38 + [0] * 20}
-    )
+    df = pl.DataFrame({"cond": ["all_hit"] * 38 + ["all_miss"] * 20, "outcome": [1] * 38 + [0] * 20})
     out = aggregate(df, group="cond", rate="outcome", rate_of=1)
     for r in out.iter_rows(named=True):
         assert r["ci_low"] <= r["value"] <= r["ci_high"]
@@ -139,9 +135,7 @@ def test_points_attaches_raw_values_for_value_metrics(trials):
 
 def test_points_left_null_for_rate_metric(trials):
     # Rate has no underlying value distribution -> points stays null even when requested
-    out = aggregate(
-        trials, group="cond", metrics=[Rate("is_hit"), Median("rt")], points=True
-    )
+    out = aggregate(trials, group="cond", metrics=[Rate("is_hit"), Median("rt")], points=True)
     rate_rows = out.filter(pl.col("metric").str.starts_with("rate"))
     assert rate_rows["points"].is_null().all()
     med_rows = out.filter(pl.col("metric").str.starts_with("median"))
@@ -152,9 +146,7 @@ def test_subject_average_averages_across_subjects_equally():
     # subject A: 2 trials at x=0 (1 hit -> 0.5); subject B: 100 trials at x=0 (90 hits -> 0.9).
     # pooled aggregate is dominated by B (~0.89); subject_rate weights A and B equally -> ~0.70.
     rows = [{"x": 0, "animal": "A", "out": "hit" if i == 0 else "miss"} for i in range(2)]
-    rows += [
-        {"x": 0, "animal": "B", "out": "hit" if i < 90 else "miss"} for i in range(100)
-    ]
+    rows += [{"x": 0, "animal": "B", "out": "hit" if i < 90 else "miss"} for i in range(100)]
     df = pl.DataFrame(rows)
 
     pooled = aggregate(df, group="x", rate="out", rate_of="hit")["value"][0]
@@ -181,9 +173,7 @@ def test_subject_average_with_compare_keeps_group_column():
                         }
                     )
     df = pl.DataFrame(rows)
-    out = subject_average(
-        df, x="x", subject="animal", rate="out", rate_of="hit", compare="opto"
-    )
+    out = subject_average(df, x="x", subject="animal", rate="out", rate_of="hit", compare="opto")
     assert "opto" in out.columns
     assert out.height == 4  # 2 x-levels x 2 opto
     assert (out["n"] == 3).all()  # 3 subjects per cell

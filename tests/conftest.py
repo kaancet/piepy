@@ -65,9 +65,7 @@ def build_session(paradigm: str, session_dir: str):
         sess.analyze(load_flag=False)
         return sess
     except (FileNotFoundError, PathfindingError) as exc:
-        raise SessionUnavailable(
-            f"{paradigm} session {session_dir!r} not resolvable locally: {exc}"
-        ) from exc
+        raise SessionUnavailable(f"{paradigm} session {session_dir!r} not resolvable locally: {exc}") from exc
 
 
 # --------------------------------------------------------------------------- #

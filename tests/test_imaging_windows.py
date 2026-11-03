@@ -72,9 +72,7 @@ def test_group_scalar_and_multi():
 
 
 def test_drops_null_frame_ids():
-    df = _make(
-        [{"trial_no": 1, "frame_ids": None}, {"trial_no": 2, "frame_ids": [300, 360]}]
-    )
+    df = _make([{"trial_no": 1, "frame_ids": None}, {"trial_no": 2, "frame_ids": [300, 360]}])
     w = frame_windows(df, pre_t=0, frame_t=FRAME_T)
     assert np.array_equal(w.trial_no, [2])
 
@@ -100,9 +98,7 @@ def test_bad_frame_t():
 
 
 def test_dff_baseline_subtract_divide():
-    mean = np.stack(
-        [np.full((2, 2), 100.0)] * 2 + [np.full((2, 2), 110.0)] * 2
-    )  # (4,2,2)
+    mean = np.stack([np.full((2, 2), 100.0)] * 2 + [np.full((2, 2), 110.0)] * 2)  # (4,2,2)
     out = dff(mean, pre=2)  # F0 = 100
     assert out.dtype == np.float32
     assert np.allclose(out[:2], 0.0)

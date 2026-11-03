@@ -17,9 +17,7 @@ from polars.testing import assert_frame_equal
 
 
 @pytest.mark.needs_data
-def test_parse_matches_golden(
-    paradigm, session_dir, parsed_session, snapshot_dir, update_golden
-):
+def test_parse_matches_golden(paradigm, session_dir, parsed_session, snapshot_dir, update_golden):
     runs = parsed_session.runs
     assert runs, f"{paradigm}:{session_dir} parsed to zero runs"
 

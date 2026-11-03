@@ -17,18 +17,14 @@ from piepy.cli import (
 
 
 def test_session_parses():
-    o = build_parser().parse_args(
-        ["session", "240810_KC150_detect__no_cam_KC", "-p", "wheel_detection"]
-    )
+    o = build_parser().parse_args(["session", "240810_KC150_detect__no_cam_KC", "-p", "wheel_detection"])
     assert o.command == "session" and o.func is cmd_session
     assert o.paradigm == "wheel_detection"
     assert o.load is False and o.plot is True  # defaults
 
 
 def test_hub_parses_multiple_animals():
-    o = build_parser().parse_args(
-        ["hub", "KC150", "KC143", "-p", "wheel_detection", "--load"]
-    )
+    o = build_parser().parse_args(["hub", "KC150", "KC143", "-p", "wheel_detection", "--load"])
     assert o.func is cmd_hub
     assert o.animalids == ["KC150", "KC143"] and o.load is True
 
@@ -73,9 +69,7 @@ def test_dashboard_parses():
 
 
 def test_shared_flags_on_each_subcommand():
-    o = build_parser().parse_args(
-        ["session", "x", "-p", "p", "--no-plot", "--output", "/tmp/out", "--no-verbose"]
-    )
+    o = build_parser().parse_args(["session", "x", "-p", "p", "--no-plot", "--output", "/tmp/out", "--no-verbose"])
     assert o.plot is False and o.output == "/tmp/out" and o.verbose is False
 
 

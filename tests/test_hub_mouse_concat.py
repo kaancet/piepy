@@ -19,9 +19,7 @@ def test_combine_session_data_unions_sorts_numbers():
     from piepy.core.hub import _combine_session_data
 
     # s1 is a later date; s2 is earlier and has an extra column.
-    s1 = pl.DataFrame(
-        {"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]}
-    )
+    s1 = pl.DataFrame({"date": [datetime.date(2024, 1, 2)], "animalid": ["A"], "run_no": [1], "x": [1]})
     s2 = pl.DataFrame(
         {
             "date": [datetime.date(2024, 1, 1)],
@@ -94,9 +92,7 @@ def test_mousedata_append_accumulates_and_unions():
     assert md.cumul_data["cumul_trial_no"].to_list() == [1, 2]
 
     # second session: a new column 'w' should union in
-    c2 = pl.DataFrame(
-        {"date": [datetime.date(2024, 1, 2)], "trial_no": [1], "v": [30], "w": [7]}
-    )
+    c2 = pl.DataFrame({"date": [datetime.date(2024, 1, 2)], "trial_no": [1], "v": [30], "w": [7]})
     md.append([c2], {"date": [datetime.date(2024, 1, 2)], "s": [200]})
 
     assert md.cumul_data.height == 3
