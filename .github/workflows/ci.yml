@@ -34,7 +34,7 @@ jobs:
       - name: Lint tests
         run: |
           .venv/bin/ruff check tests
-          .venv/bin/black --check tests
+          .venv/bin/ruff format --check tests
 
       # Golden parse tests need local session data and are excluded here.
       - name: Run data-free tests
