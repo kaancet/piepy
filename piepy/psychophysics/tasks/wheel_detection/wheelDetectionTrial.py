@@ -39,9 +39,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         self.is_early = False
         self.set_model(WheelDetectionTrial)
 
-    def get_trial(
-        self, trial_no: int, rawdata: dict, return_as="dict"
-    ) -> pt.DataFrame | dict | list | None:
+    def get_trial(self, trial_no: int, rawdata: dict, return_as="dict") -> pt.DataFrame | dict | list | None:
         """Main function that is called from outside, sets the trial, validates data type and returns it
 
         Args:
@@ -83,9 +81,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
             else:
                 self.set_wheel_traces(self._trial["t_vstimstart"])
         else:
-            self.set_wheel_traces(
-                self._trial["t_trialinit"] + self._trial["duration_blank"]
-            )  # would be stimulus start
+            self.set_wheel_traces(self._trial["t_trialinit"] + self._trial["duration_blank"])  # would be stimulus start
 
         self.set_licks()
         self.set_reward()
@@ -115,9 +111,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     fix="Check the paradigm's state_transitions map includes hit, miss, catch, and early.",
                 )
 
-            _resp = self.data["state"].filter(pl.col("transition") == _name)[
-                0, "stateElapsed"
-            ]
+            _resp = self.data["state"].filter(pl.col("transition") == _name)[0, "stateElapsed"]
             if _resp <= 150 and _name != "catch":
                 _ret = True
         return _ret
@@ -159,15 +153,13 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         early = self.data["state"].filter(pl.col("transition") == "early")
         if len(early):
             self._trial["state_outcome"] = -1
-            self._trial["state_response_time"] = (
-                early[0, "stateElapsed"] - self._trial["duration_blank"]
-            )
+            self._trial["state_response_time"] = early[0, "stateElapsed"] - self._trial["duration_blank"]
 
         # stimulus start
         else:
-            self._trial["t_vstimstart"] = self.data["state"].filter(
-                pl.col("transition") == "stimstart"
-            )[0, "corrected_elapsed"]
+            self._trial["t_vstimstart"] = self.data["state"].filter(pl.col("transition") == "stimstart")[
+                0, "corrected_elapsed"
+            ]
 
             # hit
             hit = self.data["state"].filter(pl.col("transition") == "hit")
@@ -197,15 +189,11 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     self._trial["state_response_time"] = temp_resp
 
             # stimulus end
-            stim_end = self.data["state"].filter(
-                pl.col("transition").str.contains("stimend")
-            )
+            stim_end = self.data["state"].filter(pl.col("transition").str.contains("stimend"))
             if len(stim_end):
                 self._trial["t_vstimend"] = stim_end[0, "corrected_elapsed"]
 
-        trial_end = self.data["state"].filter(
-            pl.col("transition").str.contains("trialend")
-        )
+        trial_end = self.data["state"].filter(pl.col("transition").str.contains("trialend"))
         if len(trial_end):
             self._trial["t_trialend"] = trial_end[0, "corrected_elapsed"]
 
@@ -216,16 +204,11 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         Also converts some properties to be scalars instead of lists(this is experiment specific)
         """
         super().set_vstim_properties()
-        columns_to_modify = [
-            k.strip("_l") for k in self._trial.keys() if k.endswith("_l")
-        ]
+        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
         self._trial.pop("correct")
 
         # set the opto pattern
-        if (
-            "opto_pattern" in self._trial.keys()
-            and self._trial["opto_pattern"] is not None
-        ):
+        if "opto_pattern" in self._trial.keys() and self._trial["opto_pattern"] is not None:
             self._trial["opto_pattern"] = int(self._trial["opto_pattern"][0][0])
         else:
             self._trial["opto_pattern"] = -1
@@ -246,11 +229,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 and self._trial["opto_pattern"] == -1
             ):
                 self._trial["isCatch"] = True
-            _correct = (
-                0
-                if self._trial["contrast_l"][0][0] > self._trial["contrast_r"][0][0]
-                else 1
-            )
+            _correct = 0 if self._trial["contrast_l"][0][0] > self._trial["contrast_r"][0][0] else 1
             _side = "_r" if _correct else "_l"  # right if 1, left if 0
             _other_side = "_l" if _correct else "_r"  # right if 1, left if 0
             for c in columns_to_modify:
@@ -260,22 +239,13 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
             self._trial["prob"] = self._trial["prob"][0][0]
             self._trial["stim_pos"] = int(self._trial.pop("posx"))
-            self._trial["stim_pos"] = (
-                0 if self._trial["contrast"] == 0 else self._trial["stim_pos"]
-            )
-            self._trial["median_loop_time"] = round(
-                float(np.median(np.diff(self._trial["corrected_presentTime"]))), 3
-            )
+            self._trial["stim_pos"] = 0 if self._trial["contrast"] == 0 else self._trial["stim_pos"]
+            self._trial["median_loop_time"] = round(float(np.median(np.diff(self._trial["corrected_presentTime"]))), 3)
 
-        if (
-            "rig_react_diff" in self._trial.keys()
-            and self._trial["rig_react_diff"] is not None
-        ):
+        if "rig_react_diff" in self._trial.keys() and self._trial["rig_react_diff"] is not None:
             _tiks = self._trial.pop("rig_react_diff")[0]
             _idx = next((i for i, x in enumerate(_tiks) if x != -1), None)
-            self._trial["rig_response_tick"] = (
-                int(abs(_tiks[_idx])) if _idx is not None else None
-            )
+            self._trial["rig_response_tick"] = int(abs(_tiks[_idx])) if _idx is not None else None
         else:
             _ = self._trial.pop("rig_react_diff", None)
             self._trial["rig_response_tick"] = None
@@ -295,9 +265,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                         self._trial["t_vstimstart_rig"] = int(self._trial["t_vstimstart"])
                         self._trial["t_vstimend_rig"] = int(self._trial["t_vstimend"])
 
-                    self._trial["rig_response_time"] = float(
-                        _time_temp[0] * 1000 - self._trial["t_vstimstart_rig"]
-                    )
+                    self._trial["rig_response_time"] = float(_time_temp[0] * 1000 - self._trial["t_vstimstart_rig"])
                 elif len(_time_temp) == 0:
                     self._trial["rig_response_time"] = None
                 else:
@@ -311,7 +279,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         # designate too early reaction times as early
         if self._trial["outcome"] == "hit":
             r_time = self._trial.get("reaction_time", None)
-            if r_time is not None and r_time <= 100:
+            if r_time is not None and r_time <= 80:
                 self._trial["outcome"] = "early"
 
     def set_wheel_traces(self, reset_time_point: float) -> None:
@@ -331,7 +299,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
         res = trace.process(
             reset_time_point,
-            freq=5,
+            freq=1,
             units="rad",
             pos_thresh=0.025,
             t_thresh=20,
@@ -347,22 +315,14 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         resp = self._trial["rig_response_time"]
         if resp is None:
             resp = self._trial["state_response_time"]
-        rt = match_response_movement(
-            mov_dict, resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS
-        )
+        rt = match_response_movement(mov_dict, resp, gap_tol=_GAP_TOL_MS, min_rt=_MIN_RT_MS)
 
         self._trial["reaction_time"] = rt.reaction_time
-        self._trial["peak_speed"] = (
-            None if rt.peak_speed is None else rt.peak_speed * _SPEED_SCALE
-        )
+        self._trial["peak_speed"] = None if rt.peak_speed is None else rt.peak_speed * _SPEED_SCALE
         self._trial["reaction_time_source"] = rt.source
         self._trial["anticipatory"] = rt.anticipatory
 
-        if (
-            self._trial["state_outcome"] == 1
-            and rt.reaction_time is None
-            and len(mov_dict["onsets"])
-        ):
+        if self._trial["state_outcome"] == 1 and rt.reaction_time is None and len(mov_dict["onsets"]):
             # hit, but the response time matched no movement (even the rig time can be logged late):
             # last resort -- the first movement whose peak speed lands after the min-RT floor.
             # Marked "inferred"; the measured rig_response_time is left untouched.
@@ -372,9 +332,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                 j = int(plausible[0])
                 onset = float(mov_dict["onsets"][j, 1])
                 self._trial["reaction_time"] = onset
-                self._trial["peak_speed"] = float(
-                    mov_dict["speed_peaks"][j, 1] * _SPEED_SCALE
-                )
+                self._trial["peak_speed"] = float(mov_dict["speed_peaks"][j, 1] * _SPEED_SCALE)
                 self._trial["reaction_time_source"] = "inferred"
                 self._trial["anticipatory"] = bool(onset < _MIN_RT_MS)
 
@@ -391,9 +349,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
                     self._trial["opto"] = False
                     self._trial["opto_pulse"] = [[]]
                 elif o_len > 2:
-                    raise ValueError(
-                        f"[TRIAL-{self._trial['trial_no']}] Opto logging error!"
-                    )
+                    raise ValueError(f"[TRIAL-{self._trial['trial_no']}] Opto logging error!")
             else:
                 # if no opto in vstim, then it is not an opto trial
                 self._trial["opto"] = False

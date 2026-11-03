@@ -22,9 +22,7 @@ _OUTCOME_COLOR = {
 }
 
 
-def session_stream(
-    data, *, slice_times: list[float] | None = None, ax=None, **style
-) -> PlotResult:
+def session_stream(data, *, slice_times: list[float] | None = None, ax=None, **style) -> PlotResult:
     """Plot a whole detection session: wheel traces (normalised per trial) + licks/rewards + trials.
 
     Args:
@@ -59,7 +57,7 @@ def session_stream(
 
         res = trace.load(trial_wt, trial_wp).process(
             reset_time=trial_wt[0],
-            freq=3,
+            freq=1,
             units="rad",
             pos_thresh=0.025,
             t_thresh=20,
@@ -79,14 +77,10 @@ def session_stream(
     # licks and rewards on their own lanes below the traces
     if "licks" in sliced.keys():
         lk = np.asarray(sliced.licks.timestamps, float)
-        fig, ax = bv.plot_scatter(
-            lk, np.full_like(lk, -0.1), ax=ax, marker="|", s=50, color="#1EB9E4"
-        )
+        fig, ax = bv.plot_scatter(lk, np.full_like(lk, -0.1), ax=ax, marker="|", s=50, color="#1EB9E4")
     if "reward" in sliced.keys():
         rw = np.asarray(sliced.reward.timestamps, float)
-        fig, ax = bv.plot_scatter(
-            rw, np.full_like(rw, 0), ax=ax, marker="v", s=50, color="#1B8A3A"
-        )
+        fig, ax = bv.plot_scatter(rw, np.full_like(rw, 0), ax=ax, marker="v", s=50, color="#1B8A3A")
 
     # trials as hbars above, coloured by outcome
     for s, e, o in zip(starts, ends, outcomes):

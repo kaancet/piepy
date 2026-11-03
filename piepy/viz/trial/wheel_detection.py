@@ -36,7 +36,7 @@ def trial_snapshot(
                 "color": "#00BFFF",
             },
             "reward": {
-                "color": "#007DB7",
+                "color": "#11FF00",
                 "s": 100,
             },
         },
@@ -56,6 +56,7 @@ def trial_snapshot(
             "t_vstimend",
             "t_trialend",
             "t_vstimstart_rig",
+            "t_vstimend_rig",
             "duration_quiescence",
             "duration_blank",
             "reaction_time",
@@ -64,6 +65,7 @@ def trial_snapshot(
             "reward",
             "wheel_t",
             "wheel_pos",
+            "opto_pattern",
         ],
         plot="trial snapshot",
     )  # a missing column errors cleanly here rather than as a KeyError mid-draw
@@ -97,23 +99,17 @@ def trial_snapshot(
         }
     res = trace.process(
         reset_time=z_rig,
-        freq=5,
+        freq=1,
         units="rad",
         **movement_params,
     )
     pos = res["pos"]
     speed = np.abs(res["velocity"] * 1000)
 
-    with bv.grid(
-        nrows=2, ncols=1, spec=spec, height_ratios=[1, 1], sharex=True, suptitle=title
-    ) as axs:
-        fig, ax_pos = bv.plot_line(
-            res["t"], pos, ax=axs[0, 0], **style_overrides["wheel"]
-        )
+    with bv.grid(nrows=2, ncols=1, spec=spec, height_ratios=[1, 1], sharex=True, suptitle=title) as axs:
+        fig, ax_pos = bv.plot_line(res["t"], pos, ax=axs[0, 0], **style_overrides["wheel"])
 
-        fig, ax_speed = bv.plot_line(
-            res["t"], speed, ax=axs[1, 0], **style_overrides["wheel"]
-        )
+        fig, ax_speed = bv.plot_line(res["t"], speed, ax=axs[1, 0], **style_overrides["wheel"])
 
         if show_movements:
             for on_idx, off_idx in zip(
@@ -132,7 +128,7 @@ def trial_snapshot(
                 fig, ax_pos = bv.plot_scatter(
                     [res["t"][on_idx]],
                     [pos[on_idx]],
-                    color="#1A902F",
+                    color="#007015",
                     marker=">",
                     spec=spec,
                     ax=ax_pos,
@@ -176,6 +172,12 @@ def trial_snapshot(
                     spec=spec,
                     ax=ax_speed,
                 )
+    # plot threshold for position
+    thresh_speed = trace._to_units(235.3, "rad")  # 235.3 ticks/s, from 20 tick/85 ms threshold
+    thresh_pos = trace._to_units(20, "rad")
+
+    _, ax_pos = bv.plot_horizontal(thresh_pos, spec=spec, ax=ax_pos, linestyle=":", color="#ABABAB")
+    _, ax_speed = bv.plot_horizontal(thresh_speed, spec=spec, ax=ax_speed, linestyle=":", color="#ABABAB")
 
     # state-clock event markers, drawn only when present
     for label, col in [
@@ -186,9 +188,7 @@ def trial_snapshot(
         ("trial end", "t_trialend"),
     ]:
         if row[col] is not None:
-            _, ax_pos = bv.plot_vertical(
-                [row[col] - z_state], spec=spec, ax=ax_pos, color="#4C4C4C"
-            )
+            _, ax_pos = bv.plot_vertical([row[col] - z_state], spec=spec, ax=ax_pos, color="#4C4C4C")
 
             fig, ax_pos = bv.plot_text(
                 row[col] - z_state + 15,
@@ -208,12 +208,8 @@ def trial_snapshot(
     # reaction / response are already measured from stimulus onset
     for label, col in [("RT", "reaction_time"), ("resp", "state_response_time")]:
         if row[col] is not None:
-            _, ax_pos = bv.plot_vertical(
-                [row[col]], spec=spec, ax=ax_pos, color="#990000"
-            )
-            _, ax_speed = bv.plot_vertical(
-                [row[col]], spec=spec, ax=ax_speed, color="#990000"
-            )
+            _, ax_pos = bv.plot_vertical([row[col]], spec=spec, ax=ax_pos, color="#990000")
+            _, ax_speed = bv.plot_vertical([row[col]], spec=spec, ax=ax_speed, color="#990000")
 
             fig, ax_speed = bv.plot_text(
                 row[col] - 5,
@@ -279,6 +275,22 @@ def trial_snapshot(
                 alpha=0.3,
             )
             t0 += row[col]
+
+    # opto of it exists
+    if row["opto_pattern"] != -1 and row["outcome"] != "early":
+        t0 = row["t_vstimstart_rig"] - z_rig
+        opto_dur = row["t_vstimend_rig"] - z_rig
+        bv.plot_hbar(
+            annotation_offset + 1.5,
+            opto_dur,
+            left=t0,
+            height=0.5,
+            spec=spec,
+            ax=ax_pos,
+            color="#6e91ca",
+            linewidth=0,
+            alpha=0.8,
+        )
 
     ax_pos.set_ylabel("Wheel position (rad)", fontsize=spec.x.fontsize)
     ax_pos.tick_params(axis="x", labelbottom=False)

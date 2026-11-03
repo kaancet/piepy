@@ -72,12 +72,8 @@ def trial_snapshot(
     spec = spec.with_title(title)
 
     # both clocks zeroed at stim onset (state vs rig); fall back to trial start if onset is missing
-    z_state = (
-        row["t_vstimstart"] if row["t_vstimstart"] is not None else row["t_trialstart"]
-    )
-    z_rig = (
-        row["t_vstimstart_rig"] if row.get("t_vstimstart_rig") is not None else z_state
-    )
+    z_state = row["t_vstimstart"] if row["t_vstimstart"] is not None else row["t_trialstart"]
+    z_rig = row["t_vstimstart_rig"] if row.get("t_vstimstart_rig") is not None else z_state
 
     # wheel trace (raw rig time -> shift onto the stim-onset frame)
     wheel_t = np.array(row["wheel_t"], float)
@@ -91,9 +87,7 @@ def trial_snapshot(
             "min_gap": 40,
             "pos_thresh_onset": 0.005,
         }
-    res = WheelTrace(t=wheel_t, pos=wheel_pos).process(
-        reset_time=z_rig, freq=5, units="rad", **movement_params
-    )
+    res = WheelTrace(t=wheel_t, pos=wheel_pos).process(reset_time=z_rig, freq=1, units="rad", **movement_params)
     pos = res["pos"]
 
     fig, ax = bv.plot_line(res["t"], pos, spec=spec, ax=ax, **style_overrides["wheel"])
@@ -139,9 +133,7 @@ def trial_snapshot(
         ("trial end", "t_trialend"),
     ]:
         if row.get(col) is not None:
-            _, ax = bv.plot_vertical(
-                [row[col] - z_state], spec=spec, ax=ax, color="#4C4C4C"
-            )
+            _, ax = bv.plot_vertical([row[col] - z_state], spec=spec, ax=ax, color="#4C4C4C")
             fig, ax = bv.plot_text(
                 row[col] - z_state + 15,
                 annotation_offset,
