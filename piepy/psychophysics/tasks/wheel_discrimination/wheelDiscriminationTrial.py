@@ -96,7 +96,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         """Overwrites the visualTrialHandler method to extract the relevant vstim properties"""
         super().set_vstim_properties()
         # only look at columns that have "_l", ASSUMING there will be an "_r" counterpart of it
-        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
+        columns_to_modify = [k.removesuffix("_l") for k in self._trial.keys() if k.endswith("_l")]
         self._trial["prob"] = self._trial["prob"][0][0]
         self._trial["fraction_r"] = self._trial["fraction_r"][0][0]
         if "opto_pattern" in self._trial.keys():

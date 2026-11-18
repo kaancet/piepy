@@ -113,7 +113,7 @@ class RunMeta:
             dict: protocol file as a dict
         """
         prot_dict = {}
-        prot_dict["run_name"] = prot_path.split(os.sep)[-1].split(".")[0]
+        prot_dict["run_name"] = os.path.splitext(os.path.basename(prot_path))[0]
         opts, params, _ = parse_protocol(prot_path)
 
         # get the level if exists (None for experiments)

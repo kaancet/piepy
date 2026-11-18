@@ -201,7 +201,7 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
         Also converts some properties to be scalars instead of lists(this is experiment specific)
         """
         super().set_vstim_properties()
-        columns_to_modify = [k.strip("_l") for k in self._trial.keys() if k.endswith("_l")]
+        columns_to_modify = [k.removesuffix("_l") for k in self._trial.keys() if k.endswith("_l")]
         self._trial.pop("correct")
 
         # set the opto pattern
