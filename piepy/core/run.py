@@ -425,15 +425,21 @@ class Run:
                 fix="Check the logs; run with strict=True to raise the first failure with a traceback.",
             )
 
-        validated = (
-            pt.DataFrame(data_to_append)
-            .set_model(self.trial_handler.trial_model)
-            .derive()
-            .drop()
-            .cast()
-            .fill_null(strategy="defaults")
-            .validate()
+        model = self.trial_handler.trial_model
+        df = pt.DataFrame(data_to_append).set_model(model).derive().drop().cast()
+        # patito's fill_null(strategy="defaults"), inlined: on polars 2 its internal with_columns returns a
+        # plain pl.DataFrame and its follow-up .set_model() raises, so fill here and re-wrap
+        df = df.with_columns(
+            [
+                (
+                    pl.col(c).fill_null(pl.lit(v, model.dtypes[c]))
+                    if c in df.columns
+                    else pl.lit(v, model.dtypes[c]).alias(c)
+                )
+                for c, v in model.defaults.items()
+            ]
         )
+        validated = pt.DataFrame(df).set_model(model).validate()
         return to_plain_polars(validated)
 
     @staticmethod

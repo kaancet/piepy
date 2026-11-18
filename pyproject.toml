@@ -22,11 +22,11 @@ classifiers = [
 
 dependencies = [
     "behaviz >= 0.6.2",
-    "numpy == 2.2.6",
-    "patito ~= 0.8.3",
-    "polars ~= 1.19.0",
+    "numpy >= 2.2.6",
+    "patito >= 0.8.6",
+    "polars >= 1.32",
     "pandas < 3",
-    "tqdm == 4.66.3",
+    "tqdm >= 4.66.3",
     "temporaldata>=0.1.6",
     "ipykernel < 7",
     "matplotlib",
@@ -44,8 +44,8 @@ dependencies = [
 ]
 
 [dependency-groups]
-test = ["pytest >=8", "ruff >=0.6", "black ==26.5.1"]
-dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6", "black ==26.5.1"]
+test = ["pytest >=8", "ruff >=0.6"]
+dev = ["pre-commit", "jupyter", "pytest >=8", "ruff >=0.6"]
 
 
 [project.scripts]
