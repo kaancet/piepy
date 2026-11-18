@@ -53,12 +53,13 @@ class Session:
             run.get_rawdata()
             self.runs.append(run)
 
-    def analyze(self, load_flag: bool = False, save_mat: bool = False) -> pl.DataFrame:
+    def analyze(self, load_flag: bool = False, save_mat: bool = False, strict: bool = False) -> pl.DataFrame:
         """The analysis-ready trial table for this session
 
         Args:
             load_flag: reuse a previous parse if one is saved, instead of re-parsing.
             save_mat: also write a MATLAB ``.mat`` copy alongside the parquet.
+            strict: raise on the first trial that fails to parse instead of skipping and reporting it.
 
         Returns:
             pl.DataFrame: Concatenated session data
@@ -68,7 +69,7 @@ class Session:
                 display(f"Loading from {r.paths.save}")
                 r.load_run()
             else:
-                r.analyze_run()
+                r.analyze_run(strict=strict)
                 r.data.add_metadata_columns(r.meta)
                 r.save_run(save_mat)
 

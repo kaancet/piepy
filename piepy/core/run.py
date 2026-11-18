@@ -22,7 +22,7 @@ except PackageNotFoundError:  # running from a source tree, not installed
 
 
 from .config import config
-from .errors import StateMachineError, DataMissingError
+from .errors import StateMachineError, DataMissingError, TrialParseError
 from .io import display, load_json_dict, save_dict_json
 from .parsers import (
     parse_labcams_log,
@@ -293,13 +293,13 @@ class Run:
         """Hook for paradigm-specific rawdata fixes after the standard read. No-op by default."""
         pass
 
-    def analyze_run(self) -> None:
+    def analyze_run(self, strict: bool = False) -> None:
         """Parse rawdata into the trial table, then run the paradigm hooks.
 
         Subclasses customize via ``augment_data`` (derived columns) and ``compute_stats``
         rather than overriding this loop.
         """
-        run_data = self.get_trials()
+        run_data = self.get_trials(strict=strict)
 
         # set the data object
         self.data.set_data(run_data)
@@ -334,6 +334,7 @@ class Run:
             "state_transitions_hash": hashlib.sha256(blob.encode()).hexdigest()[:12],
             "piepy_version": ver,
             "parser_version": PARSER_VERSION,
+            "skipped_trials": sorted(getattr(self, "failed_trials", {})),
             "parsed_at": dt.now().isoformat(timespec="seconds"),
         }
 
@@ -356,17 +357,33 @@ class Run:
         """Hook returning a per-run summary-stats dict (persisted with the data). None by default."""
         return None
 
-    def get_trials(self) -> pt.DataFrame:
+    def get_trials(self, strict: bool = False) -> pt.DataFrame:
         """Gathers all the data, validates them and returns a dataframe
+
+        Args:
+            strict: raise ``TrialParseError`` (naming the trial) on the first trial that fails.
+                Default skips failed trials, reports them, and records them in ``failed_trials``
+                (trial_no -> exception) and the provenance sidecar.
 
         Returns:
             pt.DataFrame: Table of trials
         """
         data_to_append = None
+        self.failed_trials: dict[int, Exception] = {}
         trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
         pbar = tqdm(trial_nos, desc="Extracting trial data:", disable=not config.verbose)
         for t in pbar:
-            _trial = self.trial_handler.get_trial(int(t), self.rawdata)
+            try:
+                _trial = self.trial_handler.get_trial(int(t), self.rawdata)
+            except Exception as e:  # noqa: BLE001 - any per-trial failure is skipped or re-raised with the trial number
+                if strict:
+                    raise TrialParseError(
+                        f"Trial {int(t)} failed to parse: {type(e).__name__}: {getattr(e, 'problem', e)}",
+                        where=(getattr(self, "meta", None) or {}).get("sessiondir"),
+                        fix="Pass strict=False to skip bad trials, or inspect the raw logs around this trial.",
+                    ) from e
+                self.failed_trials[int(t)] = e
+                continue
             if _trial is not None:
                 if data_to_append is None:
                     data_to_append = _trial
@@ -375,6 +392,23 @@ class Run:
                         data_to_append[k].extend(v)
 
             pbar.update()
+
+        if self.failed_trials:
+            display(
+                f"Skipped {len(self.failed_trials)} trial(s) that failed to parse: "
+                + ", ".join(f"{k} ({type(v).__name__})" for k, v in self.failed_trials.items()),
+                color="yellow",
+            )
+        if data_to_append is None:
+            raise TrialParseError(
+                "No trial could be parsed."
+                + "".join(
+                    f" First failure: trial {k}: {type(v).__name__}: {getattr(v, 'problem', v)}"
+                    for k, v in list(self.failed_trials.items())[:1]
+                ),
+                where=(getattr(self, "meta", None) or {}).get("sessiondir"),
+                fix="Check the logs; run with strict=True to raise the first failure with a traceback.",
+            )
 
         validated = (
             pt.DataFrame(data_to_append)

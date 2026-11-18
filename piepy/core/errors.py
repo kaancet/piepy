@@ -74,9 +74,7 @@ class PiepyError(Exception):
 
     def render(self) -> str:
         """The full multi-line message (used as the exception string)."""
-        header = (
-            "piepy error" if self.category == "error" else f"piepy {self.category} error"
-        )
+        header = "piepy error" if self.category == "error" else f"piepy {self.category} error"
         lines = [f"{header}: {self.problem}"]
         if self.where is not None:
             lines.append(self._field("where:", self.where))
@@ -142,6 +140,10 @@ class ScreenPulseError(ParsingError):
 
 class SchemaError(PiepyError):
     category = "schema"
+
+
+class TrialParseError(ParsingError):
+    """A single trial failed to parse (strict mode), or no trial parsed at all."""
 
 
 class DataMissingError(ParsingError):

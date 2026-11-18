@@ -24,9 +24,7 @@ class VisualRun(Run):
         """Standard read, plus a visual-specific fix: some logs number trials from 0, not 1."""
         super().read_run_data()
         if self.rawdata["vstim"]["iTrial"].drop_nulls()[0] == 0:
-            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns(
-                (pl.col("iTrial") + 1).alias("iTrial")
-            )
+            self.rawdata["vstim"] = self.rawdata["vstim"].with_columns((pl.col("iTrial") + 1).alias("iTrial"))
 
     def repair_rawdata(self) -> None:
         """Shift the trial start/end times by fixed offsets so the downstream timing lines up.
@@ -44,30 +42,21 @@ class VisualRun(Run):
             .alias("elapsed")
         )
 
-    def analyze_run(self):
-        super().analyze_run()
+    def augment_data(self):
         self._extract_list_columns()
 
     def _extract_list_columns(self) -> pl.DataFrame:
         """Extracts the element in single element list columns"""
         # all list-typed columns
-        list_cols = [
-            c
-            for c in self.data.data.columns
-            if self.data.data.schema[c].base_type() == pl.List
-        ]
+        list_cols = [c for c in self.data.data.columns if self.data.data.schema[c].base_type() == pl.List]
 
         # check lengths in a single pass
-        max_lens = self.data.data.select(
-            pl.col(c).list.len().max().alias(c) for c in list_cols
-        )
+        max_lens = self.data.data.select(pl.col(c).list.len().max().alias(c) for c in list_cols)
 
         # keep only columns where the longest list is 1 element
         single_element_cols = [c for c in list_cols if max_lens[c].item() == 1]
 
-        self.data.data = self.data.data.with_columns(
-            pl.col(c).list.first() for c in single_element_cols
-        )
+        self.data.data = self.data.data.with_columns(pl.col(c).list.first() for c in single_element_cols)
 
 
 class VisualSession(Session):

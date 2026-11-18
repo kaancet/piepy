@@ -49,9 +49,7 @@ class TrialHandler:
         """
         self.trial_model = model
         self._model_columns = frozenset(model.columns)
-        self._model_null_cols = frozenset(
-            k for k, dt in model.dtypes.items() if isinstance(dt, pl.datatypes.Null)
-        )
+        self._model_null_cols = frozenset(k for k, dt in model.dtypes.items() if isinstance(dt, pl.datatypes.Null))
 
     @staticmethod
     def _list_field_fixer(field_val) -> tuple[type, Any]:
@@ -80,14 +78,10 @@ class TrialHandler:
             self.trial_model = self.trial_model.with_fields(**updates)
             self._model_columns = frozenset(self.trial_model.columns)
             self._model_null_cols = frozenset(
-                k
-                for k, dt in self.trial_model.dtypes.items()
-                if isinstance(dt, pl.datatypes.Null)
+                k for k, dt in self.trial_model.dtypes.items() if isinstance(dt, pl.datatypes.Null)
             )
 
-    def _update_and_return(
-        self, return_as: Literal["df", "dict", "list"] = "dict"
-    ) -> pt.DataFrame | dict | list:
+    def _update_and_return(self, return_as: Literal["df", "dict", "list"] = "dict") -> pt.DataFrame | dict | list:
         """First validates, then returns the self._trial in the form given in return_as
 
         Args:
@@ -160,17 +154,11 @@ class TrialHandler:
 
         # check if trial is complete
         if self.is_trial_complete(_state_transitions):
-            self._trial["t_trialstart"] = int(
-                _state.filter(pl.col("transition") == "trialstart")[0, "elapsed"]
-            )
+            self._trial["t_trialstart"] = int(_state.filter(pl.col("transition") == "trialstart")[0, "elapsed"])
             if "trialend" in _state_transitions:
-                self._trial["t_trialend"] = int(
-                    _state.filter(pl.col("transition") == "trialend")[0, "elapsed"]
-                )
+                self._trial["t_trialend"] = int(_state.filter(pl.col("transition") == "trialend")[0, "elapsed"])
             else:
-                self._trial["t_trialend"] = int(
-                    _state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"]
-                )
+                self._trial["t_trialend"] = int(_state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"])
         else:
             return False
 
@@ -187,15 +175,11 @@ class TrialHandler:
                 if k != "vstim":
                     continue
                 temp_v = v.filter(
-                    (pl.col("presentTime") * 1000).is_between(
-                        self._trial["t_trialstart"], self._trial["t_trialend"]
-                    )
+                    (pl.col("presentTime") * 1000).is_between(self._trial["t_trialstart"], self._trial["t_trialend"])
                 )
             else:
                 temp_v = v.filter(
-                    pl.col("duinotime").is_between(
-                        self._trial["t_trialstart"], self._trial["t_trialend"]
-                    )
+                    pl.col("duinotime").is_between(self._trial["t_trialstart"], self._trial["t_trialend"])
                 )
             self.data[k] = temp_v
         return True
@@ -245,7 +229,7 @@ class TrialHandler:
         """
         frame_ids = None
         frames_data = self._get_rig_event(imaging_mode)
-        if frames_data is not None:
+        if frames_data is not None and None not in epoch_endpoints:  # no screen pulse => no epoch
             _idx = np.logical_and(
                 frames_data[:, 0] >= epoch_endpoints[0],
                 frames_data[:, 0] <= epoch_endpoints[1],
