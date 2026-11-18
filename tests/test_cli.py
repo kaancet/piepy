@@ -76,3 +76,16 @@ def test_shared_flags_on_each_subcommand():
 def test_missing_subcommand_errors():
     with pytest.raises(SystemExit):
         build_parser().parse_args([])
+
+
+def test_main_turns_piepy_error_into_clean_exit(monkeypatch):
+    import piepy.cli as cli
+    from piepy.core.errors import SessionNotFoundError
+
+    def boom(opts):
+        raise SessionNotFoundError("nope", where="/x", fix="fix it")
+
+    monkeypatch.setattr(cli, "cmd_dashboard", boom)
+    with pytest.raises(SystemExit) as e:
+        cli.main(["dashboard"])
+    assert "nope" in str(e.value) and "fix it" in str(e.value)  # message, not a traceback

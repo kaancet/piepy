@@ -6,7 +6,6 @@ from pathlib import Path
 CONFIG = {
     "multiprocess": {"enable": False, "cores": 8},
     "verbose": True,
-    "paths": {"colors": [str(Path.cwd().parents[0] / "plotters" / "colors")]},
 }
 
 PATHS = [
@@ -67,8 +66,9 @@ class Config:
         os.makedirs(self.config_dir, exist_ok=True)
 
         # add the paths variable
-        config = CONFIG.copy()
+        config = {**CONFIG, "paths": {}}
 
+        # relative placeholders, edit these to the real data folders (see the not-found errors)
         for p in PATHS:
             config["paths"][p] = [f"data/{p}"]
 

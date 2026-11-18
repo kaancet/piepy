@@ -25,6 +25,13 @@ def list_animal_sessions(animalid: str) -> pl.DataFrame:
     """
     presentation = cfg.paths["presentation"][0]
     training = cfg.paths["training"][0]
+    for root in (presentation, training):
+        if not os.path.isdir(root):
+            display(
+                f"Data root {root!r} does not exist. If it is a first-run placeholder, set the real "
+                "folder under 'paths' in ~/.piepy/config.json.",
+                color="yellow",
+            )
     experiment_sessions = glob.glob(f"{presentation}/*{animalid}*/")
     training_sessions = glob.glob(f"{training}/*{animalid}*__no_cam_*/")
     all_sessions = natsort.natsorted(experiment_sessions + training_sessions)
@@ -78,9 +85,9 @@ class MouseData:
 
     def append(self, cumul_data_list: list, summary_data_list: list) -> None:
         """Appends new data to the existing data"""
-        assert len(cumul_data_list) == len(
-            summary_data_list["date"]
-        ), "Cumulative and summary data has to be the same length!!"
+        assert len(cumul_data_list) == len(summary_data_list["date"]), (
+            "Cumulative and summary data has to be the same length!!"
+        )
 
         # summary: append the new summary rows onto whatever we already have
         tmp = pl.DataFrame(summary_data_list)
@@ -101,22 +108,14 @@ class MouseData:
     def save(self, save_path: str) -> None:
         """Saves the data in the given location"""
         if self.cumul_data is not None:
-            cumul_save_name = pjoin(
-                save_path, f"{self.paradigm}BehaviorData.parquet"
-            ).replace("\\", "/")
-            summary_save_name = pjoin(
-                save_path, f"{self.paradigm}BehaviorDataSummary.csv"
-            ).replace("\\", "/")
+            cumul_save_name = pjoin(save_path, f"{self.paradigm}BehaviorData.parquet").replace("\\", "/")
+            summary_save_name = pjoin(save_path, f"{self.paradigm}BehaviorDataSummary.csv").replace("\\", "/")
 
             # cast sf and tf to str
             summary_save_data = self.summary_data.with_columns(
                 [
-                    (
-                        "[" + pl.col("sf").cast(pl.List(pl.Utf8)).list.join(", ") + "]"
-                    ).alias("sf"),
-                    (
-                        "[" + pl.col("tf").cast(pl.List(pl.Utf8)).list.join(", ") + "]"
-                    ).alias("tf"),
+                    ("[" + pl.col("sf").cast(pl.List(pl.Utf8)).list.join(", ") + "]").alias("sf"),
+                    ("[" + pl.col("tf").cast(pl.List(pl.Utf8)).list.join(", ") + "]").alias("tf"),
                 ]
             )
 
@@ -130,13 +129,9 @@ class MouseData:
         """Loads the data, both the cumulative and summary from directory"""
         # this loads the most recent found data
         # load_and_add and last_saved will enter here
-        self.cumul_data = pl.read_parquet(
-            pjoin(load_path, f"{self.paradigm}BehaviorData.parquet")
-        )
+        self.cumul_data = pl.read_parquet(pjoin(load_path, f"{self.paradigm}BehaviorData.parquet"))
 
-        summary_data = pl.read_csv(
-            pjoin(load_path, f"{self.paradigm}BehaviorDataSummary.csv")
-        )
+        summary_data = pl.read_csv(pjoin(load_path, f"{self.paradigm}BehaviorDataSummary.csv"))
         # sf and tf needs to be converted back to lists
         self.summary_data = summary_data.with_columns(
             [
@@ -163,9 +158,7 @@ class Mouse:
     paradigm:  task paradigm, e.g. detection, multiSense, etc...
     """
 
-    def __init__(
-        self, animalid: str, paradigm: str = None, dateinterval: list | str = None
-    ) -> None:
+    def __init__(self, animalid: str, paradigm: str = None, dateinterval: list | str = None) -> None:
         self.animalid = animalid
         self.init_data_paths()
         self.data = MouseData()
@@ -184,9 +177,7 @@ class Mouse:
             # set session parser
             self.session_parser = self.get_session_class(self.paradigm)
             # filter sessions list
-            self.session_list = self.all_sessions.filter(
-                pl.col("paradigm") == self.paradigm
-            )
+            self.session_list = self.all_sessions.filter(pl.col("paradigm") == self.paradigm)
             # set paradigm in the data class
             self.data.set_paradigm(self.paradigm)
             display(f"Set the data analysis paradigm to {self.paradigm}", color="cyan")
@@ -199,9 +190,9 @@ class Mouse:
             # add current day as end date
             date_interval.append(dt.today().strftime("%y%m%d"))
         elif isinstance(date_interval, list):
-            assert (
-                len(date_interval) <= 2
-            ), f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
+            assert len(date_interval) <= 2, (
+                f"You need to provide a single start(1) or start and end dates(2), got {len(date_interval)} dates"
+            )
             if len(date_interval) == 1:
                 date_interval.append(dt.today().strftime("%y%m%d"))
         else:
@@ -210,9 +201,7 @@ class Mouse:
         startdate = dt.strptime(date_interval[0], "%y%m%d")
         enddate = dt.strptime(date_interval[1], "%y%m%d")
 
-        self.session_list = self.session_list.filter(
-            (pl.col("date") >= startdate) & (pl.col("date") <= enddate)
-        )
+        self.session_list = self.session_list.filter((pl.col("date") >= startdate) & (pl.col("date") <= enddate))
 
         display("Retreiving between {0} - {1}".format(startdate, enddate))
 
@@ -222,11 +211,7 @@ class Mouse:
         paths = cfg.paths
         # excepy for analysis, take the first pathway present in config
         # only take the necessary things from config
-        config = {
-            n: p
-            for n, p in paths.items()
-            if n in ["analysis", "presentation", "training", "colors", "database"]
-        }
+        config = {n: p for n, p in paths.items() if n in ["analysis", "presentation", "training", "colors", "database"]}
         tmp_dict = {name: path[0] for name, path in config.items()}
         tmp_paths = namedtuple("Paths", list(tmp_dict.keys()))
         self.paths = tmp_paths(**tmp_dict)
@@ -246,9 +231,7 @@ class Mouse:
             return None
 
         if load_type not in self.load_modes:
-            raise ValueError(
-                f"{load_type} is not a valid loading mode, try one of: {self.load_modes}"
-            )
+            raise ValueError(f"{load_type} is not a valid loading mode, try one of: {self.load_modes}")
 
         if load_type is None:
             load_type = "last_saved"
@@ -271,9 +254,7 @@ class Mouse:
         self.faulty_sessions = []
         for i, row in enumerate(missing_sessions.iter_rows()):
             sessiondir, exp_type = row[1], row[3]
-            pbar.set_description(
-                f"Analyzing {sessiondir} [{i + 1}/{len(missing_sessions)}]"
-            )
+            pbar.set_description(f"Analyzing {sessiondir} [{i + 1}/{len(missing_sessions)}]")
 
             try:
                 _single_session = self.session_parser(sessiondir)
@@ -290,9 +271,7 @@ class Mouse:
                 continue
 
             if session_data.is_empty():
-                display(
-                    f" >>> WARNING <<< No data for session {sessiondir}", color="yellow"
-                )
+                display(f" >>> WARNING <<< No data for session {sessiondir}", color="yellow")
                 self.faulty_sessions.append(sessiondir)
                 pbar.update()
                 continue
@@ -312,16 +291,8 @@ class Mouse:
                 "session_no": session_counter + 1,
                 **stats,
                 "task": opts.get("controller"),
-                "sf": (
-                    session_data["sf"].unique().drop_nulls().to_list()
-                    if "sf" in session_data.columns
-                    else []
-                ),
-                "tf": (
-                    session_data["tf"].unique().drop_nulls().to_list()
-                    if "tf" in session_data.columns
-                    else []
-                ),
+                "sf": (session_data["sf"].unique().drop_nulls().to_list() if "sf" in session_data.columns else []),
+                "tf": (session_data["tf"].unique().drop_nulls().to_list() if "tf" in session_data.columns else []),
                 "rig": rig.get("name") if isinstance(rig, dict) else rig,
             }
 
@@ -357,9 +328,7 @@ class Mouse:
                     del_target = pjoin(self.paths.analysis, self.saved_dir)
                     display(f"Deleting the old data in {del_target}", color="red")
                     os.remove(pjoin(del_target, f"{self.paradigm}BehaviorData.parquet"))
-                    os.remove(
-                        pjoin(del_target, f"{self.paradigm}BehaviorDataSummary.csv")
-                    )
+                    os.remove(pjoin(del_target, f"{self.paradigm}BehaviorDataSummary.csv"))
 
     def load(self):
         """Loads"""
@@ -398,9 +367,7 @@ class Mouse:
             self.saved_dir = None
             return False
         else:
-            raise RuntimeError(
-                "!! This should not happen! Saving of behavior data is messed up !!"
-            )
+            raise RuntimeError("!! This should not happen! Saving of behavior data is messed up !!")
 
     def get_unanalyzed_sessions(self, load_type: str) -> pl.DataFrame:
         """Returns the list of sessions that have not been added to the behavior analysis"""
@@ -411,9 +378,7 @@ class Mouse:
                 reverse_session_list = (
                     self.session_list.reverse()
                 )  # this will have sessions listed from new to old for ease of search
-                _until = np.where(
-                    reverse_session_list["sessiondir"].to_numpy() == self.saved_dir
-                )[0][0]
+                _until = np.where(reverse_session_list["sessiondir"].to_numpy() == self.saved_dir)[0][0]
                 missing_sessions = reverse_session_list[:_until]
                 missing_sessions = (
                     missing_sessions.reverse()

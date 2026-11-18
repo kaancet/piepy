@@ -55,9 +55,7 @@ class RunArtifacts:
     riglog: str | None
     prefs: str | None
     prot: str | None
-    save_dirs: list[str] = field(
-        default_factory=list
-    )  # analysis output dir(s) for this run
+    save_dirs: list[str] = field(default_factory=list)  # analysis output dir(s) for this run
     # auxiliary artifacts (None when the session has no such data)
     onepcam: str | None = None
     onepcamlog: str | None = None
@@ -94,9 +92,7 @@ class SessionManifest:
 
 def _files_with_suffix(directory: str, suffix: str) -> list[str]:
     """Full paths of files in ``directory`` ending with ``suffix`` (sorted)."""
-    return natsort.natsorted(
-        os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(suffix)
-    )
+    return natsort.natsorted(os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(suffix))
 
 
 def _one_or_none(directory: str, suffix: str) -> str | None:
@@ -148,21 +144,9 @@ class SessionLocator:
         aux_roots: dict[str, list[str]] | None = None,
         name_parser: SessionNameParser | None = None,
     ) -> None:
-        self.behaviour_roots = (
-            behaviour_roots
-            if behaviour_roots is not None
-            else _roots_from_config(_BEHAVIOUR_KINDS)
-        )
-        self.analysis_roots = (
-            analysis_roots
-            if analysis_roots is not None
-            else (cfg.paths.get("analysis") or [])
-        )
-        self.aux_roots = (
-            aux_roots
-            if aux_roots is not None
-            else {k: (cfg.paths.get(k) or []) for k in _AUX_KINDS}
-        )
+        self.behaviour_roots = behaviour_roots if behaviour_roots is not None else _roots_from_config(_BEHAVIOUR_KINDS)
+        self.analysis_roots = analysis_roots if analysis_roots is not None else (cfg.paths.get("analysis") or [])
+        self.aux_roots = aux_roots if aux_roots is not None else {k: (cfg.paths.get(k) or []) for k in _AUX_KINDS}
         self._name_parser = name_parser
 
     def locate(self, sessiondir: str) -> SessionManifest:
@@ -187,15 +171,22 @@ class SessionLocator:
             if os.path.isdir(os.path.join(root, sessiondir))
         ]
         if not matches:
-            searched = (
-                ", ".join(root for _, root in self.behaviour_roots)
-                or "(no roots configured)"
+            searched = ", ".join(root for _, root in self.behaviour_roots) or "(no roots configured)"
+            missing = [root for _, root in self.behaviour_roots if not os.path.isdir(root)]
+            fix = (
+                "Check the session name for typos, or that its 'paths' (presentation / "
+                "training) are set correctly in ~/.piepy/config.json."
             )
+            if missing:
+                fix = (
+                    f"Data root(s) not found on disk: {', '.join(missing)}. The defaults written on "
+                    "first run (e.g. 'data/presentation') are placeholders: set the real folders "
+                    "under 'paths' in ~/.piepy/config.json. " + fix
+                )
             raise SessionNotFoundError(
                 f"Session {sessiondir!r} was not found in any data root.",
                 where=searched,
-                fix="Check the session name for typos, or that its 'paths' (presentation / "
-                "training) are set correctly in ~/.piepy/config.json.",
+                fix=fix,
             )
         if len(matches) > 1:
             locations = ", ".join(path for _, path in matches)
@@ -216,8 +207,7 @@ class SessionLocator:
                 raise MalformedSessionError(
                     f"No .stimlog file found in {os.path.basename(run_dir)!r}.",
                     where=run_dir,
-                    fix="A run must contain a .stimlog and matching .riglog. Add them, or "
-                    "remove the empty directory.",
+                    fix="A run must contain a .stimlog and matching .riglog. Add them, or remove the empty directory.",
                 )
             if len(stimlogs) > 1:
                 raise MalformedSessionError(

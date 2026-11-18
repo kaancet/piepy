@@ -12,6 +12,7 @@ import os
 from datetime import datetime as dt
 
 from .core.config import config as cfg
+from .core.errors import PiepyError
 from .core.io import display
 
 # the session/cohort viz plots to render+save (skipped individually if not yet drawable)
@@ -59,9 +60,7 @@ def cmd_session(opts) -> None:
     session = get_session_class(opts.paradigm)(opts.sessiondir)
     session.analyze(load_flag=opts.load)
     if opts.plot:
-        outdir = opts.output or os.path.join(
-            cfg.paths["analysis"][0], opts.sessiondir, "plots"
-        )
+        outdir = opts.output or os.path.join(cfg.paths["analysis"][0], opts.sessiondir, "plots")
         _save_plots(session.viz, outdir, opts.sessiondir)
 
 
@@ -136,9 +135,7 @@ def cmd_widefield(opts) -> None:
     session = get_session_class(opts.paradigm)(opts.sessiondir)
     session.analyze(load_flag=opts.load)  # populate each run's trial table + frame ids
 
-    outroot = opts.output or os.path.join(
-        cfg.paths["analysis"][0], opts.sessiondir, "widefield"
-    )
+    outroot = opts.output or os.path.join(cfg.paths["analysis"][0], opts.sessiondir, "widefield")
     # tpre/tpost are seconds; widefield_from_run's pre_t/post_t are ms
     kwargs = dict(
         pre_t=opts.tpre * 1000.0,
@@ -153,9 +150,7 @@ def cmd_widefield(opts) -> None:
             display(f" >> skip run {i}: {exc}", color="yellow")
             continue
         paths = save_averages(results, os.path.join(outroot, f"run{i}"))
-        display(
-            f"run {i}: saved {len(paths)} movie(s) under {outroot}/run{i}", color="green"
-        )
+        display(f"run {i}: saved {len(paths)} movie(s) under {outroot}/run{i}", color="green")
 
 
 def cmd_dashboard(opts) -> None:
@@ -182,25 +177,17 @@ def build_parser() -> argparse.ArgumentParser:
     ph.add_argument("--plot", action=argparse.BooleanOptionalAction, default=True)
     ph.set_defaults(func=cmd_hub)
 
-    pt = sub.add_parser(
-        "training-report", parents=[common], help="training table for animals"
-    )
+    pt = sub.add_parser("training-report", parents=[common], help="training table for animals")
     pt.add_argument("animalids", nargs="+", help="one or more animal ids (e.g. KC150)")
     pt.add_argument("-p", "--paradigm", required=True, help="e.g. wheel_detection")
     pt.set_defaults(func=cmd_training_report)
 
-    pw = sub.add_parser(
-        "widefield", parents=[common], help="analyze a widefield imaging session"
-    )
+    pw = sub.add_parser("widefield", parents=[common], help="analyze a widefield imaging session")
     pw.add_argument("sessiondir", help="e.g. 240810_KC150_detect_1P__onepcam_KC")
     pw.add_argument("-p", "--paradigm", required=True, help="e.g. wheel_detection")
     pw.add_argument("--load", action=argparse.BooleanOptionalAction, default=False)
-    pw.add_argument(
-        "--tpre", type=float, default=0.0, help="pre-stimulus time to include (s)"
-    )
-    pw.add_argument(
-        "--tpost", type=float, default=0.0, help="post-stimulus time to include (s)"
-    )
+    pw.add_argument("--tpre", type=float, default=0.0, help="pre-stimulus time to include (s)")
+    pw.add_argument("--tpost", type=float, default=0.0, help="post-stimulus time to include (s)")
     pw.add_argument("--downsample", type=int, default=1, help="spatial downsample factor")
     pw.add_argument(
         "--precision",
@@ -210,9 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pw.set_defaults(func=cmd_widefield)
 
-    pd = sub.add_parser(
-        "dashboard", parents=[common], help="launch the dashboard (placeholder)"
-    )
+    pd = sub.add_parser("dashboard", parents=[common], help="launch the dashboard (placeholder)")
     pd.set_defaults(func=cmd_dashboard)
 
     return parser
@@ -221,7 +206,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> None:
     opts = build_parser().parse_args(argv)
     cfg.set_verbosity(opts.verbose)
-    opts.func(opts)
+    try:
+        opts.func(opts)
+    except PiepyError as e:  # structured errors carry their own problem/where/fix text
+        raise SystemExit(str(e)) from None
 
 
 if __name__ == "__main__":
