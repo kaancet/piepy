@@ -59,6 +59,9 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
 
         self.is_early = self.check_early()
 
+        if not self.is_early and not self.has_transitions("stimstart"):
+            return None
+
         if not self.is_early:
             self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
         self.sync_timeframes()  # syncs the state and vstim log times, using screen ONSET

@@ -37,7 +37,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
         self.init_trial()
         is_trial_set = self.set_trial(trial_no, rawdata)
 
-        if not is_trial_set:
+        if not is_trial_set or not self.has_transitions("stimstart", "responsestart"):
             return None
         else:
             self.set_screen_events()  # should return a 2x2 matrix, first column is timings for screen ON and OFF.
@@ -63,6 +63,7 @@ class WheelDiscriminationTrialHandler(VisualTrialHandler, PsychophysicalTrialHan
 
             return self._update_and_return(return_as)
 
+    # TODO: Look at nogos
     def set_state_events(self) -> None:
         """Goes over the transitions to set state based timings and also sets the state_outcome"""
 

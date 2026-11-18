@@ -215,6 +215,17 @@ class TrialHandler:
         hit = st.filter(pl.col("transition") == name)
         return int(hit[0, "elapsed"]) if not hit.is_empty() else None
 
+    def has_transitions(self, *names: str) -> bool:
+        """True if this trial's state table has every named transition. Otherwise sets ``drop_reason``
+        naming the missing ones, so the caller can ``return None`` and the trial is reported as dropped.
+        """
+        st = self.state_table()
+        present = set(st["transition"].to_list()) if st is not None else set()
+        missing = [n for n in names if n not in present]
+        if missing:
+            self.drop_reason = "missing state transition(s): " + ", ".join(repr(n) for n in missing)
+        return not missing
+
     def set_frame_endpoints(
         self,
         imaging_mode: Literal["imaging", "onepcam", "facecam", "eyecam"],
