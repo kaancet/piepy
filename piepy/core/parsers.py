@@ -166,7 +166,7 @@ def parse_stimpy_log(fname: str):
             [
                 pl.col("code").str.strip_chars("[").str.strip_chars(" ").cast(pl.Int64, strict=False),
                 pl.col("timereceived").str.strip_chars(" ").cast(pl.Int64),
-                pl.col("duinotime").str.strip_chars(" ").cast(pl.Float32).cast(pl.Int64),
+                pl.col("duinotime").str.strip_chars(" ").cast(pl.Float64).cast(pl.Int64),
                 pl.col("value").str.strip_chars("]").str.strip_chars(" ").cast(pl.Float64).cast(pl.Int64, strict=False),
             ]
         ).collect()
