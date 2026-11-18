@@ -64,7 +64,7 @@ class Session:
             pl.DataFrame: Concatenated session data
         """
         for r in self.runs:
-            if r.is_run_saved() and load_flag:
+            if load_flag and r.is_run_saved() and r.is_saved_current():
                 display(f"Loading from {r.paths.save}")
                 r.load_run()
             else:

@@ -42,3 +42,18 @@ def test_stamp_provenance_adds_one_hash_column():
     col = r.data.data["state_transitions_hash"]
     assert col.n_unique() == 1
     assert col[0] == r.provenance["state_transitions_hash"]
+
+
+def test_is_saved_current_detects_stale_parser_version(tmp_path):
+    import json
+
+    r = _bare_run({"0->1": "trialstart"})
+    r.paths = SimpleNamespace(data=[str(tmp_path / "runData.parquet")])
+    assert not r.is_saved_current()  # nothing saved
+    (tmp_path / "runData.parquet").touch()
+    assert not r.is_saved_current()  # no sidecar
+    sidecar = tmp_path / "runProvenance.json"
+    sidecar.write_text(json.dumps(r._provenance()))
+    assert r.is_saved_current()
+    sidecar.write_text(json.dumps({**r._provenance(), "parser_version": 1}))
+    assert not r.is_saved_current()  # old parser
