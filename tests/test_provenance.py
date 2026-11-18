@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import polars as pl
 
-from piepy.core.run import Run
+from piepy.core.run import Run, RunMeta
 
 
 def _bare_run(transitions, sessiondir="250618_M1_detect__no_cam_KC"):
@@ -57,3 +57,14 @@ def test_is_saved_current_detects_stale_parser_version(tmp_path):
     assert r.is_saved_current()
     sidecar.write_text(json.dumps({**r._provenance(), "parser_version": 1}))
     assert not r.is_saved_current()  # old parser
+
+
+def test_get_prot_start_time_from_run_name_and_level(tmp_path):
+    f = tmp_path / "run00_164133_detectionTask_level2_x.prot"
+    f.write_text("a = 1\n")
+    d = RunMeta.get_prot(str(f))
+    assert d["run_start_time"] == "1641" and d["level"] == 2 and d["run_name"].startswith("run00_164133")
+    g = tmp_path / "run01_090502_level_x.prot"  # "level" without digits used to raise UnboundLocalError
+    g.write_text("a = 1\n")
+    d = RunMeta.get_prot(str(g))
+    assert d["run_start_time"] == "0905" and d["level"] is None

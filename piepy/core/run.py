@@ -1,6 +1,5 @@
 import os
 import re
-import sys
 import json
 import hashlib
 from datetime import datetime as dt
@@ -117,24 +116,16 @@ class RunMeta:
         prot_dict["run_name"] = prot_path.split(os.sep)[-1].split(".")[0]
         opts, params, _ = parse_protocol(prot_path)
 
-        # get the level if exists
-        if prot_path.find("level") != -1:
-            match = re.search(r"level(\d+)", prot_path)
-            if match:
-                lvl = int(match.group(1))
-        else:
-            lvl = None  # should be experiments
-        prot_dict["level"] = lvl
+        # get the level if exists (None for experiments)
+        match = re.search(r"level(\d+)", prot_path)
+        prot_dict["level"] = int(match.group(1)) if match else None
 
-        # get the run start time
-        os_stat = os.stat(prot_path)
-        if sys.platform == "darwin":
-            create_epoch = os_stat.st_birthtime
-        elif sys.platform == "win32":
-            create_epoch = os_stat.st_ctime
-        elif sys.platform.startswith("linux"):
-            create_epoch = getattr(os_stat, "st_birthtime", os_stat.st_mtime)
-        prot_dict["run_start_time"] = dt.fromtimestamp(create_epoch).strftime("%H%M")
+        # run start time: the run name is "runNN_HHMMSS_...", file birthtime changes on copy/sync
+        m = re.match(r"run\d+_(\d{2})(\d{2})\d{2}", prot_dict["run_name"])
+        if m:
+            prot_dict["run_start_time"] = m.group(1) + m.group(2)  # "HHMM"
+        else:  # unconventional name, best effort
+            prot_dict["run_start_time"] = dt.fromtimestamp(os.stat(prot_path).st_mtime).strftime("%H%M")
         prot_dict["opts"] = opts
         prot_dict["params"] = params
         return prot_dict
