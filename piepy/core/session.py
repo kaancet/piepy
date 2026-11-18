@@ -114,10 +114,10 @@ class Session:
         return concat_session_runs(frames)
 
     @timeit("Saving...")
-    def save_session(self) -> None:
+    def save_session(self, save_mat: bool = False) -> None:
         """Saves the session data, meta and stats"""
         for run in self.runs:
-            run.save_run(self.save_mat)
+            run.save_run(save_mat)
 
     @timeit("Loading...")
     def load_session(self) -> None:

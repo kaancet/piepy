@@ -212,6 +212,19 @@ class RunData:
         data = pl.read_parquet(load_path)
         self.set_data(data)
 
+    @staticmethod
+    def _mat_column(s: pl.Series) -> np.ndarray:
+        """One column in a form ``savemat`` accepts: list -> cell array of vectors (ragged ok),
+        string/date -> cell array of str, anything else -> double (null -> NaN)."""
+        if s.dtype == pl.List:
+            cells = np.empty(len(s), dtype=object)
+            for i, v in enumerate(s.to_list()):
+                cells[i] = np.asarray(v if v is not None else [], dtype=float)
+            return cells
+        if s.dtype in (pl.String, pl.Date):
+            return np.array(s.cast(pl.String).fill_null("").to_list(), dtype=object)
+        return s.cast(pl.Float64).to_numpy()
+
     def save_as_mat(self, save_path: str) -> None:
         """Helper method to convert the data into a .mat file
 
@@ -220,7 +233,7 @@ class RunData:
         """
         datafile = pjoin(save_path, "sessionData.mat")
 
-        save_dict = {name: col.values for name, col in self.data.stim_data.items()}
+        save_dict = {name: self._mat_column(col) for name, col in self.data.to_dict().items()}
         sio.savemat(datafile, save_dict)
         display(f"Saved .mat file at {datafile}")
 
