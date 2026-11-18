@@ -115,6 +115,7 @@ class TrialHandler:
     def init_trial(self) -> None:
         """Creates an _trial object filled with None values"""
         self._trial = {k: None for k in self.trial_model.columns}
+        self.drop_reason = None  # set by a handler that returns None for this trial
 
     def get_trial(
         self,
@@ -160,6 +161,7 @@ class TrialHandler:
             else:
                 self._trial["t_trialend"] = int(_state.filter(pl.col("transition") == "stimtrialend")[0, "elapsed"])
         else:
+            self.drop_reason = "incomplete trial (no trialend)"
             return False
 
         # fill a dictionary with slices from the dataframe that correspond to the trial

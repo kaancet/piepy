@@ -339,6 +339,8 @@ class Run:
             "piepy_version": ver,
             "parser_version": PARSER_VERSION,
             "skipped_trials": sorted(getattr(self, "failed_trials", {})),
+            "trials_dropped": len(getattr(self, "dropped_trials", {})),
+            "dropped_trials": {str(k): v for k, v in getattr(self, "dropped_trials", {}).items()},
             "parsed_at": dt.now().isoformat(timespec="seconds"),
         }
 
@@ -374,6 +376,7 @@ class Run:
         """
         data_to_append = None
         self.failed_trials: dict[int, Exception] = {}
+        self.dropped_trials: dict[int, str] = {}  # trial_no -> reason; handler returned None
         trial_nos = np.unique(self.rawdata["statemachine"]["trialNo"])
         pbar = tqdm(trial_nos, desc="Extracting trial data:", disable=not config.verbose)
         for t in pbar:
@@ -388,7 +391,9 @@ class Run:
                     ) from e
                 self.failed_trials[int(t)] = e
                 continue
-            if _trial is not None:
+            if _trial is None:
+                self.dropped_trials[int(t)] = getattr(self.trial_handler, "drop_reason", None) or "unspecified"
+            else:
                 if data_to_append is None:
                     data_to_append = _trial
                 else:
@@ -397,6 +402,12 @@ class Run:
 
             pbar.update()
 
+        if self.dropped_trials:
+            display(
+                f"Dropped {len(self.dropped_trials)} trial(s):\n"
+                + ",\n".join(f"\t{k} ({v})" for k, v in self.dropped_trials.items()),
+                color="yellow",
+            )
         if self.failed_trials:
             display(
                 f"Skipped {len(self.failed_trials)} trial(s) that failed to parse: "

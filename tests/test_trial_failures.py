@@ -23,12 +23,15 @@ class _Handler:
     def get_trial(self, t, rawdata):
         if t == 2:
             raise IndexError("boom")
+        if t == 4:
+            self.drop_reason = "incomplete trial (no trialend)"
+            return None
         return {"trial_no": [t]}
 
 
 def _run():
     r = object.__new__(Run)
-    r.rawdata = {"statemachine": pl.DataFrame({"trialNo": [1, 2, 3]})}
+    r.rawdata = {"statemachine": pl.DataFrame({"trialNo": [1, 2, 3, 4]})}
     r.trial_handler = _Handler()
     r.meta = {"sessiondir": "250618_M1_detect__no_cam_KC"}
     r.state_transitions = {}
@@ -48,7 +51,10 @@ def test_get_trials_skips_and_reports():
     df = r.get_trials()
     assert df["trial_no"].to_list() == [1, 3]
     assert list(r.failed_trials) == [2]
-    assert r._provenance()["skipped_trials"] == [2]
+    assert r.dropped_trials == {4: "incomplete trial (no trialend)"}
+    prov = r._provenance()
+    assert prov["skipped_trials"] == [2] and prov["trials_dropped"] == 1
+    assert prov["dropped_trials"] == {"4": "incomplete trial (no trialend)"}
 
 
 def test_get_trials_strict_names_trial():
@@ -61,3 +67,10 @@ def test_get_trials_all_failed_raises():
     r.rawdata = {"statemachine": pl.DataFrame({"trialNo": [2]})}
     with pytest.raises(TrialParseError, match="No trial could be parsed"):
         r.get_trials()
+
+
+def test_incomplete_trial_sets_drop_reason():
+    h = TrialHandler()
+    sm = pl.DataFrame({"trialNo": [1, 1], "transition": ["trialstart", "stimstart"], "elapsed": [0, 10]})
+    assert h.get_trial(1, {"statemachine": sm}) is None
+    assert h.drop_reason == "incomplete trial (no trialend)"

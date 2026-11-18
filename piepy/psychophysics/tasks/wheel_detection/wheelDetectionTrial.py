@@ -17,7 +17,7 @@ OUTCOMES = {-1: "early", 1: "hit", 0: "miss"}
 
 # reaction-time matching tolerances (ms, in the stimulus-reset frame)
 _GAP_TOL_MS = 100.0  # response may land just after a (clipped) movement's offset
-_MIN_RT_MS = 150.0  # onsets earlier than this are anticipatory, not stimulus-driven
+_MIN_RT_MS = 100.0  # onsets earlier than this are anticipatory, not stimulus-driven
 _SPEED_SCALE = 1000.0  # peak_speed reporting scale (rad/s -> reported units)
 
 
@@ -171,18 +171,15 @@ class WheelDetectionTrialHandler(VisualTrialHandler, PsychophysicalTrialHandler)
             miss = self.data["state"].filter(pl.col("transition") == "miss")
             if len(miss):
                 temp_resp = miss[0, "stateElapsed"]
-                if temp_resp < 150:
+                if temp_resp <= 150:
                     # this is actually early, higher threshold here compared to stimpy because of logging lag
                     self._trial["state_outcome"] = -1
                     self._trial["state_response_time"] = temp_resp
-                elif 200 < temp_resp < 1000:
+                elif 150 < temp_resp < 1000:
                     # This should not happen
                     # DISCARD TRIAL
                     _states_set = False
-                    display(
-                        f"[TRIAL-{self._trial['trial_no']}] A miss trial that has a state_response_time of {temp_resp} is not allowed!!",
-                        color="yellow",
-                    )
+                    self.drop_reason = f"miss with response time {temp_resp:.0f} ms (expected <= 150 or >= 1000)"
                 else:
                     # actual miss >= 1050
                     self._trial["state_outcome"] = 0
